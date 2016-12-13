@@ -527,7 +527,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = common.shapefile_2_geom_list_func(
-        zone_path, zone_field)
+        zone_path, zone_field=zone_field, reverse_flag=False)
 
     logging.info('\nProcessing zones')
     for fid, zone_str, zone_json in sorted(zone_geom_list):

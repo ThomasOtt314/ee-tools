@@ -294,7 +294,7 @@ def main(ini_path=None, overwrite_flag=True):
 
     # Get ee features from shapefile
     zone_geom_list = common.shapefile_2_geom_list_func(
-        zone_path, zone_field)
+        zone_path, zone_field=zone_field, reverse_flag=False)
 
     logging.info('\nProcessing zones')
     output_df = None
