@@ -1,6 +1,6 @@
 #--------------------------------
 # Name:         make_quicklook_lists.py
-# Created       2016-08-17
+# Created       2016-12-13
 # Python:       2.7
 #--------------------------------
 
@@ -39,7 +39,7 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
     year_list = list(xrange(1984, dt.datetime.now().year + 1))
     # year_list = [2015]
 
-    path_row_list = ['p39r32', 'p40r32', 'p39r33', 'p40r33']
+    path_row_list = []
     path_list = []
     row_list = []
 
