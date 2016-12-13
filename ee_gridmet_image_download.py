@@ -2,7 +2,7 @@
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
 # Author:       Charles Morton
-# Created       2016-10-07
+# Created       2016-12-14
 # Python:       2.7
 #--------------------------------
 
@@ -19,7 +19,6 @@ import arcpy
 from dateutil.relativedelta import relativedelta
 import ee
 
-sys.path.insert(0, r'P:\code\support')
 import ee_common
 import gdal_common as gdc
 import python_common
@@ -37,6 +36,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine GRIDMET Image Download')
 
+    # Generate a single for the merged geometries
+    merge_geom_flag = True
+
     start_year = 1984
     end_year = 2016
 
@@ -47,8 +49,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # If false, script will export annual and water year total images
     gridmet_monthly_flag = False
 
-    gridmet_flag = False
-    pdsi_flag = True
+    gridmet_flag = True
+    pdsi_flag = False
 
     pdsi_date_list = [
         '0120', '0220', '0320', '0420', '0520', '0620',
@@ -76,9 +78,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         sys.exit()
     logging.debug('\nReading Input File')
 
-    image_download_bands = config.get(
-        'INPUTS', 'image_download_bands').split(',')
-    # image_download_bands = ['NDVI_SUR']
     nodata_value = -9999
 
     # Read in config file
@@ -93,11 +92,17 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # Build and check file paths
     export_ws = os.path.join(gdrive_ws, export_folder)
     zone_path = os.path.join(zone_input_ws, zone_filename)
+    zone_name = os.path.splitext(zone_filename)[0].lower()
     if not os.path.isdir(export_ws):
         os.makedirs(export_ws)
-    if not os.path.isfile(zone_path):
+    if not os.path.isdir(zone_input_ws):
         logging.error(
-            '\nERROR: The zone shapefile does not exist\n  {}'.format(
+            '\nERROR: The zone workspace does not exist, exiting\n  {}'.format(
+                zone_input_ws))
+        sys.exit()
+    elif not os.path.isfile(zone_path):
+        logging.error(
+            '\nERROR: The zone shapefile does not exist, exiting\n  {}'.format(
                 zone_path))
         sys.exit()
 
@@ -138,7 +143,19 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = ee_common.shapefile_2_geom_list_func(
-        zone_path, zone_field)
+        zone_path, zone_field=zone_field, reverse_flag=False)
+
+    # Merge geometries
+    if merge_geom_flag:
+        merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
+        for zone in zone_geom_list:
+            zone_multipolygon = ogr.ForceToMultiPolygon(
+                ogr.CreateGeometryFromJson(json.dumps(zone[2])))
+            for zone_polygon in zone_multipolygon:
+                merge_geom.AddGeometry(zone_polygon)
+        # merge_json = json.loads(merge_mp.ExportToJson())
+        zone_geom_list = [[0, zone_name, json.loads(merge_geom.ExportToJson())]]
+        zone_field = None
 
     # Need zone_path projection to build EE geometries
     zone_osr = gdc.feature_path_osr(zone_path)
@@ -146,6 +163,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # zone_proj = ee.Projection(zone_proj).wkt().getInfo()
     # zone_proj = zone_proj.replace('\n', '').replace(' ', '')
     logging.debug('  Zone Projection: {}'.format(zone_proj))
+
 
     # Get current running tasks
     logging.debug('\nRunning tasks')
@@ -155,6 +173,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             logging.debug('  {}'.format(t['description']))
             tasks[t['description']].append(t['id'])
             # tasks[t['id']] = t['description']
+
 
     # Download images for each feature separately
     for fid, zone_str, zone_json in sorted(zone_geom_list):
@@ -192,7 +211,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             'EXPAND', output_x, output_y, output_cs)
         zone_geo = gdc.extent_geo(zone_extent, output_cs)
         zone_transform = ee_common.geo_2_ee_transform(zone_geo)
-        zone_shape = gdc.extent_shape(zone_extent, output_cs)
+        zone_shape = zone_extent.shape(output_cs)
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
@@ -247,8 +266,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}_gridmet_{}'.format(
-                    os.path.splitext(zone_filename)[0].lower(),
-                    date_str, b_name.lower())
+                    zone_name, date_str, b_name.lower())
                 output_id = '{}_gridmet.{}'.format(date_str, b_name.lower())
 
                 export_path = os.path.join(export_ws, export_id + '.tif')

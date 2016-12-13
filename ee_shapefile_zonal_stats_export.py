@@ -2,7 +2,7 @@
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
 # Author:       Charles Morton
-# Created       2016-10-19
+# Created       2016-12-14
 # Python:       2.7
 #--------------------------------
 
@@ -21,7 +21,6 @@ import numpy as np
 from osgeo import ogr
 import pandas as pd
 
-sys.path.insert(0, r'P:\code\support')
 import ee_common
 import gdal_common as gdc
 import python_common
@@ -312,7 +311,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = ee_common.shapefile_2_geom_list_func(
-        zone_path, zone_field)
+        zone_path, zone_field=zone_field, reverse_flag=False)
     # zone_count = len(zone_geom_list)
     # output_fmt = '_{0:0%sd}.csv' % str(int(math.log10(zone_count)) + 1)
 
@@ -376,7 +375,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             'EXPAND', output_snap[0], output_snap[1], output_cs)
         zone_geo = gdc.extent_geo(zone_extent, output_cs)
         zone_transform = ee_common.geo_2_ee_transform(zone_geo)
-        zone_shape = gdc.extent_shape(zone_extent, output_cs)
+        zone_shape = zone_extent.shape(output_cs)
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Zone Extent: {}'.format(zone_extent))

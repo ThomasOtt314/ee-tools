@@ -2,7 +2,7 @@
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
 # Author:       Charles Morton
-# Created       2016-10-19
+# Created       2016-12-14
 # Python:       2.7
 #--------------------------------
 
@@ -13,7 +13,6 @@ import datetime
 import json
 import logging
 import os
-# import re
 import subprocess
 import sys
 
@@ -22,7 +21,6 @@ import ee
 import numpy as np
 from osgeo import ogr
 
-sys.path.insert(0, r'P:\code\support')
 import ee_common
 import gdal_common as gdc
 import python_common
@@ -40,6 +38,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine Landsat Image Download')
     images_folder = 'landsat'
+
+    # Generate a single for the merged geometries
+    merge_geom_flag = True
 
     # Add to INI eventually, choices are 'fmask' or 'cfmask'
     fmask_type = 'fmask'
@@ -85,7 +86,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     zone_input_ws = config.get('INPUTS', 'zone_input_ws')
     zone_filename = config.get('INPUTS', 'zone_filename')
     zone_field = config.get('INPUTS', 'zone_field')
-    zone_path = os.path.join(zone_input_ws, zone_filename)
 
     # Google Drive export folder
     gdrive_ws = config.get('INPUTS', 'gdrive_ws')
@@ -93,6 +93,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     export_ws = os.path.join(gdrive_ws, export_folder)
 
     # Build and check file paths
+    zone_path = os.path.join(zone_input_ws, zone_filename)
+    zone_name = os.path.splitext(zone_filename)[0].lower()
     if not os.path.isdir(export_ws):
         os.makedirs(export_ws)
     if not os.path.isdir(zone_input_ws):
@@ -302,7 +304,19 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = ee_common.shapefile_2_geom_list_func(
-        zone_path, zone_field)
+        zone_path, zone_field=zone_field, reverse_flag=False)
+
+    # Merge geometries
+    if merge_geom_flag:
+        merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
+        for zone in zone_geom_list:
+            zone_multipolygon = ogr.ForceToMultiPolygon(
+                ogr.CreateGeometryFromJson(json.dumps(zone[2])))
+            for zone_polygon in zone_multipolygon:
+                merge_geom.AddGeometry(zone_polygon)
+        # merge_json = json.loads(merge_mp.ExportToJson())
+        zone_geom_list = [[0, zone_name, json.loads(merge_geom.ExportToJson())]]
+        zone_field = None
 
     # Need zone_path projection to build EE geometries
     zone_osr = gdc.feature_path_osr(zone_path)
@@ -337,6 +351,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             tasks[t['description']].append(t['id'])
             # tasks[t['id']] = t['description']
 
+
     # Download images for each feature separately
     for fid, zone_str, zone_json in sorted(zone_geom_list):
         if fid_keep_list and fid not in fid_keep_list:
@@ -351,7 +366,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             zone_str = zone_str.lower().replace(' ', '_')
 
         # Build EE geometry object for zonal stats
-        zone_geom = ee.Geometry(zone_json, zone_proj, False)
+        zone_geom = ee.Geometry(
+            geo_json=zone_json, opt_proj=zone_proj, opt_geodesic=False)
         logging.debug('  Centroid: {}'.format(
             zone_geom.centroid(100).getInfo()['coordinates']))
 
@@ -364,7 +380,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             'EXPAND', output_x, output_y, output_cs)
         zone_geo = gdc.extent_geo(zone_extent, output_cs)
         zone_transform = ee_common.geo_2_ee_transform(zone_geo)
-        zone_shape = gdc.extent_shape(zone_extent, output_cs)
+        zone_shape = zone_extent.shape(output_cs)
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
@@ -459,8 +475,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}{:02d}{:02d}_{}_{}_{}'.format(
-                    os.path.splitext(zone_filename)[0].lower(),
-                    year, month, day, doy, landsat.lower(), band.lower())
+                    zone_name, year, month, day, doy, landsat.lower(),
+                    band.lower())
                 output_id = '{}{:02d}{:02d}_{}_{}.{}'.format(
                     year, month, day, doy, landsat.lower(), band)
 
