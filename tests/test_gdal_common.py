@@ -268,6 +268,19 @@ def test_extent_geo(extent=[0, 10, 100, 90], cs=10,
 #     assert False
 
 
+# def test_proj4_osr(input_proj4):
+#     """Return the spatial reference object of an PROJ4 code
+
+#     Args:
+#         input_proj4 (str): PROJ4 projection or coordinate system description
+
+#     Returns:
+#         osr.SpatialReference: :class:`osr.SpatialReference` object
+
+#     """
+#     assert False
+
+
 # def test_feature_path_osr(feature_path):
 #     """Return the spatial reference of a feature path
 

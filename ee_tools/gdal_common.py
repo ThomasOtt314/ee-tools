@@ -365,6 +365,21 @@ def epsg_osr(input_epsg):
     return input_osr
 
 
+def proj4_osr(input_proj4):
+    """Return the spatial reference object of an PROJ4 code
+
+    Args:
+        input_proj4 (str): PROJ4 projection or coordinate system description
+
+    Returns:
+        osr.SpatialReference: :class:`osr.SpatialReference` object
+
+    """
+    input_osr = osr.SpatialReference()
+    input_osr.ImportFromProj4(input_proj4)
+    return input_osr
+
+
 def feature_path_osr(feature_path):
     """Return the spatial reference of a feature path
 
