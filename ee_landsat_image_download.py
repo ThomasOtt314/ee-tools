@@ -2,7 +2,7 @@
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
 # Author:       Charles Morton
-# Created       2017-01-22
+# Created       2017-01-24
 # Python:       2.7
 #--------------------------------
 
@@ -85,7 +85,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 merge_geom.AddGeometry(zone_polygon)
         # merge_json = json.loads(merge_mp.ExportToJson())
         zone_geom_list = [[0, zone_name, json.loads(merge_geom.ExportToJson())]]
-        ini['zone_field'] = None
+        ini['zone_field'] = ''
 
     # Need zone_path projection to build EE geometries
     zone_osr = gdc.feature_path_osr(ini['zone_path'])
@@ -132,7 +132,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             continue
         logging.info('\nZONE: {} (FID: {})'.format(zone_str, fid))
 
-        if not ini['zone_field'] or ini['zone_field'].upper() == 'FID':
+        if ini['zone_field'].upper() == 'FID':
             zone_str = 'fid_' + zone_str
         else:
             zone_str = zone_str.lower().replace(' ', '_')

@@ -2,7 +2,7 @@
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
 # Author:       Charles Morton
-# Created       2016-12-14
+# Created       2017-01-24
 # Python:       2.7
 #--------------------------------
 
@@ -10,6 +10,7 @@ import argparse
 from collections import defaultdict
 import ConfigParser
 import datetime
+import json
 import logging
 import os
 import shutil
@@ -18,6 +19,7 @@ import sys
 import arcpy
 from dateutil.relativedelta import relativedelta
 import ee
+from osgeo import ogr
 
 import ee_common
 import gdal_common as gdc
@@ -155,7 +157,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 merge_geom.AddGeometry(zone_polygon)
         # merge_json = json.loads(merge_mp.ExportToJson())
         zone_geom_list = [[0, zone_name, json.loads(merge_geom.ExportToJson())]]
-        zone_field = None
+        zone_field = ''
 
     # Need zone_path projection to build EE geometries
     zone_osr = gdc.feature_path_osr(zone_path)
@@ -183,7 +185,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             continue
         logging.info('ZONE: {} ({})'.format(zone_str, fid))
 
-        if not zone_field or zone_field.upper() == 'FID':
+        if zone_field.upper() == 'FID':
             zone_str = 'fid_' + zone_str
         else:
             zone_str = zone_str.lower().replace(' ', '_')

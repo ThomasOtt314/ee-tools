@@ -882,11 +882,11 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
     slope_c = slope.cos()
     slope_s = slope.sin()
     cos_theta = lat.expression(
-        ('(sin(lat) * slope_c * delta_s) - '
-         '(cos(lat) * slope_s * cos(aspect) * delta_s) + '
-         '(cos(lat) * slope_c * cos(omega) * delta_c) + '
-         '(sin(lat) * slope_s * cos(aspect) * cos(omega) * delta_c) + '
-         '(sin(aspect) * slope_s * sin(omega) * delta_c)'),
+        '(sin(lat) * slope_c * delta_s) - '
+        '(cos(lat) * slope_s * cos(aspect) * delta_s) + '
+        '(cos(lat) * slope_c * cos(omega) * delta_c) + '
+        '(sin(lat) * slope_s * cos(aspect) * cos(omega) * delta_c) + '
+        '(sin(aspect) * slope_s * sin(omega) * delta_c)',
         {'lat': lat, 'aspect': aspect,
          'slope_c': slope_c, 'slope_s': slope_s, 'omega': omega,
          'delta_c': ee.Image.constant(delta.cos()),
@@ -1364,8 +1364,8 @@ def daily_pet_func(doy, tmin, tmax, ea, rs, uz, zw, cn=900, cd=0.34):
 
     # Daily ETo (Eqn 1)
     return tmin.expression(
-        ('(0.408 * slope * (rn - g) + (psy * cn * u2 * (es - ea) / (t + 273))) / '
-         '(slope + psy * (cd * u2 + 1))'),
+        '(0.408 * slope * (rn - g) + (psy * cn * u2 * (es - ea) / (t + 273))) / '
+        '(slope + psy * (cd * u2 + 1))',
         {'slope': es_slope, 'rn': rn, 'g': 0, 'psy': psy, 'cn': cn,
          't': tmean, 'u2': u2, 'es': es, 'ea': ea, 'cd': cd})
 
@@ -1397,7 +1397,6 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
     """Return a list of feature geometries in the shapefile
 
     Also return the FID and value in zone_field
-    FID value will be returned if zone_field is not set or does not exist
     """
     logging.info('\nReading zone shapefile')
     ftr_geom_list = []
@@ -1405,19 +1404,22 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
     input_lyr = input_ds.GetLayer()
     input_ftr_defn = input_lyr.GetLayerDefn()
     # input_proj = input_lyr.GetSpatialRef().ExportToWkt()
-    if zone_field in feature_lyr_fields(input_lyr):
-        zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
-    elif zone_field.upper() == 'FID':
-        zone_field = None
+    if not zone_field or zone_field.upper() == 'FID':
+        zone_field_i = None
         logging.info('  Using FID as zone field')
+    elif zone_field in feature_lyr_fields(input_lyr):
+        zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
+        logging.debug('  Zone field: {}'.format(zone_field))
     else:
-        zone_field = None
-        logging.warning('  The zone field entered was not found, using FID')
+        logging.error('\nERROR: Zone field "{}" is not in the '
+                      'shapefile'.format(zone_field))
+        return []
+        # raise ?
 
     input_ftr = input_lyr.GetNextFeature()
     while input_ftr:
         input_fid = input_ftr.GetFID()
-        if zone_field is not None:
+        if zone_field_i:
             input_zone = str(input_ftr.GetField(zone_field_i))
         else:
             input_zone = str(input_fid)

@@ -2,7 +2,7 @@
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
 # Author:       Charles Morton
-# Created       2017-01-22
+# Created       2017-01-24
 # Python:       2.7
 #--------------------------------
 
@@ -48,8 +48,8 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     ini = ini_common.ini_parse(ini_path, mode='zonal_stats')
 
     landsat_daily_fields = [
-        ini['zone_field'], 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
-        'YEAR', 'MONTH', 'DAY', 'DOY',
+        ini['zone_field'].upper(), 'DATE', 'SCENE_ID', 'LANDSAT', 
+        'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
@@ -58,12 +58,14 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # 'NDWI_TOA', 'NDWI_SUR',
         'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
     gridmet_daily_fields = [
-        ini['zone_field'], 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 
+        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 
         'WATER_YEAR', 'ETO', 'PPT']
     gridmet_monthly_fields = [
-        ini['zone_field'], 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR', 'ETO', 'PPT']
+        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR', 
+        'ETO', 'PPT']
     pdsi_dekad_fields = [
-        ini['zone_field'], 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 'PDSI']
+        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 
+        'PDSI']
 
     # Initialize Earth Engine API key
     ee.Initialize()
