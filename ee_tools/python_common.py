@@ -120,8 +120,8 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
 
     Also return the FID and value in zone_field
     FID value will be returned if zone_field is not set or does not exist
-
     """
+    logging.info('\nReading zone shapefile')
     ftr_geom_list = []
     input_ds = ogr.Open(input_path)
     input_lyr = input_ds.GetLayer()
@@ -131,10 +131,11 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
     elif zone_field.upper() == 'FID':
         zone_field = None
-        logging.info('Using FID as zone field')
+        logging.info('  Using FID as zone field')
     else:
         zone_field = None
-        logging.warning('The zone field entered was not found, using FID')
+        logging.warning('  The zone field entered was not found, using FID')
+        
     input_ftr = input_lyr.GetNextFeature()
     while input_ftr:
         input_fid = input_ftr.GetFID()
@@ -146,9 +147,11 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         if simplify_flag:
             input_geom = input_geom.Simplify(1)
             reverse_flag = False
+
         # Convert feature to GeoJSON
         json_str = input_ftr.ExportToJson()
         json_obj = json.loads(json_str)
+
         # Reverse the point order from counter-clockwise to clockwise
         if reverse_flag and input_geom.GetGeometryName() == 'MULTIPOLYGON':
             for i in range(len(json_obj['geometry']['coordinates'])):
@@ -159,6 +162,20 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
             for i in range(len(json_obj['geometry']['coordinates'])):
                 json_obj['geometry']['coordinates'][i] = list(reversed(
                     json_obj['geometry']['coordinates'][i]))
+
+        # Strip Z value from coordinates
+        elif (input_geom.GetGeometryName() == 'MULTIPOLYGON' and
+                (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
+            for i in range(len(json_obj['geometry']['coordinates'])):
+                for j in range(len(json_obj['geometry']['coordinates'][i])):
+                    json_obj['geometry']['coordinates'][i][j] = [
+                        x[:2] for x in json_obj['geometry']['coordinates'][i][j]]
+        elif (input_geom.GetGeometryName() == 'POLYGON' and
+                (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
+            for i in range(len(json_obj['geometry']['coordinates'])):
+                json_obj['geometry']['coordinates'][i] = [
+                    x[:2] for x in json_obj['geometry']['coordinates'][i]]
+
         # Save the JSON object in the list
         ftr_geom_list.append([input_fid, input_zone, json_obj['geometry']])
         input_geom = None

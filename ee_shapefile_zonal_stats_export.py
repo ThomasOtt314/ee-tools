@@ -2,18 +2,16 @@
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
 # Author:       Charles Morton
-# Created       2016-12-14
+# Created       2017-01-22
 # Python:       2.7
 #--------------------------------
 
 import argparse
 from collections import defaultdict
-import ConfigParser
 import datetime
 import json
 import logging
 import os
-# import shutil
 import sys
 
 import ee
@@ -21,9 +19,9 @@ import numpy as np
 from osgeo import ogr
 import pandas as pd
 
-import ee_common
-import gdal_common as gdc
-import python_common
+import ee_tools.ee_common as ee_common
+import ee_tools.ini_common as ini_common
+import ee_tools.gdal_common as gdc
 
 
 def ee_zonal_stats(ini_path=None, overwrite_flag=False):
@@ -38,43 +36,19 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine Zonal Stats Export')
 
-    landsat_flag = True
-    gridmet_daily_flag = False
-    gridmet_monthly_flag = False
-    pdsi_flag = False
-
-    # Add to INI eventually, choices are 'fmask' or 'cfmask'
-    fmask_type = 'fmask'
-
-    # # DEADBEEF - Remove once Simon filters duplicates from Landsat collection
-    # remove_duplicates = True
-
     landsat_tables_folder = 'landsat_tables'
+    year_step = 1
 
     # Regular expression to pull out Landsat scene_id
     # landsat_re = re.compile('L[ETC][4578]\d{6}\d{4}\d{3}\D{3}\d{2}')
     # landsat_re = re.compile(
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
-    # Open config file
-    config = ConfigParser.ConfigParser()
-    try:
-        config.readfp(open(ini_path))
-    except:
-        logging.error(('\nERROR: Input file could not be read, ' +
-                       'is not an input file, or does not exist\n' +
-                       'ERROR: ini_path = {}\n').format(ini_path))
-        sys.exit()
-    logging.debug('\nReading Input File')
-
-    # Read in config file
-    zone_input_ws = config.get('INPUTS', 'zone_input_ws')
-    zone_filename = config.get('INPUTS', 'zone_filename')
-    zone_field = config.get('INPUTS', 'zone_field')
-    zone_path = os.path.join(zone_input_ws, zone_filename)
+    # Read config file
+    ini = ini_common.ini_parse(ini_path, mode='zonal_stats')
 
     landsat_daily_fields = [
-        zone_field, 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
+        ini['zone_field'], 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
         'YEAR', 'MONTH', 'DAY', 'DOY',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
@@ -84,260 +58,48 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # 'NDWI_TOA', 'NDWI_SUR',
         'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
     gridmet_daily_fields = [
-        zone_field, 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR',
-        'ETO', 'PPT']
+        ini['zone_field'], 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 
+        'WATER_YEAR', 'ETO', 'PPT']
     gridmet_monthly_fields = [
-        zone_field, 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR', 'ETO', 'PPT']
+        ini['zone_field'], 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR', 'ETO', 'PPT']
     pdsi_dekad_fields = [
-        zone_field, 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY',
-        'PDSI']
-
-    # Google Drive export folder
-    gdrive_ws = config.get('INPUTS', 'gdrive_ws')
-    export_folder = config.get('INPUTS', 'export_folder')
-    export_ws = os.path.join(gdrive_ws, export_folder)
-
-    # Build and check file paths
-    if not os.path.isdir(export_ws):
-        os.makedirs(export_ws)
-    if not os.path.isdir(zone_input_ws):
-        logging.error(
-            '\nERROR: The zone workspace does not exist, exiting\n  {}'.format(
-                zone_input_ws))
-        sys.exit()
-    elif not os.path.isfile(zone_path):
-        logging.error(
-            '\nERROR: The zone shapefile does not exist, exiting\n  {}'.format(
-                zone_path))
-        sys.exit()
-
-    # Final output folder
-    try:
-        output_ws = config.get('INPUTS', 'output_ws')
-        if not os.path.isdir(output_ws):
-            os.makedirs(output_ws)
-    except:
-        output_ws = os.getcwd()
-        logging.debug('  Defaulting output workspace to {}'.format(output_ws))
-
-    # For now, hardcode snap, cellsize and spatial reference
-    logging.info('\nHardcoding output snap point, cellsize, and projection')
-    output_snap = [15, 15]
-    output_cs = 30
-    # Compute zonals stats as NAS83 84 UTM Zone 11N
-    output_crs = 'EPSG:26911'
-    output_osr = gdc.epsg_osr(26911)
-    # output_crs = 'EPSG:32611'
-    # output_osr = gdc.epsg_osr(32611)
-
-    # try:
-    #     output_snap = [
-    #         int(i) for i in config.get('INPUTS', 'output_snap').split(',')
-    #         if i.strip().isdigit()][:2]
-    # except:
-    #     output_snap = [15, 15]
-    # try:
-    #     output_cs = int(config.get('INPUTS', 'output_cs'))
-    # except:
-    #     output_cs = 30
-    # try:
-    #     output_crs = config.get('INPUTS', 'output_crs')
-    # except:
-    #     output_crs = ''
-
-    # Start/end year
-    try:
-        start_year = int(config.get('INPUTS', 'start_year'))
-    except:
-        start_year = 1984
-        logging.debug('  Defaulting start year to {}'.format(start_year))
-    try:
-        end_year = int(config.get('INPUTS', 'end_year'))
-    except:
-        end_year = datetime.datetime.today().year
-        logging.debug('  Defaulting end year to {}'.format(end_year))
-    if start_year and end_year and end_year < start_year:
-        logging.error(
-            '\nERROR: End year must be >= start year')
-        sys.exit()
-    default_end_year = datetime.datetime.today().year + 1
-    if (start_year and start_year not in range(1984, default_end_year) or
-        end_year and end_year not in range(1984, default_end_year)):
-        logging.error(
-            '\nERROR: Year must be an integer from 1984-2015')
-        sys.exit()
-
-    # Start/end month
-    try:
-        start_month = int(config.get('INPUTS', 'start_month'))
-    except:
-        start_month = None
-    try:
-        end_month = int(config.get('INPUTS', 'end_month'))
-    except:
-        end_month = None
-    if start_month and start_month not in range(1, 13):
-        logging.error(
-            '\nERROR: Start month must be an integer from 1-12')
-        sys.exit()
-    elif end_month and end_month not in range(1, 13):
-        logging.error(
-            '\nERROR: End month must be an integer from 1-12')
-        sys.exit()
-
-    # Start/end DOY
-    try:
-        start_doy = int(config.get('INPUTS', 'start_doy'))
-    except:
-        start_doy = None
-    try:
-        end_doy = int(config.get('INPUTS', 'end_doy'))
-    except:
-        end_doy = None
-    if end_doy and end_doy > 273:
-        logging.error(
-            '\nERROR: End DOY has to be in the same water year as start DOY')
-        sys.exit()
-    if start_doy and start_doy not in range(1, 367):
-        logging.error(
-            '\nERROR: Start DOY must be an integer from 1-366')
-        sys.exit()
-    elif end_doy and end_doy not in range(1, 367):
-        logging.error(
-            '\nERROR: End DOY must be an integer from 1-366')
-        sys.exit()
-    # if end_doy < start_doy:
-    #     logging.error(
-    #         '\nERROR: End DOY must be >= start DOY')
-    #     sys.exit()
-
-    # Control which Landsat images are used
-    try:
-        landsat5_flag = config.getboolean('INPUTS', 'landsat5_flag')
-    except:
-        landsat5_flag = False
-    try:
-        landsat4_flag = config.getboolean('INPUTS', 'landsat4_flag')
-    except:
-        landsat4_flag = False
-    try:
-        landsat7_flag = config.getboolean('INPUTS', 'landsat7_flag')
-    except:
-        landsat7_flag = False
-    try:
-        landsat8_flag = config.getboolean('INPUTS', 'landsat8_flag')
-    except:
-        landsat8_flag = False
-
-    # Cloudmasking
-    try:
-        acca_flag = config.getboolean('INPUTS', 'acca_flag')
-    except:
-        acca_flag = False
-    try:
-        fmask_flag = config.getboolean('INPUTS', 'fmask_flag')
-    except:
-        fmask_flag = False
-
-    # Fmask source type
-    try:
-        fmask_type = config.get('INPUTS', 'fmask_type').lower()
-    except:
-        fmask_type = 'fmask'
-        logging.debug(
-            '  Defaulting Fmask source type to {}'.format(fmask_type))
-    if fmask_type not in ['fmask', 'cfmask']:
-        logging.error(
-            ('\nERROR: Invalid Fmask source type: {}, must be "fmask" ' +
-             'or "cfmask"').format(fmask_type))
-        sys.exit()
-
-    # Intentionally don't apply scene_id skip/keep lists
-    # Compute zonal stats for all available images
-    # Filter by scene_id when making summary tables
-    scene_id_keep_list = []
-    scene_id_skip_list = []
-
-    # # Only process specific Landsat scenes
-    # try:
-    #     scene_id_keep_path = config.get('INPUTS', 'scene_id_keep_path')
-    #     with open(scene_id_keep_path) as input_f:
-    #         scene_id_keep_list = input_f.readlines()
-    #     scene_id_keep_list = [x.strip()[:16] for x in scene_id_keep_list]
-    # except IOError:
-    #     logging.error('\nFileIO Error: {}'.format(scene_id_keep_path))
-    #     sys.exit()
-    # except:
-    #     scene_id_keep_list = []
-
-    # # Skip specific landsat scenes
-    # try:
-    #     scene_id_skip_path = config.get('INPUTS', 'scene_id_skip_path')
-    #     with open(scene_id_skip_path) as input_f:
-    #         scene_id_skip_list = input_f.readlines()
-    #     scene_id_skip_list = [x.strip()[:16] for x in scene_id_skip_list]
-    # except IOError:
-    #     logging.error('\nFileIO Error: {}'.format(scene_id_skip_path))
-    #     sys.exit()
-    # except:
-    #     scene_id_skip_list = []
-
-    # Only process certain Landsat path/rows
-    try:
-        path_keep_list = list(python_common.parse_int_set(
-            config.get('INPUTS', 'path_keep_list')))
-    except:
-        path_keep_list = []
-    try:
-        row_keep_list = list(python_common.parse_int_set(
-            config.get('INPUTS', 'row_keep_list')))
-    except:
-        row_keep_list = []
-
-    # Skip or keep certain FID
-    try:
-        fid_skip_list = list(python_common.parse_int_set(
-            config.get('INPUTS', 'fid_skip_list')))
-    except:
-        fid_skip_list = []
-    try:
-        fid_keep_list = list(python_common.parse_int_set(
-            config.get('INPUTS', 'fid_keep_list')))
-    except:
-        fid_keep_list = []
+        ini['zone_field'], 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 'PDSI']
 
     # Initialize Earth Engine API key
     ee.Initialize()
 
     # Get ee features from shapefile
     zone_geom_list = ee_common.shapefile_2_geom_list_func(
-        zone_path, zone_field=zone_field, reverse_flag=False)
+        ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
     # zone_count = len(zone_geom_list)
     # output_fmt = '_{0:0%sd}.csv' % str(int(math.log10(zone_count)) + 1)
 
     # Need zone_path projection to build EE geometries
-    zone_osr = gdc.feature_path_osr(zone_path)
+    zone_osr = gdc.feature_path_osr(ini['zone_path'])
     zone_proj = gdc.osr_proj(zone_osr)
     # zone_proj = ee.Projection(zone_proj).wkt().getInfo()
     # zone_proj = zone_proj.replace('\n', '').replace(' ', '')
-    logging.debug('  Zone Projection: {}'.format(zone_proj))
+    # logging.debug('  Zone Projection: {}'.format(zone_proj))
 
     # Check that shapefile has matching spatial reference
-    if not gdc.matching_spatref(zone_osr, output_osr):
+    if not gdc.matching_spatref(zone_osr, ini['output_osr']):
         logging.warning('  Zone OSR:\n{}\n'.format(zone_osr))
-        logging.warning('  Output OSR:\n{}\n'.format(output_osr))
+        logging.warning('  Output OSR:\n{}\n'.format(ini['output_osr'].ExportToWkt()))
         logging.warning('  Zone Proj4:   {}'.format(zone_osr.ExportToProj4()))
-        logging.warning('  Output Proj4: {}'.format(output_osr.ExportToProj4()))
+        logging.warning('  Output Proj4: {}'.format(ini['output_osr'].ExportToProj4()))
         logging.warning(
-            '\nWARNING: \n' +
-            'The output and zone spatial references do not appear to match\n' +
+            '\nWARNING: \n'
+            'The output and zone spatial references do not appear to match\n'
             'This will likely cause problems!')
         raw_input('Press ENTER to continue')
     else:
-        logging.debug('  Zone Projection:\n{}\n'.format(zone_osr))
-        logging.debug('  Output Projection:\n{}\n'.format(output_osr))
-        logging.debug('  Output Cellsize: {}'.format(output_cs))
+        logging.debug('  Zone Projection:\n{}\n'.format(zone_osr.ExportToWkt()))
+        logging.debug('  Output Projection:\n{}\n'.format(ini['output_osr'].ExportToWkt()))
+        logging.debug('  Output Cellsize: {}'.format(ini['output_cs']))
 
+
+    # Initialize Earth Engine API key
+    ee.Initialize()
 
     # Get current running tasks
     logging.debug('\nRunning tasks')
@@ -348,21 +110,23 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             tasks[t['description']].append(t['id'])
             # tasks[t['id']] = t['description']
 
+
     # Calculate zonal stats for each feature separately
     for fid, zone_str, zone_json in sorted(zone_geom_list):
-        if fid_keep_list and fid not in fid_keep_list:
+        if ini['fid_keep_list'] and fid not in ini['fid_keep_list']:
             continue
-        elif fid_skip_list and fid in fid_skip_list:
+        elif ini['fid_skip_list'] and fid in ini['fid_skip_list']:
             continue
         logging.info('ZONE: {} (FID: {})'.format(zone_str, fid))
 
-        if not zone_field or zone_field.upper() == 'FID':
+        if not ini['zone_field'] or ini['zone_field'].upper() == 'FID':
             zone_str = 'fid_' + zone_str
         else:
             zone_str = zone_str.lower().replace(' ', '_')
 
         # Build EE geometry object for zonal stats
-        zone_geom = ee.Geometry(zone_json, zone_proj, False)
+        zone_geom = ee.Geometry(
+            geo_json=zone_json, opt_proj=zone_proj, opt_geodesic=False)
         logging.debug('  Centroid: {}'.format(
             zone_geom.centroid(100).getInfo()['coordinates']))
 
@@ -372,13 +136,13 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # zone_extent = gdc.Extent(zone_geom.GetEnvelope())
         zone_extent.ymin, zone_extent.xmax = zone_extent.xmax, zone_extent.ymin
         zone_extent.adjust_to_snap(
-            'EXPAND', output_snap[0], output_snap[1], output_cs)
-        zone_geo = gdc.extent_geo(zone_extent, output_cs)
+            'EXPAND', ini['snap_x'], ini['snap_y'], ini['output_cs'])
+        zone_geo = zone_extent.geo(ini['output_cs'])
         zone_transform = ee_common.geo_2_ee_transform(zone_geo)
-        zone_shape = zone_extent.shape(output_cs)
+        zone_shape = zone_extent.shape(ini['output_cs'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
-        logging.debug('  Zone Zone Extent: {}'.format(zone_extent))
+        logging.debug('  Zone Extent: {}'.format(zone_extent))
         # logging.debug('  Zone Geom: {}'.format(zone_geom.getInfo()))
 
         # Assume all pixels in all 14+2 images could be reduced
@@ -389,36 +153,45 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # Eventually allow user to manually set these
         # output_crs = zone_proj
         output_transform = zone_transform
-        logging.debug('  Output Projection: {}'.format(output_crs))
+        logging.debug('  Output Projection: {}'.format(ini['output_crs']))
         logging.debug('  Output Transform: {}'.format(output_transform))
 
         #
-        zone_output_ws = os.path.join(output_ws, zone_str)
+        zone_output_ws = os.path.join(ini['output_ws'], zone_str)
         zone_tables_ws = os.path.join(
-            output_ws, zone_str, landsat_tables_folder)
+            ini['output_ws'], zone_str, landsat_tables_folder)
         if not os.path.isdir(zone_tables_ws):
             os.makedirs(zone_tables_ws)
 
-        if landsat_flag:
+        if ini['zs_landsat_flag']:
             logging.info('  Landsat')
             # Process date range by year
-            for year in xrange(start_year, end_year + 1):
+            for year in xrange(ini['start_year'], ini['end_year'] + 1, year_step):
                 iter_start_dt = datetime.datetime(year, 1, 1)
                 iter_end_dt = datetime.datetime(year + 1, 1, 1) - datetime.timedelta(0, 1)
                 iter_start_date = iter_start_dt.date().isoformat()
                 iter_end_date = iter_end_dt.date().isoformat()
                 logging.info("  {}  {}".format(iter_start_date, iter_end_date))
 
+                iter_start_year = iter_start_dt.date().year
+                iter_end_year = min(iter_end_dt.date().year, ini['end_year'])
+                if year_step > 1:
+                    year_str = '{}_{}'.format(iter_start_year, iter_end_year)
+                else:
+                    year_str = '{}'.format(iter_start_year)
+                logging.debug("  {}  {}".format(iter_start_year, iter_end_year))
+
                 # Export Landsat zonal stats
                 export_id = '{}_{}_landsat_{}'.format(
-                    os.path.basename(output_ws), zone_str, year)
+                    os.path.basename(ini['output_ws']), zone_str, year_str)
                 # export_id = '{}_{}_landsat_{}'.format(
-                #     os.path.splitext(zone_filename)[0], zone_str, year)
-                output_id = '{}_landsat_{}'.format(zone_str, year)
-                export_path = os.path.join(export_ws, export_id + '.csv')
+                #     os.path.splitext(zone_filename)[0], zone_str, year_str)
+                output_id = '{}_landsat_{}'.format(zone_str, year_str)
+                export_path = os.path.join(ini['export_ws'], export_id + '.csv')
                 output_path = os.path.join(zone_tables_ws, output_id + '.csv')
                 temp_path = os.path.join(
-                    export_ws, os.path.basename(output_ws), export_id + '.csv')
+                    ini['export_ws'], 
+                    os.path.basename(ini['output_ws']), export_id + '.csv')
                 logging.debug('  Export: {}'.format(export_path))
                 logging.debug('  Output: {}'.format(output_path))
                 logging.debug('  Temp:   {}'.format(temp_path))
@@ -443,7 +216,8 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     if ('DATA_COUNT' not in export_df.columns.values and
                             'PIXEL_COUNT' in export_df.columns.values and
                             'FMASK_COUNT' in export_df.columns.values):
-                        export_df['DATA_COUNT'] = export_df['PIXEL_COUNT'] - export_df['FMASK_COUNT']
+                        export_df['DATA_COUNT'] = (
+                            export_df['PIXEL_COUNT'] - export_df['FMASK_COUNT'])
                     export_df = export_df[landsat_daily_fields]
                     export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
                     # Change fid zone strings back to integer values
@@ -465,22 +239,20 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     logging.debug('  Task already submitted, skipping')
                     continue
 
-                keyword_args = {
-                    'fmask_flag': fmask_flag, 'acca_flag': acca_flag,
-                    'fmask_type': fmask_type, 'zone_geom': zone_geom,
-                    'start_date': iter_start_date, 'end_date': iter_end_date,
-                    'start_year': start_year, 'end_year': end_year,
-                    'start_month': start_month, 'end_month': end_month,
-                    'start_doy': start_doy, 'end_doy': end_doy,
-                    'scene_id_keep_list': scene_id_keep_list,
-                    'scene_id_skip_list': scene_id_skip_list,
-                    'path_keep_list': path_keep_list,
-                    'row_keep_list': row_keep_list}
-                    # DEADBEEF - Remove once Simon filters duplicates from Landsat collection
-                    # 'remove_duplicates': remove_duplicates}
+                landsat_args = {k: v for k, v in ini.items() if k in [
+                    'fmask_flag', 'acca_flag', 'fmask_type', 'zone_geom',
+                    # 'start_date', 'end_date',
+                    'start_year', 'end_year', 
+                    'start_month', 'end_month', 'start_doy', 'end_doy',
+                    'scene_id_keep_list', 'scene_id_skip_list',
+                    'path_keep_list', 'row_keep_list', 'adjust_method']}
+                landsat_args['start_date'] = iter_start_date
+                landsat_args['end_date'] = iter_end_date
+
                 landsat_coll = ee_common.get_landsat_images(
-                    landsat4_flag, landsat5_flag, landsat7_flag, landsat8_flag,
-                    keyword_args)
+                    ini['landsat4_flag'], ini['landsat5_flag'], 
+                    ini['landsat7_flag'], ini['landsat8_flag'],
+                    ini['mosaic_method'], landsat_args)
 
                 # Debug
                 # print(ee.Image(landsat_coll.first()).getInfo())
@@ -512,21 +284,21 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                         ]) \
                         .reduceRegion(
                             ee.Reducer.mean(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=2,
                             maxPixels=max_pixels)
                     input_cnt = ee.Image(image) \
                         .select(['ts'], ['data_count']) \
                         .reduceRegion(
                             ee.Reducer.count(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=2,
                             maxPixels=max_pixels)
                     total_cnt = ee.Image(image) \
                         .select(['fmask'], ['pixel_count']) \
                         .reduceRegion(
                             ee.Reducer.count(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=2,
                             maxPixels=max_pixels)
                     # Fmask 0 is clear and 1 is water
@@ -534,13 +306,13 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                         .select(['fmask']).gt(1).select([0], ['fmask_count']) \
                         .reduceRegion(
                             ee.Reducer.sum(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=2,
                             maxPixels=max_pixels)
                     return ee.Feature(
                         None,
                         {
-                            zone_field.upper(): zone_str,
+                            ini['zone_field'].upper(): zone_str,
                             'SCENE_ID': scene_id.slice(0, 16),
                             'LANDSAT': ee.String(scene_id).slice(0, 3),
                             'PATH': ee.Number(ee.String(scene_id).slice(3, 6)),
@@ -580,54 +352,57 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 # raw_input('ENTER')
                 stats_coll = landsat_coll.map(landsat_zonal_stats_func)
 
-                # Download the CSV to your Google Drive
-                logging.debug('  Starting export task')
-                i = 0
-                while i <= 2:
-                    try:
-                        task = ee.batch.Export.table.toDrive(
-                            stats_coll,
-                            description=export_id,
-                            folder=export_folder,
-                            fileNamePrefix=export_id,
-                            fileFormat='CSV')
-                        task.start()
-                        logging.debug('  Active: {}'.format(task.active()))
-                        # logging.debug('  Status: {}'.format(task.status()))
-                        break
-                    except Exception as e:
-                        logging.error('  EE Exception submitting task, retrying')
-                        logging.debug('{}'.format(e))
-                        i += 1
+                stats_info = stats_coll.getInfo()
+                for ftr in stats_info['features']:
+                    print(ftr)
+                # # Download the CSV to your Google Drive
+                # logging.debug('  Starting export task')
+                # i = 0
+                # while i <= 2:
+                #     try:
+                #         task = ee.batch.Export.table.toDrive(
+                #             stats_coll,
+                #             description=export_id,
+                #             folder=export_folder,
+                #             fileNamePrefix=export_id,
+                #             fileFormat='CSV')
+                #         task.start()
+                #         logging.debug('  Active: {}'.format(task.active()))
+                #         # logging.debug('  Status: {}'.format(task.status()))
+                #         break
+                #     except Exception as e:
+                #         logging.error('  EE Exception submitting task, retrying')
+                #         logging.debug('{}'.format(e))
+                #         i += 1
 
 
-            # Combine/merge annual files into a single CSV
-            logging.debug('\n  Merging annual Landsat CSV files')
-            output_df = None
-            for year in xrange(start_year, end_year + 1):
-                # logging.debug('    {}'.format(year))
-                input_path = os.path.join(
-                    zone_tables_ws, '{}_landsat_{}.csv'.format(zone_str, year))
-                try:
-                    input_df = pd.read_csv(input_path)
-                except:
-                    continue
-                try:
-                    output_df = output_df.append(input_df)
-                except:
-                    output_df = input_df.copy()
-            # print(output_df)
+            # # Combine/merge annual files into a single CSV
+            # logging.debug('\n  Merging annual Landsat CSV files')
+            # output_df = None
+            # for year in xrange(start_year, end_year + 1):
+            #     # logging.debug('    {}'.format(year))
+            #     input_path = os.path.join(
+            #         zone_tables_ws, '{}_landsat_{}.csv'.format(zone_str, year))
+            #     try:
+            #         input_df = pd.read_csv(input_path)
+            #     except:
+            #         continue
+            #     try:
+            #         output_df = output_df.append(input_df)
+            #     except:
+            #         output_df = input_df.copy()
+            # # print(output_df)
 
-            if output_df is not None and not output_df.empty:
-                output_path = os.path.join(
-                    zone_output_ws, '{}_landsat_daily.csv'.format(zone_str))
-                logging.debug('  {}'.format(output_path))
-                output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-                output_df.to_csv(
-                    output_path, index=False, columns=landsat_daily_fields)
+            # if output_df is not None and not output_df.empty:
+            #     output_path = os.path.join(
+            #         zone_output_ws, '{}_landsat_daily.csv'.format(zone_str))
+            #     logging.debug('  {}'.format(output_path))
+            #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+            #     output_df.to_csv(
+            #         output_path, index=False, columns=landsat_daily_fields)
 
 
-        if gridmet_daily_flag:
+        if ini['zs_gridmet_daily_flag']:
             logging.info('  GRIDMET Daily ETo/PPT')
             # Export GRIDMET zonal stats
             # Insert one additional year the beginning for water year totals
@@ -646,7 +421,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 zone_str.lower().replace(' ', '_'))
             output_id = '{}_gridmet_daily'.format(
                 zone_str.lower().replace(' ', '_'))
-            export_path = os.path.join(export_ws, export_id + '.csv')
+            export_path = os.path.join(ini['export_ws'], export_id + '.csv')
             output_path = os.path.join(zone_output_ws, output_id + '.csv')
             logging.debug('  Export: {}'.format(export_path))
             logging.debug('  Output: {}'.format(output_path))
@@ -670,11 +445,11 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 export_df = pd.read_csv(export_path)
                 export_df = export_df[gridmet_daily_fields]
                 export_df.sort_values(by=['DATE'], inplace=True)
-                if zone_field == 'FID':
+                if ini['zone_field'] == 'FID':
                     # If zone_field is FID, zone_str is set to "FID_\d"
-                    export_df[zone_field] = int(zone_str[4:])
-                    export_df[zone_field] = export_df[
-                        zone_field].astype(np.int)
+                    export_df[ini['zone_field']] = int(zone_str[4:])
+                    export_df[ini['zone_field']] = export_df[
+                        ini['zone_field']].astype(np.int)
                 export_df.to_csv(
                     output_path, index=False, columns=gridmet_daily_fields)
                 os.remove(export_path)
@@ -697,13 +472,13 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     input_mean = ee.Image(image) \
                         .reduceRegion(
                             ee.Reducer.mean(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=1,
                             maxPixels=max_pixels)
                     return ee.Feature(
                         None,
                         {
-                            zone_field.upper(): zone_str,
+                            ini['zone_field'].upper(): zone_str,
                             'DATE': date.format("YYYY-MM-dd"),
                             'YEAR': year,
                             'MONTH': month,
@@ -731,7 +506,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     logging.debug('  {}'.format(e))
 
 
-        if gridmet_monthly_flag:
+        if ini['zs_gridmet_monthly_flag']:
             logging.info('  GRIDMET Monthly ETo/PPT')
             # Export GRIDMET zonal stats
             # Insert one additional year the beginning for water year totals
@@ -773,7 +548,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 zone_str.lower().replace(' ', '_'))
             output_id = '{}_gridmet_monthly'.format(
                 zone_str.lower().replace(' ', '_'))
-            export_path = os.path.join(export_ws, export_id + '.csv')
+            export_path = os.path.join(ini['export_ws'], export_id + '.csv')
             output_path = os.path.join(zone_output_ws, output_id + '.csv')
             logging.debug('  Export: {}'.format(export_path))
             logging.debug('  Output: {}'.format(output_path))
@@ -797,11 +572,11 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 export_df = pd.read_csv(export_path)
                 export_df = export_df[gridmet_monthly_fields]
                 export_df.sort_values(by=['DATE'], inplace=True)
-                if zone_field == 'FID':
+                if ini['zone_field'] == 'FID':
                     # If zone_field is FID, zone_str is set to "FID_\d"
-                    export_df[zone_field] = int(zone_str[4:])
-                    export_df[zone_field] = export_df[
-                        zone_field].astype(np.int)
+                    export_df[ini['zone_field']] = int(zone_str[4:])
+                    export_df[ini['zone_field']] = export_df[
+                        ini['zone_field']].astype(np.int)
                 export_df.to_csv(
                     output_path, index=False, columns=gridmet_monthly_fields)
                 os.remove(export_path)
@@ -823,13 +598,13 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     input_mean = ee.Image(image) \
                         .reduceRegion(
                             ee.Reducer.mean(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=1,
                             maxPixels=max_pixels)
                     return ee.Feature(
                         None,
                         {
-                            zone_field.upper(): zone_str,
+                            ini['zone_field'].upper(): zone_str,
                             'DATE': date.format("YYYY-MM"),
                             'YEAR': year,
                             'MONTH': month,
@@ -855,19 +630,19 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     logging.debug('  {}'.format(e))
 
 
-        if pdsi_flag:
+        if ini['zs_pdsi_flag']:
             logging.info('  GRIDMET PDSI')
             pdsi_coll = ee.ImageCollection('IDAHO_EPSCOR/PDSI') \
                 .select(['pdsi'], ['pdsi']) \
                 .filterDate(
-                    '{}-01-01'.format(start_year),
-                    '{}-01-01'.format(end_year + 1))
+                    '{}-01-01'.format(ini['start_year']),
+                    '{}-01-01'.format(ini['end_year'] + 1))
             export_id = '{}_{}_pdsi_dekad'.format(
                 os.path.splitext(zone_filename)[0],
                 zone_str.lower().replace(' ', '_'))
             output_id = '{}_pdsi_dekad'.format(
                 zone_str.lower().replace(' ', '_'))
-            export_path = os.path.join(export_ws, export_id + '.csv')
+            export_path = os.path.join(ini['export_ws'], export_id + '.csv')
             output_path = os.path.join(zone_output_ws, output_id + '.csv')
             logging.debug('  Export: {}'.format(export_path))
             logging.debug('  Output: {}'.format(output_path))
@@ -891,11 +666,11 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 export_df = pd.read_csv(export_path)
                 export_df = export_df[pdsi_dekad_fields]
                 export_df.sort_values(by=['DATE'], inplace=True)
-                if zone_field == 'FID':
+                if ini['zone_field'] == 'FID':
                     # If zone_field is FID, zone_str is set to "FID_\d"
-                    export_df[zone_field] = int(zone_str[4:])
-                    export_df[zone_field] = export_df[
-                        zone_field].astype(np.int)
+                    export_df[ini['zone_field']] = int(zone_str[4:])
+                    export_df[ini['zone_field']] = export_df[
+                        ini['zone_field']].astype(np.int)
                 export_df.to_csv(
                     output_path, index=False, columns=pdsi_dekad_fields)
                 os.remove(export_path)
@@ -914,13 +689,13 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     input_mean = ee.Image(image) \
                         .reduceRegion(
                             ee.Reducer.mean(), geometry=zone_geom,
-                            crs=output_crs, crsTransform=output_transform,
+                            crs=ini['output_crs'], crsTransform=output_transform,
                             bestEffort=False, tileScale=1,
                             maxPixels=max_pixels)
                     return ee.Feature(
                         None,
                         {
-                            zone_field.upper(): zone_str,
+                            ini['zone_field'].upper(): zone_str,
                             'DATE': date.format("YYYY-MM-dd"),
                             'YEAR': date.get('year'),
                             'MONTH': date.get('month'),

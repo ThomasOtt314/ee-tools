@@ -57,7 +57,7 @@ nldas_next_filter = ee.Filter.And(
 
 def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
                        landsat7_flag=True, landsat8_flag=True,
-                       landsat_coll_args={}):
+                       mosaic_method='mean', landsat_coll_args={}):
     """Compute Landsat derived images
 
     NLDAS must be merged with Landsat before calling images function
@@ -69,6 +69,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
         landsat5_flag (bool): if True, include Landsat 5 images.
         landsat7_flag (bool): if True, include Landsat 7 images.
         landsat8_flag (bool): if True, include Landsat 8 images.
+        mosaic_method (str): 
         landsat_coll_args (dict): keyword arguments for get_landsat_collection.
 
     Returns:
@@ -106,7 +107,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l5_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
+                landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             l5_coll = ee.ImageCollection(l5_coll.map(landsat45_adjust_func))
         else:
             l5_coll = ee.ImageCollection(l5_coll.map(landsat45_images_func))
@@ -118,7 +119,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l7_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
+                landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             l7_coll = ee.ImageCollection(l7_coll.map(landsat7_adjust_func))
         else:
             l7_coll = ee.ImageCollection(l7_coll.map(landsat7_images_func))
@@ -130,7 +131,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l8_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_method'].upper() == 'OLI_2_ETM'):
+                landsat_coll_args['adjust_method'].lower() == 'oli_2_etm'):
             l8_coll = ee.ImageCollection(l8_coll.map(landsat8_adjust_func))
         else:
             l8_coll = ee.ImageCollection(l8_coll.map(landsat8_images_func))
@@ -151,7 +152,8 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
     return landsat_coll
 
 
-def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
+def get_landsat_image(landsat, year, doy, mosaic_method, 
+                      landsat_coll_args={}):
     """Return a single mosaiced Landsat image 
 
     Mosaic images from different rows from the same date (same path)
@@ -160,6 +162,7 @@ def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
         landsat (str): 
         year (int): 
         doy (int): day of year
+        mosaic_method (str): 
         landsat_coll_args (dict): keyword arguments for get_landst_collection
 
     Returns:
@@ -198,28 +201,27 @@ def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
     if landsat.upper() in ['LT4', 'LT5']:
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
+                landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             landsat_coll = landsat_coll.map(landsat45_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat45_images_func)
     elif landsat.upper() == 'LE7':
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
+                landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             landsat_coll = landsat_coll.map(landsat7_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat7_images_func)
     elif landsat.upper() == 'LC8':
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_method'].upper() == 'OLI_2_ETM'):
+                landsat_coll_args['adjust_method'].lower() == 'oli_2_etm'):
             landsat_coll = landsat_coll.map(landsat8_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat8_images_func)
 
-    if 'mosaic_method' not in landsat_col_args.keys():
-        landsat_image = ee.Image(landsat_coll.mean())
-    elif landsat_col_args['mosaic_method'].upper() == 'MEAN':
+    # Mosaic overlapping images
+    if landsat_col_args['mosaic_method'].upper() == 'MEAN':
         landsat_image = ee.Image(landsat_coll.mean())
     elif landsat_col_args['mosaic_method'].upper() == 'MOSAIC':
         landsat_image = ee.Image(landsat_coll.mosaic())
@@ -229,6 +231,9 @@ def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
         landsat_image = ee.Image(landsat_coll.max())
     elif landsat_col_args['mosaic_method'].upper() == 'MEDIAN':
         landsat_image = ee.Image(landsat_coll.median())
+    else:
+        # DEADBEEF - How should I return multiple images? 
+        landsat_image = ee.Image(landsat_coll.first())
 
     return landsat_image
 
@@ -241,7 +246,7 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
                            start_doy=None, end_doy=None,
                            scene_id_keep_list=[], scene_id_skip_list=[],
                            path_keep_list=[], row_keep_list=[],
-                           adjust_method=None, mosaic_method=None):
+                           adjust_method=None):
     """Build and filter a Landsat collection
 
     If fmask_type is 'fmask', an fmask collection is built but not used.
@@ -271,11 +276,9 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
         path_keep_list (list):
         row_keep_list (list):
         adjust_method (str): Adjust Landsat red and NIR bands.
-            Choices: 'ETM_2_OLI' or 'OLI_2_ETM'.
+            Choices: 'etm_2_oli' or 'oli_2_etm'.
             This could probably be simplifed to a flag.
-            This flag is not used directly in this function but is passed
-               through
-        mosaic_method (str): Not currently used in this function
+            This flag is passed through and not used directly in this function
 
     Returns:
         ee.ImageCollection
@@ -290,9 +293,6 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
     landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat.upper())
     landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat.upper())
     landsat_fmask_name = 'LANDSAT/{}_L1T_TOA_FMASK'.format(landsat.upper())
-
-    if fmask_type is not None and fmask_type.lower() in ['none']:
-        fmask_type = None
 
     if (landsat_type.lower() == 'toa' and 
             (not fmask_type or fmask_type.lower() == 'none')):
@@ -444,17 +444,17 @@ def landsat8_images_func(refl_toa):
 def landsat45_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 4/5"""
     return landsat_images_func(
-        refl_toa, landsat='LT5', adjust_method='ETM_2_OLI')
+        refl_toa, landsat='LT5', adjust_method='etm_2_oli')
 
 def landsat7_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 7"""
     return landsat_images_func(
-        refl_toa, landsat='LE7', adjust_method='ETM_2_OLI')
+        refl_toa, landsat='LE7', adjust_method='etm_2_oli')
 
 def landsat8_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 8"""
     return landsat_images_func(
-        refl_toa, landsat='LC8', adjust_method='OLI_2_ETM')
+        refl_toa, landsat='LC8', adjust_method='oli_2_etm')
 
 
 def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
@@ -464,7 +464,7 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
         refl_toa_orig (ee.ImageCollection): Landsat TOA reflectance collection
         landsat (str): Landsat type ('LT4', 'LT5', 'LE7', or 'LC8')
         adjust_method (str): Adjust Landsat red and NIR bands.
-            Choices are 'ETM_2_OLI' or 'OLI_2_ETM'.
+            Choices are 'etm_2_oli' or 'oli_2_etm'.
             This could probably be simplifed to a flag
 
     Returns:
@@ -906,7 +906,7 @@ def refl_sur_tasumi_func(refl_toa, pair, ea, cos_theta, landsat,
         cos_theta (ee.Image):
         landsat (str): Landsat type
         adjust_method (str): Adjust Landsat red and NIR bands.
-            Choices are 'ETM_2_OLI' or 'OLI_2_ETM'.
+            Choices are 'etm_2_oli' or 'oli_2_etm'.
             This could probably be simplifed to a flag
 
     Returns:
@@ -953,14 +953,14 @@ def refl_sur_tasumi_func(refl_toa, pair, ea, cos_theta, landsat,
             '(b() + cb * (tau_in - 1.0)) / (tau_in * tau_out)',
             {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out})
 
-    if (adjust_method.upper() == 'ETM_2_OLI' and
+    if (adjust_method.upper() == 'etm_2_oli' and
             landsat.upper() in ['LT5', 'LT4', 'LE7']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling ETM+ to OLI
         refl_sur = ee.Image(refl_sur) \
             .subtract([0, 0, 0.0024, -0.0003, 0, 0]) \
             .divide([1, 1, 1.0047, 1.0036, 1, 1])
-    elif (adjust_method.upper() == 'OLI_2_ETM' and
+    elif (adjust_method.upper() == 'oli_2_etm' and
             landsat.upper() in ['LC8']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling OLI to ETM+
@@ -1399,6 +1399,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
     Also return the FID and value in zone_field
     FID value will be returned if zone_field is not set or does not exist
     """
+    logging.info('\nReading zone shapefile')
     ftr_geom_list = []
     input_ds = ogr.Open(input_path)
     input_lyr = input_ds.GetLayer()
@@ -1408,10 +1409,10 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
     elif zone_field.upper() == 'FID':
         zone_field = None
-        logging.info('Using FID as zone field')
+        logging.info('  Using FID as zone field')
     else:
         zone_field = None
-        logging.warning('The zone field entered was not found, using FID')
+        logging.warning('  The zone field entered was not found, using FID')
 
     input_ftr = input_lyr.GetNextFeature()
     while input_ftr:
@@ -1430,12 +1431,12 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         json_obj = json.loads(json_str)
 
         # Reverse the point order from counter-clockwise to clockwise
-        if input_geom.GetGeometryName() == 'MULTIPOLYGON' and reverse_flag:
+        if reverse_flag and input_geom.GetGeometryName() == 'MULTIPOLYGON':
             for i in range(len(json_obj['geometry']['coordinates'])):
                 for j in range(len(json_obj['geometry']['coordinates'][i])):
                     json_obj['geometry']['coordinates'][i][j] = list(reversed(
                         json_obj['geometry']['coordinates'][i][j]))
-        elif input_geom.GetGeometryName() == 'POLYGON' and reverse_flag:
+        elif reverse_flag and input_geom.GetGeometryName() == 'POLYGON':
             for i in range(len(json_obj['geometry']['coordinates'])):
                 json_obj['geometry']['coordinates'][i] = list(reversed(
                     json_obj['geometry']['coordinates'][i]))
