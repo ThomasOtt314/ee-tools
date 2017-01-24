@@ -1,7 +1,7 @@
 #--------------------------------
-# Name:         common.py
-# Purpose:      Common Support Functions
-# Created       2016-09-30
+# Name:         python_common.py
+# Purpose:      Common Python support functions
+# Created       2017-01-22
 # Python:       2.7
 #--------------------------------
 

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         gdal_common.py
-# Purpose:      Common GDAL Support Functions
-# Updated:      2016-10-05
+# Purpose:      Common GDAL support functions
+# Updated:      2017-01-22
 # Python:       2.7
 #--------------------------------
 
@@ -477,23 +477,23 @@ def raster_ds_extent(raster_ds):
     return geo_extent(raster_geo, raster_rows, raster_cols)
 
 
-def geo_cellsize(raster_geo, x_only=False):
+def geo_cellsize(geo, x_only=False):
     """Return pixel width & pixel height of geo-transform
 
     Args:
-        raster_geo (tuple): :class:`gdal.Geotransform` object
+        geo (tuple): :class:`gdal.Geotransform` object
         x_only (bool): If True, only return cell width
 
     Returns:
         tuple: tuple containing the x or x and y cellsize
     """
     if x_only:
-        return raster_geo[1]
+        return geo[1]
     else:
-        return (raster_geo[1], raster_geo[5])
+        return (geo[1], geo[5])
 
 
-def geo_origin(raster_geo):
+def geo_origin(geo):
     """Return upper-left corner of geo-transform
 
     Returns the upper-left corner cordinates of :class:`GDAL.Geotransform`
@@ -501,14 +501,14 @@ def geo_origin(raster_geo):
     geotransform.
 
     Args:
-        raster_geo (:class:`GDAL.Geotransform`): Input GDAL Geotransform
+        geo (:class:`GDAL.Geotransform`): Input GDAL Geotransform
 
     Returns:
         tuple:
         raster_origin: (x, y) coordinates of the upper left corner
 
     """
-    return (raster_geo[0], raster_geo[3])
+    return (geo[0], geo[3])
 
 
 def geo_extent(geo, rows, cols):
@@ -545,22 +545,6 @@ def geo_extent(geo, rows, cols):
     # OGR Extent format (xmin, xmax, ymax, ymin)
     # return Extent([origin_x, (origin_x + cols * cellsize),
     #                origin_y, (origin_y + rows * (-cellsize))])
-
-
-def extent_geo(extent, cs):
-    """Return the geo-transform of an extent
-
-    Deprecated, use extent.geo() method
-
-    Args:
-        extent ():
-        cs (int): cellsize
-
-    Returns:
-
-    """
-    warnings.warn('Deprecated, use extent.geo() method', DeprecationWarning)
-    return (extent.xmin, cs, 0., extent.ymax, 0., -cs)
 
 
 def raster_path_shape(raster_path):

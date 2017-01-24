@@ -1,8 +1,8 @@
 #--------------------------------
 # Name:         ee_common.py
-# Purpose:      Common EarthEngine Support Functions
+# Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2016-12-14
+# Created       2017-01-22
 # Python:       2.7
 #--------------------------------
 
@@ -30,12 +30,16 @@ system_properties = ['system:index', 'system:time_start', 'system:time_end']
 refl_bands = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
 
 nldas_filter = ee.Filter.maxDifference(
-    1000 * 60 * 60 * 4,
-    "system:time_start", None, "system:time_start", None)
-nldas_prev_filter = nldas_filter.And(ee.Filter.greaterThan(
-    "system:time_start", None, "system:time_start", None))
-nldas_next_filter = nldas_filter.And(ee.Filter.lessThan(
-    "system:time_start", None, "system:time_start", None))
+    difference=1000 * 60 * 60 * 4,
+    leftField='system:time_start', rightField='system:time_start')
+nldas_prev_filter = ee.Filter.And(
+    nldas_filter,
+    ee.Filter.greaterThan(
+        leftField='system:time_start', rightField='system:time_start'))
+nldas_next_filter = ee.Filter.And(
+    nldas_filter,
+    ee.Filter.lessThan(
+        leftField='system:time_start', rightField='system:time_start'))
 
 # def show_thumbnail(ee_image):
 #     """Show the EarthEngine image thumbnail in a window"""
@@ -61,14 +65,14 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
         joining NLDAS images must be inside each Landsat conditional
 
     Args:
-        landsat4_flag (bool): if True, include Landsat 4 images
-        landsat5_flag (bool): if True, include Landsat 5 images
-        landsat7_flag (bool): if True, include Landsat 7 images
-        landsat8_flag (bool): if True, include Landsat 8 images
-        landsat_coll_args (dict): keyword arguments for get_landst_collection
+        landsat4_flag (bool): if True, include Landsat 4 images.
+        landsat5_flag (bool): if True, include Landsat 5 images.
+        landsat7_flag (bool): if True, include Landsat 7 images.
+        landsat8_flag (bool): if True, include Landsat 8 images.
+        landsat_coll_args (dict): keyword arguments for get_landsat_collection.
 
     Returns:
-        ee.ImageCollection of Landsat TOA images
+        ee.ImageCollection
     """
     # Assign nearest 4 NLDAS images to each Landsat image
     nldas_coll = ee.ImageCollection('NASA/NLDAS/FORA0125_H002')
@@ -86,9 +90,9 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l4_coll, nldas_coll, nldas_prev_filter))
         l4_coll = ee.ImageCollection(nldas_next_join.apply(
             l4_coll, nldas_coll, nldas_next_filter))
-        # This is an awful way to pass the match_oli_flag to the function
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'ETM_2_OLI'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper()):
             l4_coll = ee.ImageCollection(l4_coll.map(landsat45_adjust_func))
         else:
             l4_coll = ee.ImageCollection(l4_coll.map(landsat45_images_func))
@@ -100,9 +104,9 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l5_coll, nldas_coll, nldas_prev_filter))
         l5_coll = ee.ImageCollection(nldas_next_join.apply(
             l5_coll, nldas_coll, nldas_next_filter))
-        # This is an awful way to set which adjustment to use
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'ETM_2_OLI'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
             l5_coll = ee.ImageCollection(l5_coll.map(landsat45_adjust_func))
         else:
             l5_coll = ee.ImageCollection(l5_coll.map(landsat45_images_func))
@@ -112,9 +116,9 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l7_coll, nldas_coll, nldas_prev_filter))
         l7_coll = ee.ImageCollection(nldas_next_join.apply(
             l7_coll, nldas_coll, nldas_next_filter))
-        # This is an awful way to set which adjustment to use
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'ETM_2_OLI'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
             l7_coll = ee.ImageCollection(l7_coll.map(landsat7_adjust_func))
         else:
             l7_coll = ee.ImageCollection(l7_coll.map(landsat7_images_func))
@@ -124,9 +128,9 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l8_coll, nldas_coll, nldas_prev_filter))
         l8_coll = ee.ImageCollection(nldas_next_join.apply(
             l8_coll, nldas_coll, nldas_next_filter))
-        # This is an awful way to set which adjustment to use
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'OLI_2_ETM'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper() == 'OLI_2_ETM'):
             l8_coll = ee.ImageCollection(l8_coll.map(landsat8_adjust_func))
         else:
             l8_coll = ee.ImageCollection(l8_coll.map(landsat8_images_func))
@@ -148,14 +152,15 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
 
 
 def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
-    """Return a single Landsat image
+    """Return a single mosaiced Landsat image 
 
-    Mosaic images from different rows
+    Mosaic images from different rows from the same date (same path)
 
     Args:
-        image_id (str): Landsat scene ID
-        fmask_flag (bool): if True, apply FMASK cloud mask to image
-        acca_flag (bool): if True, apply ACCA cloud mask to image
+        landsat (str): 
+        year (int): 
+        doy (int): day of year
+        landsat_coll_args (dict): keyword arguments for get_landst_collection
 
     Returns:
         ee.Image
@@ -191,30 +196,44 @@ def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
 
     # Compute derived images
     if landsat.upper() in ['LT4', 'LT5']:
-        # This is an awful way to pass the match_oli_flag to the function
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'ETM_2_OLI'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
             landsat_coll = landsat_coll.map(landsat45_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat45_images_func)
     elif landsat.upper() == 'LE7':
-        # This is an awful way to pass the match_oli_flag to the function
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'ETM_2_OLI'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper() == 'ETM_2_OLI'):
             landsat_coll = landsat_coll.map(landsat7_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat7_images_func)
     elif landsat.upper() == 'LC8':
-        if ('adjust_mode' in landsat_coll_args.keys() and
-                landsat_coll_args['adjust_mode'].upper() == 'OLI_2_ETM'):
+        # DEADBEEF - This is an awful way to set which adjustment to use
+        if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'].upper() == 'OLI_2_ETM'):
             landsat_coll = landsat_coll.map(landsat8_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat8_images_func)
 
-    return ee.Image(landsat_coll.mosaic())
+    if 'mosaic_method' not in landsat_col_args.keys():
+        landsat_image = ee.Image(landsat_coll.mean())
+    elif landsat_col_args['mosaic_method'].upper() == 'MEAN':
+        landsat_image = ee.Image(landsat_coll.mean())
+    elif landsat_col_args['mosaic_method'].upper() == 'MOSAIC':
+        landsat_image = ee.Image(landsat_coll.mosaic())
+    elif landsat_col_args['mosaic_method'].upper() == 'MIN':
+        landsat_image = ee.Image(landsat_coll.min())
+    elif landsat_col_args['mosaic_method'].upper() == 'MAX':
+        landsat_image = ee.Image(landsat_coll.max())
+    elif landsat_col_args['mosaic_method'].upper() == 'MEDIAN':
+        landsat_image = ee.Image(landsat_coll.median())
+
+    return landsat_image
 
 
-def get_landsat_collection(landsat, landsat_type='TOA', fmask_type='none',
+def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
                            fmask_flag=False, acca_flag=False,
                            zone_geom=None, start_date=None, end_date=None,
                            start_year=None, end_year=None,
@@ -222,14 +241,19 @@ def get_landsat_collection(landsat, landsat_type='TOA', fmask_type='none',
                            start_doy=None, end_doy=None,
                            scene_id_keep_list=[], scene_id_skip_list=[],
                            path_keep_list=[], row_keep_list=[],
-                           adjust_mode=''):
+                           adjust_method=None, mosaic_method=None):
     """Build and filter a Landsat collection
+
+    If fmask_type is 'fmask', an fmask collection is built but not used.
+    This was done to avoid including lots of conditionals and to 
+        make the collection filtering logic easier to read/follow.
 
     Args:
         landsat ():
-        landsat_type (str): 'TOA' or 'SR' (not currently supported)
-            To support 'SR' would need to modify collection_name and
-            make WRS_PATH and WRS_ROW lower case.
+        landsat_type (str): 'toa' 
+            'sr' not currently supported.
+            To support 'sr' would need to modify collection_name and
+                make WRS_PATH and WRS_ROW lower case.
         fmask_type (str): 'none', 'fmask' or 'cfmask'
         fmask_flag (bool): if True, mask Fmask cloud, shadow, and snow pixels
         acca_flag (bool): if True, mask pixels with clouds scores > 50
@@ -246,10 +270,12 @@ def get_landsat_collection(landsat, landsat_type='TOA', fmask_type='none',
         scene_id_skip_list (list):
         path_keep_list (list):
         row_keep_list (list):
-        adjust_mode (str): Adjust Landsat red and NIR bands
-            'ETM_2_OLI' or 'OLI_2_ETM'
-            This could probably be simplifed to a simple flag
-            This flag is not used directly in this function
+        adjust_method (str): Adjust Landsat red and NIR bands.
+            Choices: 'ETM_2_OLI' or 'OLI_2_ETM'.
+            This could probably be simplifed to a flag.
+            This flag is not used directly in this function but is passed
+               through
+        mosaic_method (str): Not currently used in this function
 
     Returns:
         ee.ImageCollection
@@ -261,27 +287,35 @@ def get_landsat_collection(landsat, landsat_type='TOA', fmask_type='none',
         #     input_image.get('LANDSAT_SCENE_ID')).slice(0, 16)
         return input_image.setMulti({'SCENE_ID': scene_id})
 
-    if fmask_type.lower() == 'none':
-        landsat_coll = ee.ImageCollection(
-            'LANDSAT/{}_L1T_TOA'.format(landsat))
+    landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat.upper())
+    landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat.upper())
+    landsat_fmask_name = 'LANDSAT/{}_L1T_TOA_FMASK'.format(landsat.upper())
+
+    if fmask_type is not None and fmask_type.lower() in ['none']:
+        fmask_type = None
+
+    if (landsat_type.lower() == 'toa' and 
+            (not fmask_type or fmask_type.lower() == 'none')):
+        landsat_coll = ee.ImageCollection(landsat_toa_name)
         # Add empty fmask band
         landsat_coll = landsat_coll.map(landsat_empty_fmask_band_func)
         # Build fmask_coll so filtering is cleaner, but don't use it
-        fmask_coll = ee.ImageCollection('LANDSAT/{}_SR'.format(landsat)) \
+        fmask_coll = ee.ImageCollection(landsat_sr_name) \
             .select(['cfmask'], ['fmask'])
-    elif fmask_type.lower() == 'cfmask':
+    elif landsat_type.lower() == 'toa' and fmask_type.lower() == 'cfmask':
         # Join Fmask band from SR collection to TOA collection
-        landsat_coll = ee.ImageCollection('LANDSAT/{}_L1T_TOA'.format(landsat))
-        fmask_coll = ee.ImageCollection('LANDSAT/{}_SR'.format(landsat)) \
+        landsat_coll = ee.ImageCollection(landsat_toa_name)
+        fmask_coll = ee.ImageCollection(landsat_sr_name) \
             .select(['cfmask'], ['fmask'])
-    elif fmask_type.lower() == 'fmask':
-        landsat_coll = ee.ImageCollection(
-            'LANDSAT/{}_L1T_TOA_FMASK'.format(landsat))
-        # Build fmask_coll so filtering is cleaner, but don't use it
-        fmask_coll = ee.ImageCollection('LANDSAT/{}_SR'.format(landsat)) \
+    elif landsat_type.lower() == 'toa' and fmask_type.lower() == 'fmask':
+        landsat_coll = ee.ImageCollection(landsat_fmask_name)
+        # This fmask collection will not be used
+        fmask_coll = ee.ImageCollection(landsat_sr_name) \
             .select(['cfmask'], ['fmask'])
     else:
-        logging.error('\nERROR: Unknown Fmask type, exiting')
+        logging.error(
+            '\nERROR: Unknown Landsat/Fmask type combination, exiting\n'
+            '  Landsat: {}  Fmask: {}'.format(landsat, landsat_type))
         sys.exit()
 
     if path_keep_list:
@@ -342,7 +376,7 @@ def get_landsat_collection(landsat, landsat_type='TOA', fmask_type='none',
         fmask_coll = fmask_coll.filter(scene_id_skip_filter)
 
     # Join the at-surface reflectance CFmask collection if necessary
-    if fmask_type.lower() == 'cfmask':
+    if fmask_type and fmask_type.lower() == 'cfmask':
         scene_id_filter = ee.Filter.equals(
             leftField='SCENE_ID', rightField='SCENE_ID')
         landsat_coll = ee.ImageCollection(ee.Join.saveFirst('fmask').apply(
@@ -392,50 +426,51 @@ def landsat_empty_fmask_band_func(refl_toa):
 
 def landsat45_images_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 4/5"""
-    return landsat_images_func(refl_toa, landsat='LT5', adjust_mode='')
+    return landsat_images_func(refl_toa, landsat='LT5', adjust_method='')
 
 
 def landsat7_images_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 7"""
-    return landsat_images_func(refl_toa, landsat='LE7', adjust_mode='')
+    return landsat_images_func(refl_toa, landsat='LE7', adjust_method='')
 
 
 def landsat8_images_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 8"""
-    return landsat_images_func(refl_toa, landsat='LC8', adjust_mode='')
+    return landsat_images_func(refl_toa, landsat='LC8', adjust_method='')
 
 
-# DEADBEEF - This is an awful way of passing the adjust_mode to the function
+# DEADBEEF - This seems like an awful way of passing the adjust_method 
+#   to the function
 def landsat45_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 4/5"""
     return landsat_images_func(
-        refl_toa, landsat='LT5', adjust_mode='ETM_2_OLI')
+        refl_toa, landsat='LT5', adjust_method='ETM_2_OLI')
 
 def landsat7_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 7"""
     return landsat_images_func(
-        refl_toa, landsat='LE7', adjust_mode='ETM_2_OLI')
+        refl_toa, landsat='LE7', adjust_method='ETM_2_OLI')
 
 def landsat8_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 8"""
     return landsat_images_func(
-        refl_toa, landsat='LC8', adjust_mode='OLI_2_ETM')
+        refl_toa, landsat='LC8', adjust_method='OLI_2_ETM')
 
 
-def landsat_images_func(refl_toa_orig, landsat, adjust_mode=''):
+def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
     """Calculate Landsat products
 
     Args:
         refl_toa_orig (ee.ImageCollection): Landsat TOA reflectance collection
-        landsat (str): Landsat type ('LT5', 'LE7', or 'LC8')
-        adjust_mode (str): Adjust Landsat red and NIR bands
-            'ETM_2_OLI' or 'OLI_2_ETM'
-            This could probably be simplifed to a simple flag
+        landsat (str): Landsat type ('LT4', 'LT5', 'LE7', or 'LC8')
+        adjust_method (str): Adjust Landsat red and NIR bands.
+            Choices are 'ETM_2_OLI' or 'OLI_2_ETM'.
+            This could probably be simplifed to a flag
 
     Returns:
         ee.Image()
     """
-    scene_date = ee.Date(refl_toa_orig.get("system:time_start"))
+    scene_date = ee.Date(refl_toa_orig.get('system:time_start'))
     doy = ee.Number(scene_date.getRelative('day', 'year')).add(1).double()
     hour = ee.Number(scene_date.getFraction('day')).multiply(24)
 
@@ -447,18 +482,18 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_mode=''):
     # refl_toa = refl_toa.updateMask(refl_toa.select(['thermal']).gt(250))
 
     # At-surface reflectance
-    pair = pair_func(ee.Image("USGS/NED"))
+    pair = pair_func(ee.Image('USGS/NED'))
     # Interpolate NLDAS data to scene time
     nldas_image = ee.Image(nldas_interp_func(refl_toa))
     # Specific humidity (kg/kg)
-    q = nldas_image.select(["specific_humidity"])
-    # q = ee.Image(refl_toa.get("match")).select(["specific_humidity"])
-    # q = nldas_interp_func(refl_toa).select(["specific_humidity"])
+    q = nldas_image.select(['specific_humidity'])
+    # q = ee.Image(refl_toa.get('match')).select(['specific_humidity'])
+    # q = nldas_interp_func(refl_toa).select(['specific_humidity'])
     ea = pair.expression(
         'q * pair / (0.622 + 0.378 * q)', {'q': q, 'pair': pair})
     refl_sur = ee.Image(refl_sur_tasumi_func(
         refl_toa, pair, ea, cos_theta_flat_func(doy, hour),
-        landsat, adjust_mode))
+        landsat, adjust_method))
 
     # At-surface albedo
     albedo_sur = albedo_func(refl_sur, landsat)
@@ -757,17 +792,16 @@ def cos_theta_flat_func(acq_doy, acq_time, lat=None, lon=None):
     """Cos(theta) - Spatially varying flat Model
 
     Args:
-        acq_doy: EarthEngine number of the image acquisition day of year
-            scene_date = ee.Algorithms.Date(ee_image.get("system:time_start"))
+        acq_doy (ee.Number): Image acquisition day of year.
+            scene_date = ee.Date(ee_image.get('system:time_start'))
             acq_doy = ee.Number(scene_date.getRelative('day', 'year')).add(1).double()
-        acq_time: EarthEngine number of the image acquisition UTC time in hours
+        acq_time (ee.Number): Image acquisition UTC time in hours.
             i.e. 18:30 -> 18.5
-            Calcuatl
-            scene_date = ee.Algorithms.Date(ee_image.get("system:time_start"))
+            scene_date = ee.Date(ee_image.get('system:time_start'))
             acq_time = ee.Number(scene_date.getFraction('day')).multiply(24)
-        lat: EarthEngine image of the latitude [radians]
+        lat (ee.Image): Latitude [radians].
             lat = ee.Image.pixelLonLat().select(['latitude']).multiply(pi/180)
-        lon: EarthEngine image of the longitude [radians]
+        lon (ee.Image): Longitude [radians].
             lon = ee.Image.pixelLonLat().select(['longitude']).multiply(pi/180)
 
     Returns:
@@ -801,12 +835,12 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
 
     Args:
         acq_doy: EarthEngine number of the image acquisition day of year
-            scene_date = ee.Algorithms.Date(ee_image.get("system:time_start"))
+            scene_date = ee.Algorithms.Date(ee_image.get('system:time_start'))
             acq_doy = ee.Number(scene_date.getRelative('day', 'year')).add(1).double()
         acq_time: EarthEngine number of the image acquisition UTC time in hours
             i.e. 18:30 -> 18.5
             Calcuatl
-            scene_date = ee.Algorithms.Date(ee_image.get("system:time_start"))
+            scene_date = ee.Algorithms.Date(ee_image.get('system:time_start'))
             acq_time = ee.Number(scene_date.getFraction('day')).multiply(24)
         lat: EarthEngine image of the latitude [radians]
             lat = ee.Image.pixelLonLat().select(['latitude']).multiply(pi/180)
@@ -829,11 +863,11 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
     if lon is None:
         lon = ee.Image.pixelLonLat().select(['longitude']).multiply(pi / 180)
     if slope is None or aspect is None:
-        terrain = ee.call('Terrain', ee.Image("USGS/NED"))
+        terrain = ee.call('Terrain', ee.Image('USGS/NED'))
     if slope is None:
-        slope = terrain.select(["slope"]).multiply(pi / 180)
+        slope = terrain.select(['slope']).multiply(pi / 180)
     if aspect is None:
-        aspect = terrain.select(["aspect"]).multiply(pi / 180).subtract(pi)
+        aspect = terrain.select(['aspect']).multiply(pi / 180).subtract(pi)
     delta = acq_doy.multiply(2 * math.pi / 365).subtract(1.39435).sin().multiply(0.40928)
     b = acq_doy.subtract(81).multiply(2 * pi / 364)
     sc = b.multiply(2).sin().multiply(0.1645)\
@@ -848,10 +882,10 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
     slope_c = slope.cos()
     slope_s = slope.sin()
     cos_theta = lat.expression(
-        ('(sin(lat) * slope_c * delta_s) - ' +
-         '(cos(lat) * slope_s * cos(aspect) * delta_s) + ' +
-         '(cos(lat) * slope_c * cos(omega) * delta_c) + ' +
-         '(sin(lat) * slope_s * cos(aspect) * cos(omega) * delta_c) + ' +
+        ('(sin(lat) * slope_c * delta_s) - '
+         '(cos(lat) * slope_s * cos(aspect) * delta_s) + '
+         '(cos(lat) * slope_c * cos(omega) * delta_c) + '
+         '(sin(lat) * slope_s * cos(aspect) * cos(omega) * delta_c) + '
          '(sin(aspect) * slope_s * sin(omega) * delta_c)'),
         {'lat': lat, 'aspect': aspect,
          'slope_c': slope_c, 'slope_s': slope_s, 'omega': omega,
@@ -862,21 +896,21 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
 
 
 def refl_sur_tasumi_func(refl_toa, pair, ea, cos_theta, landsat,
-                         adjust_mode=''):
+                         adjust_method=''):
     """Tasumi at-surface reflectance
 
     Args:
-        refl_toa ():
-        pair ():
-        ea ():
-        cos_theta ():
-        landsat ():
-        adjust_mode (str): Adjust Landsat red and NIR bands
-            'ETM_2_OLI' or 'OLI_2_ETM'
-            This could probably be simplifed to a simple flag
+        refl_toa (ee.Image):
+        pair (ee.Image):
+        ea (ee.Image):
+        cos_theta (ee.Image):
+        landsat (str): Landsat type
+        adjust_method (str): Adjust Landsat red and NIR bands.
+            Choices are 'ETM_2_OLI' or 'OLI_2_ETM'.
+            This could probably be simplifed to a flag
 
     Returns:
-        ee.Image of at-surface reflectance
+        ee.Image: at-surface reflectance
     """
     w = pair.multiply(0.14).multiply(ea).add(2.1)
     if landsat.upper() in ['LT5', 'LT4', 'LE7']:
@@ -905,6 +939,7 @@ def refl_sur_tasumi_func(refl_toa, pair, ea, cos_theta, landsat,
         # c4 = ee.Image([0.0869, 0.0464, 0.0928, 0.2256, 0.0632, 0.0116])
         # c5 = ee.Image([0.0788, -1.0962, 0.1125, 0.7991, 0.7549, 0.6906])
         # cb = ee.Image([0.640, 0.310, 0.286, 0.189, 0.274, -0.186])
+
     # Incoming/outgoing narrowband transmittance
     # IN  (C1*exp(((C2*pair)/(Kt*cos_theta))-((C3*W+C4)/cos_theta))+C5)
     # OUT (C1*exp(((C2*pair)/(Kt*1.0))-((C3*W+C4)/1.0))+C5)
@@ -918,14 +953,14 @@ def refl_sur_tasumi_func(refl_toa, pair, ea, cos_theta, landsat,
             '(b() + cb * (tau_in - 1.0)) / (tau_in * tau_out)',
             {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out})
 
-    if (adjust_mode.upper() == 'ETM_2_OLI' and
+    if (adjust_method.upper() == 'ETM_2_OLI' and
             landsat.upper() in ['LT5', 'LT4', 'LE7']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling ETM+ to OLI
         refl_sur = ee.Image(refl_sur) \
             .subtract([0, 0, 0.0024, -0.0003, 0, 0]) \
             .divide([1, 1, 1.0047, 1.0036, 1, 1])
-    elif (adjust_mode.upper() == 'OLI_2_ETM' and
+    elif (adjust_method.upper() == 'OLI_2_ETM' and
             landsat.upper() in ['LC8']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling OLI to ETM+
@@ -953,7 +988,7 @@ def landsat_ndvi_func(img):
     """Calculate NDVI for a daily Landsat 4, 5, 7, or 8 image"""
     # Removed .clamp(-0.1, 1)
     return ee.Image(img)\
-        .normalizedDifference(["nir", "red"]).select([0], ['NDVI'])\
+        .normalizedDifference(['nir', 'red']).select([0], ['NDVI'])\
         .copyProperties(img, system_properties)
 
 
@@ -985,7 +1020,7 @@ def ndvi_lai_func(ndvi):
 def landsat_evi_func(img):
     """Calculate EVI for a daily Landsat 4, 5, 7, or 8 image"""
     evi = ee.Image(img).expression(
-        '(2.5 * (b("nir") - b("red"))) / ' +
+        '(2.5 * (b("nir") - b("red"))) / '
         '(b("nir") + 6 * b("red") - 7.5 * b("blue") + 1)')
     return evi.select([0], ['EVI']).copyProperties(
         img, system_properties)
@@ -1094,14 +1129,14 @@ def ts_func(ts_brightness, em_nb, k1=607.76, k2=1260.56):
     # Then recalculate emissivity corrected Ts
     thermal_rad_toa = ts_brightness.expression(
         'k1 / (exp(k2 / ts_brightness) - 1.0)',
-        {"ts_brightness": ts_brightness, "k1": k1, "k2": k2})
+        {'ts_brightness': ts_brightness, 'k1': k1, 'k2': k2})
     rc = thermal_rad_toa.expression(
         '((thermal_rad_toa - rp) / tnb) - ((1.0 - em_nb) * rsky)',
         {"thermal_rad_toa": thermal_rad_toa, "em_nb": em_nb,
-         "rp": 0.91, "tnb": 0.866, "rsky": 1.32})
+         "rp": 0.91, "tnb": 0.866, 'rsky': 1.32})
     ts = rc.expression(
         'k2 / log(em_nb * k1 / rc + 1.0)',
-        {"em_nb": em_nb, "rc": rc, "k1": k1, "k2": k2})
+        {'em_nb': em_nb, 'rc': rc, 'k1': k1, "k2": k2})
     return ts
 
 
@@ -1117,33 +1152,36 @@ def landsat_false_color_func(img):
         .copyProperties(img, system_properties)
 
 
-def nldas_interp_func(ee_image):
+def nldas_interp_func(img):
     """Interpolate NLDAS image at Landsat scene time
 
     Args:
-        ee_image (ee.Image()):
+        img (ee.Image()):
             NLDAS hourly image collection must have been joined to it
-            Previous NLDAS image must be selectable with "nldas_prev_match"
-            Next NLDAS image must be selectable with "nldas_next_match"
+            Previous NLDAS image must be selectable with 'nldas_prev_match'
+            Next NLDAS image must be selectable with 'nldas_next_match'
+
     Returns
-        ee.Image() of NLDAS values interpolated at the image time
+        ee.Image(): NLDAS values interpolated at the image time
     """
-    scene_time = ee.Number(ee_image.get("system:time_start"))
-    nldas_prev_image = ee.Image(ee_image.get("nldas_prev_match"))
-    nldas_next_image = ee.Image(ee_image.get("nldas_next_match"))
-    nldas_prev_time = ee.Number(nldas_prev_image.get("system:time_start"))
-    nldas_next_time = ee.Number(nldas_next_image.get("system:time_start"))
+    scene_time = ee.Number(img.get('system:time_start'))
+    nldas_prev_image = ee.Image(img.get('nldas_prev_match'))
+    nldas_next_image = ee.Image(img.get('nldas_next_match'))
+    nldas_prev_time = ee.Number(nldas_prev_image.get('system:time_start'))
+    nldas_next_time = ee.Number(nldas_next_image.get('system:time_start'))
+
     # Calculate time ratio of Landsat image between NLDAS images
     time_ratio = scene_time.subtract(nldas_prev_time).divide(
         nldas_next_time.subtract(nldas_prev_time))
     # time_ratio_image = ee.Image.constant(scene_time.subtract(nldas_prev_time) \
     #     .divide(nldas_next_time.subtract(nldas_prev_time)))
+
     # Interpolate NLDAS values at Landsat image time
     return nldas_next_image.subtract(nldas_prev_image) \
         .multiply(time_ratio).add(nldas_prev_image) \
         .setMulti({
-            "system:time_start": scene_time,
-            "system:time_end": scene_time})
+            'system:time_start': scene_time,
+            'system:time_end': scene_time})
 
 
 def pair_func(elev_image):
@@ -1178,24 +1216,27 @@ def gridmet_ppt_func(gridmet_image):
 
 def gridmet_etr_func(gridmet_image):
     """GRIDMET Daily ETr"""
-    scene_date = ee.Algorithms.Date(gridmet_image.get("system:time_start"))
+    scene_date = ee.Algorithms.Date(gridmet_image.get('system:time_start'))
     doy = ee.Number(scene_date.getRelative('day', 'year')).add(1).double()
+
     # Read in GRIDMET layers
-    tmin = gridmet_image.select(["tmmn"]).subtract(273.15)  # K to C
-    tmax = gridmet_image.select(["tmmx"]).subtract(273.15)  # K to C
-    # rhmin = gridmet_image.select(["rmin"]).multiply(0.01)  # % to decimal
-    # rhmax = gridmet_image.select(["rmax"]).multiply(0.01)  # % to decimal
-    q = gridmet_image.select(["sph"])                      # kg kg-1
-    rs = gridmet_image.select(["srad"]).multiply(0.0864)   # W m-2 to MJ m-2 day-1
-    uz = gridmet_image.select(["vs"])                      # m/s?
+    tmin = gridmet_image.select(['tmmn']).subtract(273.15)  # K to C
+    tmax = gridmet_image.select(['tmmx']).subtract(273.15)  # K to C
+    # rhmin = gridmet_image.select(['rmin']).multiply(0.01)  # % to decimal
+    # rhmax = gridmet_image.select(['rmax']).multiply(0.01)  # % to decimal
+    q = gridmet_image.select(['sph'])                      # kg kg-1
+    rs = gridmet_image.select(['srad']).multiply(0.0864)   # W m-2 to MJ m-2 day-1
+    uz = gridmet_image.select(['vs'])                      # m/s?
     zw = 10.0    # Windspeed measurement/estimated height (GRIDMET=10m)
+
     # Vapor pressure from RHmax and RHmin (Eqn 11)
     # ea = es_tmin.multiply(rhmax).add(es_tmax.multiply(rhmin)).multiply(0.5)
     # Vapor pressure from specific humidity (Eqn )
     # To match standardized form, ea is calculated from elevation based pair
-    pair = pair_func(ee.Image("USGS/NED"))
+    pair = pair_func(ee.Image('USGS/NED'))
     ea = pair.expression(
         'q * pair / (0.622 + 0.378 * q)', {'pair': pair, 'q': q})
+
     return daily_pet_func(
         doy, tmin, tmax, ea, rs, uz, zw, 1600, 0.38).copyProperties(
             gridmet_image, system_properties)
@@ -1203,24 +1244,27 @@ def gridmet_etr_func(gridmet_image):
 
 def gridmet_eto_func(gridmet_image):
     """GRIDMET Daily ETo"""
-    scene_date = ee.Algorithms.Date(gridmet_image.get("system:time_start"))
+    scene_date = ee.Algorithms.Date(gridmet_image.get('system:time_start'))
     doy = ee.Number(scene_date.getRelative('day', 'year')).add(1).double()
+
     # Read in GRIDMET layers
-    tmin = gridmet_image.select(["tmmn"]).subtract(273.15)  # K to C
-    tmax = gridmet_image.select(["tmmx"]).subtract(273.15)  # K to C
-    # rhmin = gridmet_image.select(["rmin"]).multiply(0.01)  # % to decimal
-    # rhmax = gridmet_image.select(["rmax"]).multiply(0.01)  # % to decimal
-    q = gridmet_image.select(["sph"])                      # kg kg-1
-    rs = gridmet_image.select(["srad"]).multiply(0.0864)   # W m-2 to MJ m-2 day-1
-    uz = gridmet_image.select(["vs"])                      # m/s?
+    tmin = gridmet_image.select(['tmmn']).subtract(273.15)  # K to C
+    tmax = gridmet_image.select(['tmmx']).subtract(273.15)  # K to C
+    # rhmin = gridmet_image.select(['rmin']).multiply(0.01)  # % to decimal
+    # rhmax = gridmet_image.select(['rmax']).multiply(0.01)  # % to decimal
+    q = gridmet_image.select(['sph'])                      # kg kg-1
+    rs = gridmet_image.select(['srad']).multiply(0.0864)   # W m-2 to MJ m-2 day-1
+    uz = gridmet_image.select(['vs'])                      # m/s?
     zw = 10.0  # Windspeed measurement/estimated height (GRIDMET=10m)
+
     # Vapor pressure from RHmax and RHmin (Eqn 11)
     # ea = es_tmin.multiply(rhmax).add(es_tmax.multiply(rhmin)).multiply(0.5)
     # Vapor pressure from specific humidity (Eqn )
     # To match standardized form, ea is calculated from elevation based pair
-    pair = pair_func(ee.Image("USGS/NED"))
+    pair = pair_func(ee.Image('USGS/NED'))
     ea = pair.expression(
         'q * pair / (0.622 + 0.378 * q)', {'pair': pair, 'q': q})
+
     return daily_pet_func(
         doy, tmin, tmax, ea, rs, uz, zw, 900, 0.34).copyProperties(
             gridmet_image, system_properties)
@@ -1247,8 +1291,9 @@ def daily_pet_func(doy, tmin, tmax, ea, rs, uz, zw, cn=900, cd=0.34):
     pi = math.pi
     lat = ee.Image.pixelLonLat().select(['latitude']).multiply(pi / 180)
     lon = ee.Image.pixelLonLat().select(['longitude']).multiply(pi / 180)
-    elev = ee.Image("USGS/NED")
+    elev = ee.Image('USGS/NED')
     pair = pair_func(elev)
+
     # Calculations
     tmean = tmin.add(tmax).multiply(0.5)  # C
     psy = pair.multiply(0.000665)
@@ -1258,6 +1303,7 @@ def daily_pet_func(doy, tmin, tmax, ea, rs, uz, zw, cn=900, cd=0.34):
     es_slope = es_tmean.expression(
         '4098 * es / (pow((t + 237.3), 2))', {'es': es_tmean, 't': tmean})
     es = es_tmin.add(es_tmax).multiply(0.5)
+
     # Extraterrestrial radiation (Eqn 24, 27, 23, 21)
     delta = ee.Image.constant(
         doy.multiply(2 * pi / 365).subtract(1.39435).sin().multiply(0.40928))
@@ -1271,43 +1317,54 @@ def daily_pet_func(doy, tmin, tmax, ea, rs, uz, zw, cn=900, cd=0.34):
     ra = theta.expression(
         '(24 / pi) * gsc * dr * theta',
         {'pi': pi, 'gsc': 4.92, 'dr': dr, 'theta': theta})
+
     # Simplified clear sky solar formulation (Eqn 19)
     # var rso = elev.expression(
     #     '(0.75 + 2E-5 * elev) * ra', {'elev':elev, 'ra':ra})
+
     # This is the full clear sky solar formulation
     # sin of the angle of the sun above the horizon (D.5 and Eqn 62)
     sin_beta_24 = lat.expression(
         'sin(0.85 + 0.3 * lat * delta / 0.40928 - 0.42 * lat ** 2)',
         {'lat': lat, 'delta': delta})
+
     # Precipitable water (Eqn D.3)
     w = pair.expression(
         '0.14 * ea * pair + 2.1', {'pair': pair, 'ea': ea})
+
     # Clearness index for direct beam radiation (Eqn D.2)
     # Limit sin_beta >= 0.01 so that KB does not go undefined
     kb = pair.expression(
-        '0.98 * exp((-0.00146 * pair) / (kt * sin_beta) - 0.075 * pow((w / sin_beta), 0.4))',
+        '0.98 * exp((-0.00146 * pair) / (kt * sin_beta) - '
+        '0.075 * pow((w / sin_beta), 0.4))',
         {'pair': pair, 'kt': 1.0, 'sin_beta': sin_beta_24.max(0.01), 'w': w})
+
     # Transmissivity index for diffuse radiation (Eqn D.4)
     kd = kb.multiply(-0.36).add(0.35).min(kb.multiply(0.82).add(0.18))
     # var kd = kb.multiply(-0.36).add(0.35)
     #     .where(kb.lt(0.15), kb.multiply(0.82).add(0.18))
+
     # (Eqn D.1)
     rso = ra.multiply(kb.add(kd))
     # Cloudiness fraction (Eqn 18)
     fcd = rs.divide(rso).clamp(0.3, 1).multiply(1.35).subtract(0.35)
+
     # Net long-wave radiation (Eqn 17)
     rnl = ea.expression(
-        ('4.901E-9 * fcd * (0.34 - 0.14 * sqrt(ea)) * ' +
+        ('4.901E-9 * fcd * (0.34 - 0.14 * sqrt(ea)) * '
          '(pow(tmax_k, 4) + pow(tmin_k, 4)) / 2'),
         {'ea': ea, 'fcd': fcd,
          'tmax_k': tmax.add(273.15), 'tmin_k': tmin.add(273.15)})
+
     # Net radiation (Eqns 15 and 16)
     rn = rs.multiply(0.77).subtract(rnl)
+
     # Wind speed (Eqn 33)
     u2 = uz.expression('b() * 4.87 / log(67.8 * zw - 5.42)', {'zw': zw})
+
     # Daily ETo (Eqn 1)
     return tmin.expression(
-        ('(0.408 * slope * (rn - g) + (psy * cn * u2 * (es - ea) / (t + 273))) / ' +
+        ('(0.408 * slope * (rn - g) + (psy * cn * u2 * (es - ea) / (t + 273))) / '
          '(slope + psy * (cd * u2 + 1))'),
         {'slope': es_slope, 'rn': rn, 'g': 0, 'psy': psy, 'cn': cn,
          't': tmean, 'u2': u2, 'es': es, 'ea': ea, 'cd': cd})
@@ -1355,6 +1412,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
     else:
         zone_field = None
         logging.warning('The zone field entered was not found, using FID')
+
     input_ftr = input_lyr.GetNextFeature()
     while input_ftr:
         input_fid = input_ftr.GetFID()
@@ -1366,9 +1424,11 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         if simplify_flag:
             input_geom = input_geom.Simplify(1)
             reverse_flag = False
+
         # Convert feature to GeoJSON
         json_str = input_ftr.ExportToJson()
         json_obj = json.loads(json_str)
+
         # Reverse the point order from counter-clockwise to clockwise
         if input_geom.GetGeometryName() == 'MULTIPOLYGON' and reverse_flag:
             for i in range(len(json_obj['geometry']['coordinates'])):
@@ -1379,6 +1439,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
             for i in range(len(json_obj['geometry']['coordinates'])):
                 json_obj['geometry']['coordinates'][i] = list(reversed(
                     json_obj['geometry']['coordinates'][i]))
+
         # Strip Z value from coordinates
         elif (input_geom.GetGeometryName() == 'MULTIPOLYGON' and
                 (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
@@ -1391,6 +1452,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
             for i in range(len(json_obj['geometry']['coordinates'])):
                 json_obj['geometry']['coordinates'][i] = [
                     x[:2] for x in json_obj['geometry']['coordinates'][i]]
+
         # Save the JSON object in the list
         ftr_geom_list.append([input_fid, input_zone, json_obj['geometry']])
         input_geom = None
@@ -1400,7 +1462,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
 
 
 def json_reverse_func(json_obj):
-    # Reverse the point order from counter-clockwise to clockwise
+    """Reverse the point order from counter-clockwise to clockwise"""
     if json_obj['type'].lower() == 'multipolygon':
         for i in range(len(json_obj['coordinates'])):
             for j in range(len(json_obj['coordinates'][i])):
@@ -1414,7 +1476,8 @@ def json_reverse_func(json_obj):
 
 
 def geo_2_ee_transform(gdal_geo):
-    """ EE crs transforms are different than GDAL geo transforms
+    """Convert GDAL GeoTransform to EE style crsTransform
+
     EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
     GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
     """
@@ -1422,7 +1485,8 @@ def geo_2_ee_transform(gdal_geo):
 
 
 def ee_transform_2_geo(gdal_geo):
-    """ EE crs transforms are different than GDAL geo transforms
+    """Convert EE style crsTransform to GDAL GeoTransform
+
     EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
     GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
     """
