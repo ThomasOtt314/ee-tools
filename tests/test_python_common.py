@@ -5,7 +5,7 @@
 # from osgeo import ogr
 import pytest
 
-import python_common
+import ee_tools.python_common as python_common
 
 
 # def test_month_range(start, end):

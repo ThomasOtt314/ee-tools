@@ -13,7 +13,7 @@
 # from osgeo import gdal, ogr, osr
 import pytest
 
-import gdal_common as gdc
+import ee_tools.gdal_common as gdc
 
 # gdal.UseExceptions()
 
@@ -26,7 +26,7 @@ def test_extent_properties(extent=[0, 10, 100, 90], expected=[0, 10, 100, 90]):
     assert extent.ymax == expected[3]
 
 
-def test_extent_rounding(extent=[0.111111, 0.111111, 0.888888, 0.888888], 
+def test_extent_rounding(extent=[0.111111, 0.111111, 0.888888, 0.888888],
                          ndigits=3, expected=[0.111, 0.111, 0.889, 0.889]):
     extent = gdc.Extent(extent, ndigits=ndigits)
     assert list(extent) == expected
@@ -129,7 +129,7 @@ def test_extent_shape(extent=[0, 10, 100, 90], cs=10, expected=(8, 10)):
     assert extent.shape(cs=cs) == expected
 
 
-def test_extent_geo(extent=[0, 10, 100, 90], cs=10, 
+def test_extent_geo(extent=[0, 10, 100, 90], cs=10,
                     expected=(0, 10, 0, 90, 0, -10)):
     """Geo-tranform of the extent"""
     extent = gdc.Extent(extent)
@@ -382,13 +382,13 @@ def test_extent_geo(extent=[0, 10, 100, 90], cs=10,
 #     assert False
 
 
-def test_geo_cellsize(geo=(0, 10, 0, 90, 0, -10), x_only=False, 
+def test_geo_cellsize(geo=(0, 10, 0, 90, 0, -10), x_only=False,
                       expected=(10, -10)):
     """Return pixel width & pixel height of a geo-transform"""
     assert gdc.geo_cellsize(geo, x_only) == expected
 
 
-def test_geo_cellsize_x_only(geo=(0, 10, 0, 90, 0, -10), x_only=True, 
+def test_geo_cellsize_x_only(geo=(0, 10, 0, 90, 0, -10), x_only=True,
                              expected=10):
     """Return pixel width of a geo-transform"""
     assert gdc.geo_cellsize(geo, x_only) == expected
@@ -399,7 +399,7 @@ def test_geo_origin(geo=(0, 10, 0, 90, 0, -10), expected=(0, 90)):
     assert gdc.geo_origin(geo) == expected
 
 
-def test_geo_extent(geo=(0, 10, 0, 90, 0, -10), rows=8, cols=10, 
+def test_geo_extent(geo=(0, 10, 0, 90, 0, -10), rows=8, cols=10,
                     expected=[0, 10, 100, 90]):
     """Return the extent from a geo-transform and array shape (rows, cols)"""
     assert list(gdc.geo_extent(geo, rows, cols)) == expected

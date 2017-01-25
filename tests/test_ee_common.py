@@ -8,7 +8,7 @@ import ee
 # from osgeo import ogr
 import pytest
 
-import ee_common
+import ee_tools.ee_common as ee_common
 
 
 
