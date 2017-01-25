@@ -4,7 +4,8 @@ import logging
 import os
 import sys
 
-import configparser
+# import configparser
+from backports import configparser
 
 import ee_tools.gdal_common as gdc
 import ee_tools.python_common as python_common
@@ -22,7 +23,7 @@ def ini_parse(ini_path, mode='zonal_stats'):
             Eventually handle this using INI sections.
 
     Returns:
-        dict: 
+        dict:
 
     """
 
@@ -57,6 +58,7 @@ def ini_parse(ini_path, mode='zonal_stats'):
     else:
         output_ws_param = 'output_ws'
 
+    inputs = config['INPUTS']
 
     # Get output spatial reference parameter separately for now
     try:
@@ -122,15 +124,21 @@ def ini_parse(ini_path, mode='zonal_stats'):
             if get_type is bool:
                 options[output_name] = config[section].getboolean(input_name)
             elif get_type is int:
-                options[output_name] = config[section].getint(input_name)
+                options[output_name] = int(config[section][input_name])
             else:
-                options[output_name] = config[section].get(input_name)
-        except:
+                options[output_name] = str(config[section][input_name])
+        except KeyError:
             logging.error(
                 '\nERROR: {} was not set in the INI'
                 ', exiting\n'.format(input_name))
             sys.exit()
-
+        except ValueError:
+            logging.error('\nERROR: Invalid value for "{}"'.format(
+                input_name))
+            sys.exit()
+        except Exception as e:
+            logging.error('\nERROR: Unhandled error\n  {}'.format(e))
+            sys.exit()
 
     # Build and check file paths
     options['zone_path'] = os.path.join(
@@ -193,28 +201,37 @@ def ini_parse(ini_path, mode='zonal_stats'):
     ]
     for section, input_name, output_name, default, get_type in param_list:
         try:
+            # print(input_name)
             if get_type is bool:
                 options[output_name] = config[section].getboolean(input_name)
             elif get_type is int:
-                options[output_name] = config[section].getint(input_name)
+                options[output_name] = int(config[section][input_name])
             elif get_type is list:
                 options[output_name] = list(python_common.parse_int_set(
-                    config[section].get(input_name)))
+                    str(config[section][input_name])))
             else:
-                options[output_name] = config[section].get(input_name)
+                options[output_name] = str(config[section][input_name])
                 # Convert 'None' (strings) to None
                 if options[output_name].lower() == 'none':
                     options[output_name] = None
-        except:
+            # print(options[output_name])
+        except KeyError:
             options[output_name] = default
-            logging.debug('  Defaulting {} = {}'.format(
+            logging.debug('  Setting {} = {}'.format(
                 input_name, options[output_name]))
+        except ValueError:
+            logging.error('\nERROR: Invalid value for "{}"'.format(
+                input_name))
+            sys.exit()
+        except Exception as e:
+            logging.error('\nERROR: Unhandled error\n  {}'.format(e))
+            sys.exit()
 
-        # Convert 'None' strings to None
-        # This could probably be handled
-        if (type(options[output_name]) is str and 
-                options[output_name].lower() == 'none'):
-            options[output_name] = None
+        # # Convert 'None' strings to None
+        # # This could probably be handled somewhere else...
+        # if (type(options[output_name]) is str and
+        #         options[output_name].lower() == 'none'):
+        #     options[output_name] = None
 
 
     # Build output folder if necessary
@@ -222,18 +239,18 @@ def ini_parse(ini_path, mode='zonal_stats'):
         os.makedirs(options['output_ws'])
 
     # Start/end year
-    if (options['start_year'] and options['end_year'] and 
+    if (options['start_year'] and options['end_year'] and
             options['end_year'] < options['start_year']):
         logging.error(
             '\nERROR: End year must be >= start year')
         sys.exit()
     default_end_year = datetime.datetime.today().year + 1
-    if ((options['start_year'] and 
+    if ((options['start_year'] and
             options['start_year'] not in range(1984, default_end_year)) or
-        (options['end_year'] and 
+        (options['end_year'] and
             options['end_year'] not in range(1984, default_end_year))):
         logging.error('\nERROR: Year must be an integer from 1984-{}'.format(
-            default_end_year-1))
+            default_end_year - 1))
         sys.exit()
 
     # Start/end month
