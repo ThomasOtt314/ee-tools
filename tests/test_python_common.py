@@ -31,6 +31,11 @@ import ee_tools.python_common as python_common
 #     assert False
 
 
+# def test_remove_file(file_path):
+#     """Remove a feature/raster and all of its anciallary files"""
+#     assert False
+
+
 @pytest.mark.parametrize(
     "a,b,x_min,x_max,expected",
     [
