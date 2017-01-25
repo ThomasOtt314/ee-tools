@@ -1,13 +1,14 @@
 #--------------------------------
 # Name:         python_common.py
 # Purpose:      Common Python support functions
-# Created       2017-01-22
+# Created       2017-01-25
 # Python:       2.7
 #--------------------------------
 
-import os
+import glob
 import json
 import logging
+import os
 
 from osgeo import ogr
 
@@ -77,6 +78,13 @@ def parse_int_set(nputstr=""):
     # Report invalid tokens before returning valid selection
     # print "Invalid set: " + str(invalid)
     return selection
+
+
+def remove_file(file_path):
+    """Remove a feature/raster and all of its anciallary files"""
+    file_ws = os.path.dirname(file_path)
+    for file_name in glob.glob(os.path.splitext(file_path)[0] + ".*"):
+        os.remove(os.path.join(file_ws, file_name))
 
 
 def wrapped_range(a, b, x_min=1, x_max=12):
