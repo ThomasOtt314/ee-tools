@@ -43,14 +43,18 @@ def is_valid_file(parser, arg):
 def parse_int_set(nputstr=""):
     """Return list of numbers given a string of ranges
 
-    Originally in python_common.py
-
     http://thoughtsbyclayg.blogspot.com/2008/10/parsing-list-of-numbers-in-python.html
     """
     selection = set()
     invalid = set()
-    # tokens are comma seperated values
-    tokens = [x.strip() for x in nputstr.split(',')]
+
+    # Tokens are comma seperated values
+    # AttributeError will get raised when nputstr is empty
+    try:
+        tokens = [x.strip() for x in nputstr.split(',')]
+    except AttributeError:
+        return set()
+
     for i in tokens:
         try:
             # typically tokens are plain old integers
@@ -135,7 +139,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
     else:
         zone_field = None
         logging.warning('  The zone field entered was not found, using FID')
-        
+
     input_ftr = input_lyr.GetNextFeature()
     while input_ftr:
         input_fid = input_ftr.GetFID()

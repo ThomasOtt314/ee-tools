@@ -69,7 +69,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
         landsat5_flag (bool): if True, include Landsat 5 images.
         landsat7_flag (bool): if True, include Landsat 7 images.
         landsat8_flag (bool): if True, include Landsat 8 images.
-        mosaic_method (str): 
+        mosaic_method (str):
         landsat_coll_args (dict): keyword arguments for get_landsat_collection.
 
     Returns:
@@ -93,6 +93,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l4_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].upper()):
             l4_coll = ee.ImageCollection(l4_coll.map(landsat45_adjust_func))
         else:
@@ -107,6 +108,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l5_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             l5_coll = ee.ImageCollection(l5_coll.map(landsat45_adjust_func))
         else:
@@ -119,6 +121,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l7_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             l7_coll = ee.ImageCollection(l7_coll.map(landsat7_adjust_func))
         else:
@@ -131,6 +134,7 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
             l8_coll, nldas_coll, nldas_next_filter))
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].lower() == 'oli_2_etm'):
             l8_coll = ee.ImageCollection(l8_coll.map(landsat8_adjust_func))
         else:
@@ -152,17 +156,17 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
     return landsat_coll
 
 
-def get_landsat_image(landsat, year, doy, mosaic_method, 
+def get_landsat_image(landsat, year, doy, mosaic_method,
                       landsat_coll_args={}):
-    """Return a single mosaiced Landsat image 
+    """Return a single mosaiced Landsat image
 
     Mosaic images from different rows from the same date (same path)
 
     Args:
-        landsat (str): 
-        year (int): 
+        landsat (str):
+        year (int):
         doy (int): day of year
-        mosaic_method (str): 
+        mosaic_method (str):
         landsat_coll_args (dict): keyword arguments for get_landst_collection
 
     Returns:
@@ -232,7 +236,7 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
     elif landsat_col_args['mosaic_method'].upper() == 'MEDIAN':
         landsat_image = ee.Image(landsat_coll.median())
     else:
-        # DEADBEEF - How should I return multiple images? 
+        # DEADBEEF - How should I return multiple images?
         landsat_image = ee.Image(landsat_coll.first())
 
     return landsat_image
@@ -250,12 +254,12 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
     """Build and filter a Landsat collection
 
     If fmask_type is 'fmask', an fmask collection is built but not used.
-    This was done to avoid including lots of conditionals and to 
+    This was done to avoid including lots of conditionals and to
         make the collection filtering logic easier to read/follow.
 
     Args:
         landsat ():
-        landsat_type (str): 'toa' 
+        landsat_type (str): 'toa'
             'sr' not currently supported.
             To support 'sr' would need to modify collection_name and
                 make WRS_PATH and WRS_ROW lower case.
@@ -294,7 +298,7 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
     landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat.upper())
     landsat_fmask_name = 'LANDSAT/{}_L1T_TOA_FMASK'.format(landsat.upper())
 
-    if (landsat_type.lower() == 'toa' and 
+    if (landsat_type.lower() == 'toa' and
             (not fmask_type or fmask_type.lower() == 'none')):
         landsat_coll = ee.ImageCollection(landsat_toa_name)
         # Add empty fmask band
@@ -439,7 +443,7 @@ def landsat8_images_func(refl_toa):
     return landsat_images_func(refl_toa, landsat='LC8', adjust_method='')
 
 
-# DEADBEEF - This seems like an awful way of passing the adjust_method 
+# DEADBEEF - This seems like an awful way of passing the adjust_method
 #   to the function
 def landsat45_adjust_func(refl_toa):
     """EE mappable function for calling landsat_image_func for Landsat 4/5"""
@@ -1408,8 +1412,8 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         zone_field_i = None
         logging.info('  Using FID as zone field')
     elif zone_field in feature_lyr_fields(input_lyr):
-        zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
         logging.debug('  Zone field: {}'.format(zone_field))
+        zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
     else:
         logging.error('\nERROR: Zone field "{}" is not in the '
                       'shapefile'.format(zone_field))

@@ -54,7 +54,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # Read config file
     ini = ini_common.ini_parse(ini_path, mode='image')
 
-    # 
+    #
     nodata_value = -9999
 
     # Float32/Float64
@@ -84,7 +84,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             for zone_polygon in zone_multipolygon:
                 merge_geom.AddGeometry(zone_polygon)
         # merge_json = json.loads(merge_mp.ExportToJson())
-        zone_geom_list = [[0, zone_name, json.loads(merge_geom.ExportToJson())]]
+        zone_geom_list = [
+            [0, ini['zone_name'], json.loads(merge_geom.ExportToJson())]]
         ini['zone_field'] = ''
 
     # Need zone_path projection to build EE geometries
@@ -171,7 +172,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         landsat_args = {k: v for k, v in ini.items() if k in [
             'fmask_flag', 'acca_flag', 'fmask_type', 'zone_geom',
             # 'start_date', 'end_date',
-            'start_year', 'end_year', 
+            'start_year', 'end_year',
             'start_month', 'end_month', 'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list', 'adjust_method']}
@@ -184,7 +185,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         #     'start_doy': start_doy, 'end_doy': end_doy,
         #     'scene_id_keep_list': scene_id_keep_list,
         #     'scene_id_skip_list': scene_id_skip_list,
-        #     'path_keep_list': path_keep_list, 
+        #     'path_keep_list': path_keep_list,
         #     'row_keep_list': row_keep_list,
         #     'adjust_method': adjust_method}
 

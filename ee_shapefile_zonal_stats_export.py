@@ -48,7 +48,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     ini = ini_common.ini_parse(ini_path, mode='zonal_stats')
 
     landsat_daily_fields = [
-        ini['zone_field'].upper(), 'DATE', 'SCENE_ID', 'LANDSAT', 
+        ini['zone_field'].upper(), 'DATE', 'SCENE_ID', 'LANDSAT',
         'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
@@ -58,17 +58,14 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # 'NDWI_TOA', 'NDWI_SUR',
         'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
     gridmet_daily_fields = [
-        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 
+        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'WATER_YEAR', 'ETO', 'PPT']
     gridmet_monthly_fields = [
-        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR', 
+        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR',
         'ETO', 'PPT']
     pdsi_dekad_fields = [
-        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY', 
+        ini['zone_field'].upper(), 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'PDSI']
-
-    # Initialize Earth Engine API key
-    ee.Initialize()
 
     # Get ee features from shapefile
     zone_geom_list = ee_common.shapefile_2_geom_list_func(
@@ -86,17 +83,22 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     # Check that shapefile has matching spatial reference
     if not gdc.matching_spatref(zone_osr, ini['output_osr']):
         logging.warning('  Zone OSR:\n{}\n'.format(zone_osr))
-        logging.warning('  Output OSR:\n{}\n'.format(ini['output_osr'].ExportToWkt()))
-        logging.warning('  Zone Proj4:   {}'.format(zone_osr.ExportToProj4()))
-        logging.warning('  Output Proj4: {}'.format(ini['output_osr'].ExportToProj4()))
+        logging.warning('  Output OSR:\n{}\n'.format(
+            ini['output_osr'].ExportToWkt()))
+        logging.warning('  Zone Proj4:   {}'.format(
+            zone_osr.ExportToProj4()))
+        logging.warning('  Output Proj4: {}'.format(
+            ini['output_osr'].ExportToProj4()))
         logging.warning(
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
             'This will likely cause problems!')
         raw_input('Press ENTER to continue')
     else:
-        logging.debug('  Zone Projection:\n{}\n'.format(zone_osr.ExportToWkt()))
-        logging.debug('  Output Projection:\n{}\n'.format(ini['output_osr'].ExportToWkt()))
+        logging.debug('  Zone Projection:\n{}\n'.format(
+            zone_osr.ExportToWkt()))
+        logging.debug('  Output Projection:\n{}\n'.format(
+            ini['output_osr'].ExportToWkt()))
         logging.debug('  Output Cellsize: {}'.format(ini['output_cs']))
 
 
@@ -192,7 +194,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 export_path = os.path.join(ini['export_ws'], export_id + '.csv')
                 output_path = os.path.join(zone_tables_ws, output_id + '.csv')
                 temp_path = os.path.join(
-                    ini['export_ws'], 
+                    ini['export_ws'],
                     os.path.basename(ini['output_ws']), export_id + '.csv')
                 logging.debug('  Export: {}'.format(export_path))
                 logging.debug('  Output: {}'.format(output_path))
@@ -244,7 +246,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 landsat_args = {k: v for k, v in ini.items() if k in [
                     'fmask_flag', 'acca_flag', 'fmask_type', 'zone_geom',
                     # 'start_date', 'end_date',
-                    'start_year', 'end_year', 
+                    'start_year', 'end_year',
                     'start_month', 'end_month', 'start_doy', 'end_doy',
                     'scene_id_keep_list', 'scene_id_skip_list',
                     'path_keep_list', 'row_keep_list', 'adjust_method']}
@@ -252,7 +254,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 landsat_args['end_date'] = iter_end_date
 
                 landsat_coll = ee_common.get_landsat_images(
-                    ini['landsat4_flag'], ini['landsat5_flag'], 
+                    ini['landsat4_flag'], ini['landsat5_flag'],
                     ini['landsat7_flag'], ini['landsat8_flag'],
                     ini['mosaic_method'], landsat_args)
 
