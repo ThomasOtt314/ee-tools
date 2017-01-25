@@ -1,3 +1,11 @@
+#--------------------------------
+# Name:         ini_common.py
+# Purpose:      Common INI reading/parsing functions
+# Author:       Charles Morton
+# Created       2017-01-24
+# Python:       2.7
+#--------------------------------
+
 # import ConfigParser
 import datetime
 import logging

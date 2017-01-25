@@ -357,8 +357,10 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 stats_coll = landsat_coll.map(landsat_zonal_stats_func)
 
                 stats_info = stats_coll.getInfo()
+                import pprint
+                pp = pprint.PrettyPrinter(indent=4)
                 for ftr in stats_info['features']:
-                    print(ftr)
+                    pp.pprint(ftr)
                 # # Download the CSV to your Google Drive
                 # logging.debug('  Starting export task')
                 # i = 0

@@ -242,10 +242,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
             # Get the prepped Landsat image by ID
             landsat_image = ee_common.get_landsat_image(
-                landsat, year, doy, mosaic_method, landsat_args)
+                landsat, year, doy, ini['mosaic_method'], landsat_args)
 
             # Clip using the feature geometry
             landsat_image = ee.Image(landsat_image).clip(zone_geom)
+            # ee_common.show_thumbnail(landsat_image)
 
             # Set the masked values to a nodata value
             # so that the TIF can have a nodata value other than 0 set

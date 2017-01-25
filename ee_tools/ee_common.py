@@ -2,7 +2,7 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-01-22
+# Created       2017-01-24
 # Python:       2.7
 #--------------------------------
 
@@ -11,13 +11,6 @@ import json
 import logging
 import math
 import sys
-
-# # Module for showing thumbnails
-# import io
-# # import Image, ImageTk
-# from PIL import Image, ImageTk
-# import Tkinter as tk
-# import urllib2
 
 import ee
 from osgeo import ogr
@@ -41,16 +34,24 @@ nldas_next_filter = ee.Filter.And(
     ee.Filter.lessThan(
         leftField='system:time_start', rightField='system:time_start'))
 
-# def show_thumbnail(ee_image):
-#     """Show the EarthEngine image thumbnail in a window"""
-#     window = tk.Tk()
-#     output_url = ee_image.getThumbUrl({'format': 'jpg', 'size': '600'})
-#     output_file = Image.open(io.BytesIO(urllib2.urlopen(output_url).read()))
-#     output_photo = ImageTk.PhotoImage(output_file)
-#     label = tk.Label(window, image=output_photo)
-#     label.pack()
-#     window.mainloop()
-#     return True
+
+def show_thumbnail(ee_image):
+    """Show the EarthEngine image thumbnail in a window"""
+    import io
+    # import Image, ImageTk
+    from PIL import Image, ImageTk
+    import Tkinter as tk
+    import urllib2
+
+    window = tk.Tk()
+    output_url = ee_image.getThumbUrl({'format': 'jpg', 'size': '600'})
+    print(output_url)
+    output_file = Image.open(io.BytesIO(urllib2.urlopen(output_url).read()))
+    output_photo = ImageTk.PhotoImage(output_file)
+    label = tk.Label(window, image=output_photo)
+    label.pack()
+    window.mainloop()
+    return True
 
 
 # Earth Engine calculation functions
@@ -205,6 +206,7 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
     if landsat.upper() in ['LT4', 'LT5']:
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             landsat_coll = landsat_coll.map(landsat45_adjust_func)
         else:
@@ -212,6 +214,7 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
     elif landsat.upper() == 'LE7':
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].lower() == 'etm_2_oli'):
             landsat_coll = landsat_coll.map(landsat7_adjust_func)
         else:
@@ -219,22 +222,27 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
     elif landsat.upper() == 'LC8':
         # DEADBEEF - This is an awful way to set which adjustment to use
         if ('adjust_method' in landsat_coll_args.keys() and
+                landsat_coll_args['adjust_method'] and
                 landsat_coll_args['adjust_method'].lower() == 'oli_2_etm'):
             landsat_coll = landsat_coll.map(landsat8_adjust_func)
         else:
             landsat_coll = landsat_coll.map(landsat8_images_func)
 
     # Mosaic overlapping images
-    if landsat_col_args['mosaic_method'].upper() == 'MEAN':
-        landsat_image = ee.Image(landsat_coll.mean())
-    elif landsat_col_args['mosaic_method'].upper() == 'MOSAIC':
-        landsat_image = ee.Image(landsat_coll.mosaic())
-    elif landsat_col_args['mosaic_method'].upper() == 'MIN':
-        landsat_image = ee.Image(landsat_coll.min())
-    elif landsat_col_args['mosaic_method'].upper() == 'MAX':
-        landsat_image = ee.Image(landsat_coll.max())
-    elif landsat_col_args['mosaic_method'].upper() == 'MEDIAN':
-        landsat_image = ee.Image(landsat_coll.median())
+    if mosaic_method:
+        if mosaic_method.lower() == 'mean':
+            landsat_image = ee.Image(landsat_coll.mean())
+        elif mosaic_method.lower() == 'mosaic':
+            landsat_image = ee.Image(landsat_coll.mosaic())
+        elif mosaic_method.lower() == 'min':
+            landsat_image = ee.Image(landsat_coll.min())
+        elif mosaic_method.lower() == 'max':
+            landsat_image = ee.Image(landsat_coll.max())
+        elif mosaic_method.lower() == 'median':
+            landsat_image = ee.Image(landsat_coll.median())
+        else:
+            logging.error('\nERROR: Unsupported mosaic method: {}'.format(
+                mosaic_method))
     else:
         # DEADBEEF - How should I return multiple images?
         landsat_image = ee.Image(landsat_coll.first())
