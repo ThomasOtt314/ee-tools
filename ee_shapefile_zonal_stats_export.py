@@ -45,7 +45,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    ini = ini_common.ini_parse(ini_path, mode='zonal_stats')
+    ini = ini_common.ini_parse(ini_path, section='zonal_stats')
 
     landsat_daily_fields = [
         ini['zone_field'].upper(), 'DATE', 'SCENE_ID', 'LANDSAT',
@@ -68,10 +68,20 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         'PDSI']
 
     # Get ee features from shapefile
-    zone_geom_list = ee_common.shapefile_2_geom_list_func(
+    zone_geom_list = gdc.shapefile_2_geom_list_func(
         ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
     # zone_count = len(zone_geom_list)
     # output_fmt = '_{0:0%sd}.csv' % str(int(math.log10(zone_count)) + 1)
+
+    # # Filter features by FID
+    # if ini['fid_keep_list']:
+    #     zone_geom_list = [
+    #         [fid, zone, geom] for zone_geom in zone_geom_list
+    #         if fid in ini['ini['fid_skip_list']']]
+    # if ini['fid_skip_list']:
+    #     zone_geom_list = [
+    #         [fid, zone, geom] for zone_geom in zone_geom_list
+    #         if fid not in ini['fid_skip_list']]
 
     # Need zone_path projection to build EE geometries
     zone_osr = gdc.feature_path_osr(ini['zone_path'])
@@ -142,7 +152,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         zone_extent.adjust_to_snap(
             'EXPAND', ini['snap_x'], ini['snap_y'], ini['output_cs'])
         zone_geo = zone_extent.geo(ini['output_cs'])
-        zone_transform = ee_common.geo_2_ee_transform(zone_geo)
+        zone_transform = gdc.geo_2_ee_transform(zone_geo)
         zone_shape = zone_extent.shape(ini['output_cs'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
@@ -167,7 +177,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         if not os.path.isdir(zone_tables_ws):
             os.makedirs(zone_tables_ws)
 
-        if ini['zs_landsat_flag']:
+        if ini['landsat_flag']:
             logging.info('  Landsat')
             # Process date range by year
             for year in xrange(ini['start_year'], ini['end_year'] + 1, year_step):
@@ -244,12 +254,12 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     continue
 
                 landsat_args = {k: v for k, v in ini.items() if k in [
-                    'fmask_flag', 'acca_flag', 'fmask_type', 'zone_geom',
-                    # 'start_date', 'end_date',
+                    'fmask_flag', 'acca_flag', 'fmask_type',
                     'start_year', 'end_year',
                     'start_month', 'end_month', 'start_doy', 'end_doy',
                     'scene_id_keep_list', 'scene_id_skip_list',
                     'path_keep_list', 'row_keep_list', 'adjust_method']}
+                landsat_args['zone_geom'] = zone_geom
                 landsat_args['start_date'] = iter_start_date
                 landsat_args['end_date'] = iter_end_date
 
@@ -257,6 +267,11 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     ini['landsat4_flag'], ini['landsat5_flag'],
                     ini['landsat7_flag'], ini['landsat8_flag'],
                     ini['mosaic_method'], landsat_args)
+
+                # Mosaic overlapping images
+                if ini['mosaic_method']:
+                    landsat_coll = ee_common.mosaic_landsat_images(
+                        landsat_coll, ini['mosaic_method'])
 
                 # Debug
                 # print(ee.Image(landsat_coll.first()).getInfo())
@@ -269,8 +284,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 # Build function in loop to set water year ETo/PPT values
                 def landsat_zonal_stats_func(image):
                     """"""
-                    scene_id = ee.String(
-                        ee.String(image.get('system:index')).split('_').get(-1))
+                    scene_id = ee.String(image.get('SCENE_ID'))
                     date = ee.Date(image.get("system:time_start"))
                     doy = ee.Number(date.getRelative('day', 'year')).add(1)
                     # Using zone_geom as the geomtry should make it
@@ -318,9 +332,9 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                         {
                             ini['zone_field'].upper(): zone_str,
                             'SCENE_ID': scene_id.slice(0, 16),
-                            'LANDSAT': ee.String(scene_id).slice(0, 3),
-                            'PATH': ee.Number(ee.String(scene_id).slice(3, 6)),
-                            'ROW': ee.Number(ee.String(scene_id).slice(6, 9)),
+                            'LANDSAT': scene_id.slice(0, 3),
+                            'PATH': ee.Number(scene_id.slice(3, 6)),
+                            'ROW': ee.Number(scene_id.slice(6, 9)),
                             'DATE': date.format("YYYY-MM-dd"),
                             'YEAR': date.get('year'),
                             'MONTH': date.get('month'),
@@ -356,30 +370,31 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 # raw_input('ENTER')
                 stats_coll = landsat_coll.map(landsat_zonal_stats_func)
 
-                stats_info = stats_coll.getInfo()
-                import pprint
-                pp = pprint.PrettyPrinter(indent=4)
-                for ftr in stats_info['features']:
-                    pp.pprint(ftr)
-                # # Download the CSV to your Google Drive
-                # logging.debug('  Starting export task')
-                # i = 0
-                # while i <= 2:
-                #     try:
-                #         task = ee.batch.Export.table.toDrive(
-                #             stats_coll,
-                #             description=export_id,
-                #             folder=export_folder,
-                #             fileNamePrefix=export_id,
-                #             fileFormat='CSV')
-                #         task.start()
-                #         logging.debug('  Active: {}'.format(task.active()))
-                #         # logging.debug('  Status: {}'.format(task.status()))
-                #         break
-                #     except Exception as e:
-                #         logging.error('  EE Exception submitting task, retrying')
-                #         logging.debug('{}'.format(e))
-                #         i += 1
+                # stats_info = stats_coll.getInfo()
+                # import pprint
+                # pp = pprint.PrettyPrinter(indent=4)
+                # for ftr in stats_info['features']:
+                #     pp.pprint(ftr)
+
+                # Download the CSV to your Google Drive
+                logging.debug('  Starting export task')
+                i = 0
+                while i <= 2:
+                    try:
+                        task = ee.batch.Export.table.toDrive(
+                            stats_coll,
+                            description=export_id,
+                            folder=ini['export_folder'],
+                            fileNamePrefix=export_id,
+                            fileFormat='CSV')
+                        task.start()
+                        logging.debug('  Active: {}'.format(task.active()))
+                        # logging.debug('  Status: {}'.format(task.status()))
+                        break
+                    except Exception as e:
+                        logging.error('  EE Exception submitting task, retrying')
+                        logging.debug('{}'.format(e))
+                        i += 1
 
 
             # # Combine/merge annual files into a single CSV
@@ -408,7 +423,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             #         output_path, index=False, columns=landsat_daily_fields)
 
 
-        if ini['zs_gridmet_daily_flag']:
+        if ini['gridmet_daily_flag']:
             logging.info('  GRIDMET Daily ETo/PPT')
             # Export GRIDMET zonal stats
             # Insert one additional year the beginning for water year totals
@@ -501,7 +516,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     task = ee.batch.Export.table.toDrive(
                         stats_coll,
                         description=export_id,
-                        folder=export_folder,
+                        folder=ini['export_folder'],
                         fileNamePrefix=export_id,
                         fileFormat='CSV')
                     task.start()
@@ -512,7 +527,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     logging.debug('  {}'.format(e))
 
 
-        if ini['zs_gridmet_monthly_flag']:
+        if ini['gridmet_monthly_flag']:
             logging.info('  GRIDMET Monthly ETo/PPT')
             # Export GRIDMET zonal stats
             # Insert one additional year the beginning for water year totals
@@ -625,7 +640,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     task = ee.batch.Export.table.toDrive(
                         stats_coll,
                         description=export_id,
-                        folder=export_folder,
+                        folder=ini['export_folder'],
                         fileNamePrefix=export_id,
                         fileFormat='CSV')
                     task.start()
@@ -636,7 +651,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     logging.debug('  {}'.format(e))
 
 
-        if ini['zs_pdsi_flag']:
+        if ini['pdsi_flag']:
             logging.info('  GRIDMET PDSI')
             pdsi_coll = ee.ImageCollection('IDAHO_EPSCOR/PDSI') \
                 .select(['pdsi'], ['pdsi']) \
@@ -716,7 +731,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                     task = ee.batch.Export.table.toDrive(
                         stats_coll,
                         description=export_id,
-                        folder=export_folder,
+                        folder=ini['export_folder'],
                         fileNamePrefix=export_id,
                         fileFormat='CSV')
                     task.start()

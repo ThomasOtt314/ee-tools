@@ -2,7 +2,7 @@
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
 # Author:       Charles Morton
-# Created       2017-01-24
+# Created       2017-01-25
 # Python:       2.7
 #--------------------------------
 
@@ -38,9 +38,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine GRIDMET Image Download')
 
-    # Generate a single for the merged geometries
-    merge_geom_flag = True
-
     start_year = 1984
     end_year = 2016
 
@@ -70,7 +67,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         pdsi_folder = 'pdsi'
 
     # Read config file
-    ini = ini_common.ini_parse(ini_path, mode='image')
+    ini = ini_common.ini_parse(ini_path, section='image')
 
     nodata_value = -9999
 
@@ -89,11 +86,21 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     logging.debug('  OSR: {}'.format(ini['output_osr']))
 
     # Get ee features from shapefile
-    zone_geom_list = ee_common.shapefile_2_geom_list_func(
+    zone_geom_list = gdc.shapefile_2_geom_list_func(
         ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
 
+    # Filter features by FID before merging geometries
+    if ini['fid_keep_list']:
+        zone_geom_list = [
+            [fid, zone, geom] for zone_geom in zone_geom_list
+            if fid in ini['fid_keep_list']]
+    if ini['fid_skip_list']:
+        zone_geom_list = [
+            [fid, zone, geom] for zone_geom in zone_geom_list
+            if fid not in ini['fid_skip_list']]
+
     # Merge geometries
-    if merge_geom_flag:
+    if ini['merge_geom_flag']:
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone in zone_geom_list:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -128,10 +135,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Download images for each feature separately
     for fid, zone_str, zone_json in sorted(zone_geom_list):
-        if ini['fid_keep_list'] and fid not in ini['fid_keep_list']:
-            continue
-        elif ini['fid_skip_list'] and fid in ini['fid_skip_list']:
-            continue
         logging.info('ZONE: {} ({})'.format(zone_str, fid))
 
         if ini['zone_field'].upper() == 'FID':
@@ -161,7 +164,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         zone_extent.adjust_to_snap(
             'EXPAND', ini['output_x'], ini['output_y'], ini['output_cs'])
         zone_geo = zone_extent.geo(ini['output_cs'])
-        zone_transform = ee_common.geo_2_ee_transform(zone_geo)
+        zone_transform = gdc.geo_2_ee_transform(zone_geo)
         zone_shape = zone_extent.shape(ini['output_cs'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
@@ -174,7 +177,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         logging.debug('  Output Transform: {}'.format(output_transform))
         logging.debug('  Output Shape: {}'.format(output_shape))
 
-        zone_gridmet_ws = os.path.join(ini['output_ws'], zone_str, gridmet_folder)
+        zone_gridmet_ws = os.path.join(
+            ini['output_ws'], zone_str, gridmet_folder)
         zone_pdsi_ws = os.path.join(ini['output_ws'], zone_str, pdsi_folder)
         if not os.path.isdir(zone_gridmet_ws):
             os.makedirs(zone_gridmet_ws)
@@ -217,7 +221,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}_gridmet_{}'.format(
-                    zone_name, date_str, b_name.lower())
+                    ini['zone_name'], date_str, b_name.lower())
                 output_id = '{}_gridmet.{}'.format(date_str, b_name.lower())
 
                 export_path = os.path.join(ini['export_ws'], export_id + '.tif')

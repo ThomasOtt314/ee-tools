@@ -2,7 +2,7 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-01-24
+# Created       2017-01-25
 # Python:       2.7
 #--------------------------------
 
@@ -12,14 +12,14 @@ import logging
 import os
 import sys
 
-# import configparser
-from backports import configparser
+import configparser
+# from backports import configparser
 
 import ee_tools.gdal_common as gdc
 import ee_tools.python_common as python_common
 
 
-def ini_parse(ini_path, mode='zonal_stats'):
+def ini_parse(ini_path, section='zonal_stats'):
     """Read the input parameter file, set defaults, and check values
 
     Eventually make this a class and/or separate out the validation
@@ -34,6 +34,7 @@ def ini_parse(ini_path, mode='zonal_stats'):
         dict:
 
     """
+    logging.debug('\nInput File')
 
     # Open config file
     config = configparser.ConfigParser()
@@ -44,7 +45,6 @@ def ini_parse(ini_path, mode='zonal_stats'):
                       'is not an input file, or does not exist\n'
                       'ERROR: ini_path = {}\n'.format(ini_path))
         sys.exit()
-    logging.debug('\nReading Input File')
 
     # Fow now, assume all values are in one INPUTS section
     if 'INPUTS' not in config.sections():
@@ -57,21 +57,12 @@ def ini_parse(ini_path, mode='zonal_stats'):
 
     options = {}
 
-    # Vary some options depending on mode
-    # Eventually this should be handled with INI sections
-    if mode.lower() == 'zonal_stats':
-        output_ws_param = 'zs_output_ws'
-    elif mode.lower() == 'image':
-        output_ws_param = 'image_output_ws'
-    else:
-        output_ws_param = 'output_ws'
-
-    inputs = config['INPUTS']
 
     # Get output spatial reference parameter separately for now
+    # Eventually move down and set below
     try:
         options['output_snap'] = [
-            int(i) for i in config['INPUTS'].get('output_snap').split(',')
+            int(i) for i in str(config['INPUTS']['output_snap']).split(',')
             if i.strip().isdigit()][:2]
     except:
         options['output_snap'] = [15, 15]
@@ -79,13 +70,13 @@ def ini_parse(ini_path, mode='zonal_stats'):
 
     # Output cellsize
     try:
-        options['output_cs'] = int(config['INPUTS'].get('output_cs'))
+        options['output_cs'] = int(config['INPUTS']['output_cs'])
     except:
         options['output_cs'] = 30
 
     # Output EPSG code
     try:
-        options['output_crs'] = config['INPUTS'].get('output_proj')
+        options['output_crs'] = str(config['INPUTS']['output_proj'])
     except:
         options['output_crs'] = ''
 
@@ -104,16 +95,21 @@ def ini_parse(ini_path, mode='zonal_stats'):
 
     # Image download specific options
     # Eventually move down and set below
-    try:
-        image_download_bands = config.get(
-            'IMAGES', 'image_download_bands').split(',')
-        options['image_download_bands'] = map(
-            lambda x: x.strip().lower(), image_download_bands)
-        logging.info('\n  Output Bands:')
-        for band in options['image_download_bands']:
-            logging.info('    {}'.format(band))
-    except:
-        options['image_download_bands'] = []
+    if section.lower() == 'image':
+        try:
+            download_bands = str(config['IMAGE']['download_bands'])
+            options['download_bands'] = map(
+                lambda x: x.strip().lower(), download_bands.split(','))
+            logging.info('\n  Output Bands:')
+            for band in options['download_bands']:
+                logging.info('    {}'.format(band))
+        except KeyError:
+            options['download_bands'] = []
+            logging.debug('  Setting {} = {}'.format(
+                'download_bands', options['download_bands']))
+        except Exception as e:
+            logging.error('\nERROR: Unhandled error\n  {}'.format(e))
+            sys.exit()
 
 
     # Get mandatory parameters
@@ -172,12 +168,15 @@ def ini_parse(ini_path, mode='zonal_stats'):
     # input_name, output_name, default, get_type
     param_list = [
         # Output folder
-        ['INPUTS', output_ws_param, 'output_ws', os.getcwd(), str],
+        [section.upper(), 'output_ws', 'output_ws', os.getcwd(), str],
+        # ['INPUTS', output_ws_param, 'output_ws', os.getcwd(), str],
         # Zonal stats options
-        ['INPUTS', 'zs_landsat_flag', 'zs_landsat_flag', True, bool],
-        ['INPUTS', 'zs_gridmet_daily_flag', 'zs_gridmet_daily_flag', False, bool],
-        ['INPUTS', 'zs_gridmet_monthly_flag', 'zs_gridmet_monthly_flag', False, bool],
-        ['INPUTS', 'zs_pdsi_flag', 'zs_pdsi_flag', False, bool],
+        ['ZONAL_STATS', 'landsat_flag', 'landsat_flag', True, bool],
+        ['ZONAL_STATS', 'gridmet_daily_flag', 'gridmet_daily_flag', False, bool],
+        ['ZONAL_STATS', 'gridmet_monthly_flag', 'gridmet_monthly_flag', False, bool],
+        ['ZONAL_STATS', 'pdsi_flag', 'pdsi_flag', False, bool],
+        # Image download options
+        ['IMAGE', 'merge_geometries_flag', 'merge_geom_flag', False, bool],
         # Control which Landsat images are used
         ['INPUTS', 'landsat4_flag', 'landsat4_flag', False, bool],
         ['INPUTS', 'landsat5_flag', 'landsat5_flag', False, bool],
@@ -298,13 +297,14 @@ def ini_parse(ini_path, mode='zonal_stats'):
         options['fmask_type'] = None
 
     # Mosaic method
-    options['mosaic_method'] = options['mosaic_method'].lower()
-    mosaic_method_list = ['mean', 'median', 'mosaic', 'min', 'max']
-    if options['mosaic_method'] not in mosaic_method_list:
-        logging.error(
-            '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
-                options['mosaic_method'], ', '.join(mosaic_method_list)))
-        sys.exit()
+    if options['mosaic_method']:
+        options['mosaic_method'] = options['mosaic_method'].lower()
+        mosaic_method_list = ['mean', 'median', 'mosaic', 'min', 'max']
+        if options['mosaic_method'] not in mosaic_method_list:
+            logging.error(
+                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
+                    options['mosaic_method'], ', '.join(mosaic_method_list)))
+            sys.exit()
 
     # Adjust Landsat Red and NIR bands
     if options['adjust_method']:

@@ -1,20 +1,15 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-01-22
+# Updated:      2017-01-25
 # Python:       2.7
 #--------------------------------
 
-from collections import OrderedDict
 import copy
-import csv
-import itertools
+import json
 import logging
 import math
-import os
-import random
 import sys
-import warnings
 
 import numpy as np
 from osgeo import gdal, ogr, osr
@@ -308,7 +303,7 @@ def matching_spatref(osr_a, osr_b):
 
     common = set(proj4_a.keys()) & set(proj4_b.keys())
     if (sorted([v for k, v in proj4_a.items() if k in common]) ==
-        sorted([v for k, v in proj4_b.items() if k in common])):
+            sorted([v for k, v in proj4_b.items() if k in common])):
         return True
     else:
         return False
@@ -328,9 +323,9 @@ def matching_spatref(osr_a, osr_b):
 #     osr_a.MorphToESRI()
 #     osr_b.MorphToESRI()
 #     if ((osr_a.GetAttrValue('GEOGCS') == osr_b.GetAttrValue('GEOGCS')) and
-#         (osr_a.GetAttrValue('PROJECTION') == osr_b.GetAttrValue('PROJECTION')) and
-#         (osr_a.GetAttrValue('UNIT') == osr_b.GetAttrValue('UNIT')) and
-#         (osr_a.GetUTMZone() == osr_b.GetUTMZone())):
+#           (osr_a.GetAttrValue('PROJECTION') == osr_b.GetAttrValue('PROJECTION')) and
+#           (osr_a.GetAttrValue('UNIT') == osr_b.GetAttrValue('UNIT')) and
+#           (osr_a.GetUTMZone() == osr_b.GetUTMZone())):
 #         return True
 #     else:
 #         return False
@@ -593,9 +588,9 @@ def raster_ds_shape(raster_ds):
 def extents_overlap(a_extent, b_extent):
     """Test if two extents overlap"""
     if ((a_extent.xmin > b_extent.xmax) or
-        (a_extent.xmax < b_extent.xmin) or
-        (a_extent.ymin > b_extent.ymax) or
-        (a_extent.ymax < b_extent.ymin)):
+            (a_extent.xmax < b_extent.xmin) or
+            (a_extent.ymin > b_extent.ymax) or
+            (a_extent.ymax < b_extent.ymin)):
         return False
     else:
         return True
@@ -804,7 +799,7 @@ def raster_ds_to_array(input_raster_ds, band=1, mask_extent=None,
             0, 0, input_raster_ds.RasterXSize, input_raster_ds.RasterYSize)
     # For float types, set nodata values to nan
     if (output_array.dtype == np.float32 or
-        output_array.dtype == np.float64):
+            output_array.dtype == np.float64):
         output_nodata = np.nan
         if input_nodata is not None:
             output_array[output_array == input_nodata] = output_nodata
@@ -923,3 +918,171 @@ def project_array(input_array, resampling_type,
         return output_array
     if input_dims == 2:
         return np.squeeze(output_array, axis=0)
+
+
+def shapefile_2_geom_list_func(input_path, zone_field=None,
+                               reverse_flag=False, simplify_flag=False):
+    """Return a list of feature geometries in the shapefile
+
+    Also return the FID and value in zone_field
+    """
+    logging.info('\nReading zone shapefile')
+    ftr_geom_list = []
+    input_ds = ogr.Open(input_path)
+    input_lyr = input_ds.GetLayer()
+    input_ftr_defn = input_lyr.GetLayerDefn()
+    # input_proj = input_lyr.GetSpatialRef().ExportToWkt()
+    if not zone_field or zone_field.upper() == 'FID':
+        zone_field_i = None
+        logging.info('  Using FID as zone field')
+    elif zone_field in feature_lyr_fields(input_lyr):
+        logging.debug('  Zone field: {}'.format(zone_field))
+        zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
+    else:
+        logging.error('\nERROR: Zone field "{}" is not in the '
+                      'shapefile'.format(zone_field))
+        return []
+        # raise ?
+
+    input_ftr = input_lyr.GetNextFeature()
+    while input_ftr:
+        input_fid = input_ftr.GetFID()
+        if zone_field_i:
+            input_zone = str(input_ftr.GetField(zone_field_i))
+        else:
+            input_zone = str(input_fid)
+        input_geom = input_ftr.GetGeometryRef()
+        if simplify_flag:
+            input_geom = input_geom.Simplify(1)
+            reverse_flag = False
+
+        # Convert feature to GeoJSON
+        json_str = input_ftr.ExportToJson()
+        json_obj = json.loads(json_str)
+
+        # Reverse the point order from counter-clockwise to clockwise
+        if reverse_flag:
+            json_obj['geometry'] = json_reverse_func(json_obj['geometry'])
+
+        # Strip Z value from coordinates
+        if len(json_obj['geometry']['coordinates'][0][0]) == 3:
+            json_obj['geometry'] = json_strip_z_func(json_obj['geometry'])
+
+        # # Reverse the point order from counter-clockwise to clockwise
+        # if reverse_flag and input_geom.GetGeometryName() == 'MULTIPOLYGON':
+        #     for i in range(len(json_obj['geometry']['coordinates'])):
+        #         for j in range(len(json_obj['geometry']['coordinates'][i])):
+        #             json_obj['geometry']['coordinates'][i][j] = list(reversed(
+        #                 json_obj['geometry']['coordinates'][i][j]))
+        # elif reverse_flag and input_geom.GetGeometryName() == 'POLYGON':
+        #     for i in range(len(json_obj['geometry']['coordinates'])):
+        #         json_obj['geometry']['coordinates'][i] = list(reversed(
+        #             json_obj['geometry']['coordinates'][i]))
+
+        # # Strip Z value from coordinates
+        # elif (input_geom.GetGeometryName() == 'MULTIPOLYGON' and
+        #         (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
+        #     for i in range(len(json_obj['geometry']['coordinates'])):
+        #         for j in range(len(json_obj['geometry']['coordinates'][i])):
+        #             json_obj['geometry']['coordinates'][i][j] = [
+        #                 x[:2] for x in json_obj['geometry']['coordinates'][i][j]]
+        # elif (input_geom.GetGeometryName() == 'POLYGON' and
+        #         (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
+        #     for i in range(len(json_obj['geometry']['coordinates'])):
+        #         json_obj['geometry']['coordinates'][i] = [
+        #             x[:2] for x in json_obj['geometry']['coordinates'][i]]
+
+        # Save the JSON object in the list
+        ftr_geom_list.append([input_fid, input_zone, json_obj['geometry']])
+        input_geom = None
+        input_ftr = input_lyr.GetNextFeature()
+    input_ds = None
+    return ftr_geom_list
+
+
+def feature_path_fields(feature_path):
+    """"""
+    feature_ds = ogr.Open(feature_path)
+    field_list = feature_ds_fields(feature_ds)
+    feature_ds = None
+    return field_list
+
+
+def feature_ds_fields(feature_ds):
+    """"""
+    feature_lyr = feature_ds.GetLayer()
+    return feature_lyr_fields(feature_lyr)
+
+
+def feature_lyr_fields(feature_lyr):
+    """"""
+    feature_lyr_defn = feature_lyr.GetLayerDefn()
+    return [
+        feature_lyr_defn.GetFieldDefn(i).GetNameRef()
+        for i in range(feature_lyr_defn.GetFieldCount())]
+
+
+def json_reverse_func(json_geom):
+    """Reverse the point order from counter-clockwise to clockwise
+
+    json_geom is modified in place
+
+    Args:
+        json_geom (dict): The geometry sub dictionar of a geojson.
+
+    Returns:
+        dict
+    """
+    if json_geom['type'].lower() == 'multipolygon':
+        for i in range(len(json_geom['coordinates'])):
+            for j in range(len(json_geom['coordinates'][i])):
+                json_geom['coordinates'][i][j] = list(reversed(
+                    json_geom['coordinates'][i][j]))
+    elif json_geom['type'].lower() == 'polygon':
+        for i in range(len(json_geom['coordinates'])):
+            json_geom['coordinates'][i] = list(reversed(
+                json_geom['coordinates'][i]))
+    return json_geom
+
+
+def json_strip_z_func(json_geom):
+    """Strip Z value from coordinates
+
+    json_geom is modified in place
+
+    Args:
+        json_geom (dict): The geometry sub dictionar of a geojson.
+
+    Returns:
+        dict
+    """
+    if (json_geom['type'].lower() == 'multipolygon' and
+            (len(json_geom['coordinates'][0][0][0]) == 3)):
+        for i in range(len(json_geom['coordinates'])):
+            for j in range(len(json_geom['coordinates'][i])):
+                json_geom['coordinates'][i][j] = [
+                    x[:2] for x in json_geom['coordinates'][i][j]]
+    elif (json_geom['type'].lower() == 'polygon' and
+            (len(json_geom['coordinates'][0][0]) == 3)):
+        for i in range(len(json_geom['coordinates'])):
+            json_geom['coordinates'][i] = [
+                x[:2] for x in json_geom['coordinates'][i]]
+    return json_geom
+
+
+def geo_2_ee_transform(gdal_geo):
+    """Convert GDAL GeoTransform to EE style crsTransform
+
+    EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
+    GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
+    """
+    return tuple([gdal_geo[i] for i in [1, 2, 0, 4, 5, 3]])
+
+
+def ee_transform_2_geo(gdal_geo):
+    """Convert EE style crsTransform to GDAL GeoTransform
+
+    EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
+    GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
+    """
+    return tuple([gdal_geo[i] for i in [2, 0, 1, 5, 3, 4]])

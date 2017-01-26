@@ -2,18 +2,16 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-01-24
+# Created       2017-01-25
 # Python:       2.7
 #--------------------------------
 
 import datetime
-import json
 import logging
 import math
 import sys
 
 import ee
-from osgeo import ogr
 
 
 ee.Initialize()
@@ -37,28 +35,30 @@ nldas_next_filter = ee.Filter.And(
 
 def show_thumbnail(ee_image):
     """Show the EarthEngine image thumbnail in a window"""
+    output_url = ee_image.getThumbUrl({'format': 'jpg', 'size': '600'})
+    logging.debug(output_url)
+
+    # import webbrowser
+    # webbrowser.open(output_url)
+
     import io
     # import Image, ImageTk
     from PIL import Image, ImageTk
     import Tkinter as tk
     import urllib2
-
     window = tk.Tk()
-    output_url = ee_image.getThumbUrl({'format': 'jpg', 'size': '600'})
-    print(output_url)
     output_file = Image.open(io.BytesIO(urllib2.urlopen(output_url).read()))
     output_photo = ImageTk.PhotoImage(output_file)
     label = tk.Label(window, image=output_photo)
     label.pack()
     window.mainloop()
-    return True
 
 
 # Earth Engine calculation functions
 
 def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
                        landsat7_flag=True, landsat8_flag=True,
-                       mosaic_method='mean', landsat_coll_args={}):
+                       mosaic_method=None, landsat_coll_args={}):
     """Compute Landsat derived images
 
     NLDAS must be merged with Landsat before calling images function
@@ -157,8 +157,8 @@ def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
     return landsat_coll
 
 
-def get_landsat_image(landsat, year, doy, mosaic_method,
-                      landsat_coll_args={}):
+def get_landsat_image(landsat, year, doy, path=None, row=None,
+                      mosaic_method=None, landsat_coll_args={}):
     """Return a single mosaiced Landsat image
 
     Mosaic images from different rows from the same date (same path)
@@ -167,6 +167,8 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
         landsat (str):
         year (int):
         doy (int): day of year
+        path (int): Landsat path number
+        row (int): Landsat row number
         mosaic_method (str):
         landsat_coll_args (dict): keyword arguments for get_landst_collection
 
@@ -174,9 +176,10 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
         ee.Image
     """
     image_start_dt = datetime.datetime.strptime(
-        '{}_{}'.format(year, doy), '%Y_%j')
+        '{:04d}_{:03d}'.format(int(year), int(doy)), '%Y_%j')
     image_end_dt = image_start_dt + datetime.timedelta(days=1)
 
+    # Adjust the default keyword arguments for a single image date
     image_args = landsat_coll_args.copy()
     image_args['start_date'] = image_start_dt.date().isoformat()
     image_args['end_date'] = image_end_dt.date().isoformat()
@@ -184,6 +187,10 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
     # image_args['end_dear'] = year
     # image_args['start_doy'] = doy
     # image_args['end_doy'] = doy
+    if path:
+        image_args['path_keep_list'] = [int(path)]
+    if row:
+        image_args['row_keep_list'] = [int(row)]
 
     landsat_coll = get_landsat_collection(landsat, **image_args)
 
@@ -228,24 +235,24 @@ def get_landsat_image(landsat, year, doy, mosaic_method,
         else:
             landsat_coll = landsat_coll.map(landsat8_images_func)
 
-    # Mosaic overlapping images
-    if mosaic_method:
-        if mosaic_method.lower() == 'mean':
-            landsat_image = ee.Image(landsat_coll.mean())
-        elif mosaic_method.lower() == 'mosaic':
-            landsat_image = ee.Image(landsat_coll.mosaic())
-        elif mosaic_method.lower() == 'min':
-            landsat_image = ee.Image(landsat_coll.min())
-        elif mosaic_method.lower() == 'max':
-            landsat_image = ee.Image(landsat_coll.max())
-        elif mosaic_method.lower() == 'median':
-            landsat_image = ee.Image(landsat_coll.median())
-        else:
-            logging.error('\nERROR: Unsupported mosaic method: {}'.format(
-                mosaic_method))
-    else:
-        # DEADBEEF - How should I return multiple images?
+    # Return first image from collection (don't mosaic)
+    if not mosaic_method:
         landsat_image = ee.Image(landsat_coll.first())
+    # Mosaic overlapping images
+    elif mosaic_method.lower() == 'mean':
+        landsat_image = ee.Image(landsat_coll.mean())
+    elif mosaic_method.lower() == 'mosaic':
+        landsat_image = ee.Image(landsat_coll.mosaic())
+    elif mosaic_method.lower() == 'min':
+        landsat_image = ee.Image(landsat_coll.min())
+    elif mosaic_method.lower() == 'max':
+        landsat_image = ee.Image(landsat_coll.max())
+    elif mosaic_method.lower() == 'median':
+        landsat_image = ee.Image(landsat_coll.median())
+    else:
+        logging.error('\nERROR: Unsupported mosaic method: {}'.format(
+            mosaic_method))
+        sys.exit()
 
     return landsat_image
 
@@ -285,8 +292,8 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
         end_doy (int):
         scene_id_keep_list (list):
         scene_id_skip_list (list):
-        path_keep_list (list):
-        row_keep_list (list):
+        path_keep_list (list): Landsat path numbers (as int)
+        row_keep_list (list): Landsat row numbers (as int)
         adjust_method (str): Adjust Landsat red and NIR bands.
             Choices: 'etm_2_oli' or 'oli_2_etm'.
             This could probably be simplifed to a flag.
@@ -301,6 +308,9 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
             input_image.get('system:index')).slice(0, 16)
         #     input_image.get('LANDSAT_SCENE_ID')).slice(0, 16)
         return input_image.setMulti({'SCENE_ID': scene_id})
+        # mosaic_id = scene_id.slice(0, 6).cat('XXX').cat(scene_id.slice(9, 16))
+        # return input_image.setMulti({
+        #     'SCENE_ID': scene_id, 'MOSAIC_ID': mosaic_id})
 
     landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat.upper())
     landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat.upper())
@@ -583,7 +593,7 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
                 'tc_bright', 'tc_green', 'tc_wet',
                 'cloud_score', 'fmask'
             ]) \
-        .copyProperties(refl_toa, system_properties)
+        .copyProperties(refl_toa, system_properties + ['SCENE_ID'])
 
 
 def landsat45_toa_band_func(img):
@@ -1380,129 +1390,3 @@ def daily_pet_func(doy, tmin, tmax, ea, rs, uz, zw, cn=900, cd=0.34):
         '(slope + psy * (cd * u2 + 1))',
         {'slope': es_slope, 'rn': rn, 'g': 0, 'psy': psy, 'cn': cn,
          't': tmean, 'u2': u2, 'es': es, 'ea': ea, 'cd': cd})
-
-
-def feature_path_fields(feature_path):
-    """"""
-    feature_ds = ogr.Open(feature_path)
-    field_list = feature_ds_fields(feature_ds)
-    feature_ds = None
-    return field_list
-
-
-def feature_ds_fields(feature_ds):
-    """"""
-    feature_lyr = feature_ds.GetLayer()
-    return feature_lyr_fields(feature_lyr)
-
-
-def feature_lyr_fields(feature_lyr):
-    """"""
-    feature_lyr_defn = feature_lyr.GetLayerDefn()
-    return [
-        feature_lyr_defn.GetFieldDefn(i).GetNameRef()
-        for i in range(feature_lyr_defn.GetFieldCount())]
-
-
-def shapefile_2_geom_list_func(input_path, zone_field=None,
-                               reverse_flag=False, simplify_flag=False):
-    """Return a list of feature geometries in the shapefile
-
-    Also return the FID and value in zone_field
-    """
-    logging.info('\nReading zone shapefile')
-    ftr_geom_list = []
-    input_ds = ogr.Open(input_path)
-    input_lyr = input_ds.GetLayer()
-    input_ftr_defn = input_lyr.GetLayerDefn()
-    # input_proj = input_lyr.GetSpatialRef().ExportToWkt()
-    if not zone_field or zone_field.upper() == 'FID':
-        zone_field_i = None
-        logging.info('  Using FID as zone field')
-    elif zone_field in feature_lyr_fields(input_lyr):
-        logging.debug('  Zone field: {}'.format(zone_field))
-        zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
-    else:
-        logging.error('\nERROR: Zone field "{}" is not in the '
-                      'shapefile'.format(zone_field))
-        return []
-        # raise ?
-
-    input_ftr = input_lyr.GetNextFeature()
-    while input_ftr:
-        input_fid = input_ftr.GetFID()
-        if zone_field_i:
-            input_zone = str(input_ftr.GetField(zone_field_i))
-        else:
-            input_zone = str(input_fid)
-        input_geom = input_ftr.GetGeometryRef()
-        if simplify_flag:
-            input_geom = input_geom.Simplify(1)
-            reverse_flag = False
-
-        # Convert feature to GeoJSON
-        json_str = input_ftr.ExportToJson()
-        json_obj = json.loads(json_str)
-
-        # Reverse the point order from counter-clockwise to clockwise
-        if reverse_flag and input_geom.GetGeometryName() == 'MULTIPOLYGON':
-            for i in range(len(json_obj['geometry']['coordinates'])):
-                for j in range(len(json_obj['geometry']['coordinates'][i])):
-                    json_obj['geometry']['coordinates'][i][j] = list(reversed(
-                        json_obj['geometry']['coordinates'][i][j]))
-        elif reverse_flag and input_geom.GetGeometryName() == 'POLYGON':
-            for i in range(len(json_obj['geometry']['coordinates'])):
-                json_obj['geometry']['coordinates'][i] = list(reversed(
-                    json_obj['geometry']['coordinates'][i]))
-
-        # Strip Z value from coordinates
-        elif (input_geom.GetGeometryName() == 'MULTIPOLYGON' and
-                (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
-            for i in range(len(json_obj['geometry']['coordinates'])):
-                for j in range(len(json_obj['geometry']['coordinates'][i])):
-                    json_obj['geometry']['coordinates'][i][j] = [
-                        x[:2] for x in json_obj['geometry']['coordinates'][i][j]]
-        elif (input_geom.GetGeometryName() == 'POLYGON' and
-                (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
-            for i in range(len(json_obj['geometry']['coordinates'])):
-                json_obj['geometry']['coordinates'][i] = [
-                    x[:2] for x in json_obj['geometry']['coordinates'][i]]
-
-        # Save the JSON object in the list
-        ftr_geom_list.append([input_fid, input_zone, json_obj['geometry']])
-        input_geom = None
-        input_ftr = input_lyr.GetNextFeature()
-    input_ds = None
-    return ftr_geom_list
-
-
-def json_reverse_func(json_obj):
-    """Reverse the point order from counter-clockwise to clockwise"""
-    if json_obj['type'].lower() == 'multipolygon':
-        for i in range(len(json_obj['coordinates'])):
-            for j in range(len(json_obj['coordinates'][i])):
-                json_obj['coordinates'][i][j] = list(reversed(
-                    json_obj['coordinates'][i][j]))
-    elif json_obj['type'].lower() == 'polygon':
-        for i in range(len(json_obj['coordinates'])):
-            json_obj['coordinates'][i] = list(reversed(
-                json_obj['coordinates'][i]))
-    return json_obj
-
-
-def geo_2_ee_transform(gdal_geo):
-    """Convert GDAL GeoTransform to EE style crsTransform
-
-    EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
-    GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
-    """
-    return tuple([gdal_geo[i] for i in [1, 2, 0, 4, 5, 3]])
-
-
-def ee_transform_2_geo(gdal_geo):
-    """Convert EE style crsTransform to GDAL GeoTransform
-
-    EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
-    GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
-    """
-    return tuple([gdal_geo[i] for i in [2, 0, 1, 5, 3, 4]])

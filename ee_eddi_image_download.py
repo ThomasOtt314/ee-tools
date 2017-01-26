@@ -2,7 +2,7 @@
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
 # Author:       Charles Morton
-# Created       2017-01-24
+# Created       2017-01-25
 # Python:       2.7
 #--------------------------------
 
@@ -37,9 +37,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine EDDI Image Download')
 
-    # Generate a single for the merged geometries
-    merge_geom_flag = True
-
     # 12 month EDDI
     aggregation_days = 365
     export_name = 'eddi_12month'
@@ -61,7 +58,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     climo_year_end = 2016
 
     # Read config file
-    ini = ini_common.ini_parse(ini_path, mode='image')
+    ini = ini_common.ini_parse(ini_path, section='image')
 
     nodata_value = -9999
 
@@ -80,11 +77,21 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     logging.debug('  OSR: {}'.format(ini['output_osr']))
 
     # Get ee features from shapefile
-    zone_geom_list = ee_common.shapefile_2_geom_list_func(
+    zone_geom_list = gdc.shapefile_2_geom_list_func(
         ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
 
+    # Filter features by FID before merging geometries
+    if ini['fid_keep_list']:
+        zone_geom_list = [
+            [fid, zone, geom] for zone_geom in zone_geom_list
+            if fid in ini['fid_keep_list']]
+    if ini['fid_skip_list']:
+        zone_geom_list = [
+            [fid, zone, geom] for zone_geom in zone_geom_list
+            if fid not in ini['fid_skip_list']]
+
     # Merge geometries
-    if merge_geom_flag:
+    if ini['merge_geom_flag']:
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone in zone_geom_list:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -119,10 +126,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Download images for each feature separately
     for fid, zone_str, zone_json in sorted(zone_geom_list):
-        if ini['fid_keep_list'] and fid not in ini['fid_keep_list']:
-            continue
-        elif ini['fid_skip_list'] and fid in ini['fid_skip_list']:
-            continue
         logging.info('ZONE: {} ({})'.format(zone_str, fid))
 
         if ini['zone_field'].upper() == 'FID':
@@ -152,7 +155,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         zone_extent.adjust_to_snap(
             'EXPAND', ini['output_x'], ini['output_y'], ini['output_cs'])
         zone_geo = zone_extent.geo(ini['output_cs'])
-        zone_transform = ee_common.geo_2_ee_transform(zone_geo)
+        zone_transform = gdc.geo_2_ee_transform(zone_geo)
         zone_shape = zone_extent.shape(ini['output_cs'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
@@ -196,7 +199,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             # Rename to match naming style from getDownloadURL
             #     image_name.band.tif
             export_id = '{}_{}_{}'.format(
-                zone_name, date_str, export_name.lower())
+                ini['zone_name'], date_str, export_name.lower())
             output_id = '{}_{}'.format(date_str, output_name)
 
             export_path = os.path.join(ini['export_ws'], export_id + '.tif')

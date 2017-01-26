@@ -2,7 +2,7 @@
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
 # Author:       Charles Morton
-# Created       2017-01-24
+# Created       2017-01-25
 # Python:       2.7
 #--------------------------------
 
@@ -39,9 +39,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     logging.info('\nEarth Engine Landsat Image Download')
     images_folder = 'landsat'
 
-    # Generate a single for the merged geometries
-    merge_geom_flag = True
-
     if overwrite_flag:
         logging.warning(
             '\nAre you sure you want to overwrite existing images?')
@@ -52,9 +49,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    ini = ini_common.ini_parse(ini_path, mode='image')
+    ini = ini_common.ini_parse(ini_path, section='image')
 
-    #
     nodata_value = -9999
 
     # Float32/Float64
@@ -72,11 +68,21 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # arcpy.env.compression = "LZW"
 
     # Get ee features from shapefile
-    zone_geom_list = ee_common.shapefile_2_geom_list_func(
+    zone_geom_list = gdc.shapefile_2_geom_list_func(
         ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
 
+    # Filter features by FID before merging geometries
+    if ini['fid_keep_list']:
+        zone_geom_list = [
+            [fid, zone, geom] for zone_geom in zone_geom_list
+            if fid in ini['fid_keep_list']]
+    if ini['fid_skip_list']:
+        zone_geom_list = [
+            [fid, zone, geom] for zone_geom in zone_geom_list
+            if fid not in ini['fid_skip_list']]
+
     # Merge geometries
-    if merge_geom_flag:
+    if ini['merge_geom_flag']:
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone in zone_geom_list:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -127,10 +133,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Download images for each feature separately
     for fid, zone_str, zone_json in sorted(zone_geom_list):
-        if ini['fid_keep_list'] and fid not in ini['fid_keep_list']:
-            continue
-        elif ini['fid_skip_list'] and fid in ini['fid_skip_list']:
-            continue
         logging.info('\nZONE: {} (FID: {})'.format(zone_str, fid))
 
         if ini['zone_field'].upper() == 'FID':
@@ -152,7 +154,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         zone_extent.adjust_to_snap(
             'EXPAND', ini['snap_x'], ini['snap_y'], ini['output_cs'])
         zone_geo = zone_extent.geo(ini['output_cs'])
-        zone_transform = ee_common.geo_2_ee_transform(zone_geo)
+        zone_transform = gdc.geo_2_ee_transform(zone_geo)
         zone_shape = zone_extent.shape(ini['output_cs'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
@@ -170,24 +172,14 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # Keyword arguments for ee_common.get_landsat_collection() and
         #   ee_common.get_landsat_image()
         landsat_args = {k: v for k, v in ini.items() if k in [
-            'fmask_flag', 'acca_flag', 'fmask_type', 'zone_geom',
-            # 'start_date', 'end_date',
+            'fmask_flag', 'acca_flag', 'fmask_type',
             'start_year', 'end_year',
             'start_month', 'end_month', 'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list', 'adjust_method']}
-        # landsat_args = {
-        #     'fmask_flag': fmask_flag, 'acca_flag': acca_flag,
-        #     'fmask_type': fmask_type, 'zone_geom': zone_geom,
-        #     'start_date': None, 'end_date': None,
-        #     'start_year': start_year, 'end_year': end_year,
-        #     'start_month': start_month, 'end_month': end_month,
-        #     'start_doy': start_doy, 'end_doy': end_doy,
-        #     'scene_id_keep_list': scene_id_keep_list,
-        #     'scene_id_skip_list': scene_id_skip_list,
-        #     'path_keep_list': path_keep_list,
-        #     'row_keep_list': row_keep_list,
-        #     'adjust_method': adjust_method}
+        # landsat_args['start_date'] = start_date
+        # landsat_args['end_date'] = end_date
+        landsat_args['zone_geom'] = zone_geom
 
         # Move to EE common
         def get_collection_ids(image):
@@ -221,47 +213,65 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     .map(get_collection_ids).getInfo()['features']])
 
         # Get list of unique image "dates"
-        scene_id_list = set([
-            (image_id[9:13], image_id[13:16], image_id[:3])
-            for image_id in scene_id_list])
+        # Keep scene_id components as string for set operation
+        # If not mosaicing images, include path/row in set
+        #   otherwise set to None
+        if not ini['mosaic_method']:
+            scene_id_list = set([
+                (image_id[9:13], image_id[13:16], image_id[0:3],
+                    image_id[3:6], image_id[6:9])
+                for image_id in scene_id_list])
+        else:
+            scene_id_list = set([
+                (image_id[9:13], image_id[13:16], image_id[0:3], None, None)
+                for image_id in scene_id_list])
         logging.debug('  Scene Count: {}\n'.format(len(scene_id_list)))
 
         # Process each image in the collection by date
-        # for image_id in scene_id_list:
-        #     logging.info("{}".format(image_id))
-        for year, doy, landsat in sorted(scene_id_list):
+        # Leave scene_id components as strings
+        for year, doy, landsat, path, row in sorted(scene_id_list):
             scene_dt = datetime.datetime.strptime(
                 '{}_{}'.format(year, doy), '%Y_%j')
             month = scene_dt.month
             day = scene_dt.day
+
+            # If not mosaicing images, include path/row in name
+            if not ini['mosaic_method']:
+                landsat_str = '{}{}{}'.format(landsat, path, row)
+            else:
+                landsat_str = '{}'.format(landsat)
             logging.info("{} {}-{:02d}-{:02d} (DOY {})".format(
-                landsat, year, month, day, doy))
+                landsat.upper(), year, month, day, doy))
+
             zone_year_ws = os.path.join(zone_images_ws, year)
             if not os.path.isdir(zone_year_ws):
                 os.makedirs(zone_year_ws)
 
             # Get the prepped Landsat image by ID
             landsat_image = ee_common.get_landsat_image(
-                landsat, year, doy, ini['mosaic_method'], landsat_args)
+                landsat, year, doy, path, row, ini['mosaic_method'],
+                landsat_args)
 
             # Clip using the feature geometry
             landsat_image = ee.Image(landsat_image).clip(zone_geom)
-            # ee_common.show_thumbnail(landsat_image)
+            # ee_common.show_thumbnail(landsat_image.visualize(
+            #     bands=['toa_red', 'toa_green', 'toa_blue'],
+            #     min=0.05, max=0.35, gamma=1.4))
 
             # Set the masked values to a nodata value
             # so that the TIF can have a nodata value other than 0 set
             landsat_image = landsat_image.unmask(nodata_value, False)
 
-            for band in image_download_bands:
+            for band in ini['download_bands']:
                 logging.debug('  Band: {}'.format(band))
 
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}{:02d}{:02d}_{}_{}_{}'.format(
-                    zone_name, year, month, day, doy, landsat.lower(),
-                    band.lower())
+                    ini['zone_name'], year, month, day, doy,
+                    landsat_str.lower(), band.lower())
                 output_id = '{}{:02d}{:02d}_{}_{}.{}'.format(
-                    year, month, day, doy, landsat.lower(), band)
+                    year, month, day, doy, landsat_str.lower(), band)
 
                 export_path = os.path.join(ini['export_ws'], export_id + '.tif')
                 output_path = os.path.join(
@@ -347,7 +357,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     band_image,
                     description=export_id,
-                    folder=export_folder,
+                    folder=ini['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['output_crs'],
