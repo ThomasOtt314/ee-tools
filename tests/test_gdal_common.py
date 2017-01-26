@@ -1,24 +1,10 @@
-# from collections import OrderedDict
-# import copy
-# import csv
-# import itertools
-# import logging
-# import math
-# import os
-# import random
-# import sys
-# import warnings
-
-# import numpy as np
-# from osgeo import gdal, ogr, osr
 import pytest
 
 import ee_tools.gdal_common as gdc
 
-# gdal.UseExceptions()
 
-
-def test_extent_properties(extent=[0, 10, 100, 90], expected=[0, 10, 100, 90]):
+def test_extent_properties(extent=[2000, 1000, 2100, 1080],
+                           expected=[2000, 1000, 2100, 1080]):
     extent = gdc.Extent(extent)
     assert extent.xmin == expected[0]
     assert extent.ymin == expected[1]
@@ -32,12 +18,14 @@ def test_extent_rounding(extent=[0.111111, 0.111111, 0.888888, 0.888888],
     assert list(extent) == expected
 
 
-def test_extent_str(extent=[0, 10, 100, 90], expected='0.0 10.0 100.0 90.0'):
+def test_extent_str(extent=[2000, 1000, 2100, 1080],
+                    expected='2000.0 1000.0 2100.0 1080.0'):
     extent = gdc.Extent(extent)
     assert str(extent) == expected
 
 
-def test_extent_list(extent=[0, 10, 100, 90], expected=[0, 10, 100, 90]):
+def test_extent_list(extent=[2000, 1000, 2100, 1080],
+                     expected=[2000, 1000, 2100, 1080]):
     extent = gdc.Extent(extent)
     assert list(extent) == expected
 
@@ -80,8 +68,9 @@ def test_extent_buffer_extent(extent, distance, expected):
 #     assert False
 
 
-def test_extent_corner_points(extent=[0, 10, 100, 90],
-                              expected=[(0, 90), (100, 90), (100, 10), (0, 10)]):
+def test_extent_corner_points(extent=[2000, 1000, 2100, 1080],
+                              expected=[(2000, 1080), (2100, 1080),
+                                        (2100, 1000), (2000, 1000)]):
     """Corner points in clockwise order starting with upper-left point"""
     extent = gdc.Extent(extent)
     assert extent.corner_points() == expected
@@ -382,25 +371,25 @@ def test_extent_geo(extent=[0, 10, 100, 90], cs=10,
 #     assert False
 
 
-def test_geo_cellsize(geo=(0, 10, 0, 90, 0, -10), x_only=False,
+def test_geo_cellsize(geo=(1000, 10, 0, 2100, 0, -10), x_only=False,
                       expected=(10, -10)):
     """Return pixel width & pixel height of a geo-transform"""
     assert gdc.geo_cellsize(geo, x_only) == expected
 
 
-def test_geo_cellsize_x_only(geo=(0, 10, 0, 90, 0, -10), x_only=True,
+def test_geo_cellsize_x_only(geo=(1000, 10, 0, 2100, 0, -10), x_only=True,
                              expected=10):
     """Return pixel width of a geo-transform"""
     assert gdc.geo_cellsize(geo, x_only) == expected
 
 
-def test_geo_origin(geo=(0, 10, 0, 90, 0, -10), expected=(0, 90)):
+def test_geo_origin(geo=(1000, 10, 0, 2100, 0, -10), expected=(1000, 2100)):
     """Return upper-left corner of geo-transform"""
     assert gdc.geo_origin(geo) == expected
 
 
-def test_geo_extent(geo=(0, 10, 0, 90, 0, -10), rows=8, cols=10,
-                    expected=[0, 10, 100, 90]):
+def test_geo_extent(geo=(1000, 10, 0, 2100, 0, -10), rows=10, cols=8,
+                    expected=[1000, 2000, 1080, 2100]):
     """Return the extent from a geo-transform and array shape (rows, cols)"""
     assert list(gdc.geo_extent(geo, rows, cols)) == expected
 
@@ -579,3 +568,82 @@ def test_intersect_extents(extent_list, expected):
 #     """
 
 #     assert False
+
+
+# def test_shapefile_2_geom_list_func(input_path, zone_field=None,
+#                                reverse_flag=False, simplify_flag=False):
+#     """Return a list of feature geometries in the shapefile
+
+#     Also return the FID and value in zone_field
+#     FID value will be returned if zone_field is not set or does not exist
+#     """
+#     assert False
+
+
+# def test_feature_path_fields(feature_path):
+#     """"""
+#     assert False
+
+
+# def test_feature_ds_fields(feature_ds):
+#     """"""
+#     assert False
+
+
+# def test_feature_lyr_fields(feature_lyr):
+#     """"""
+#     assert False
+
+
+def test_json_reverse_polygon(extent=[0, 0, 20, 10]):
+    """Reverse the point order from counter-clockwise to clockwise"""
+    pts = map(list, gdc.Extent(extent).corner_points())
+    json_geom = {'type': 'Polygon', 'coordinates': [pts]}
+    expected = {'type': 'Polygon', 'coordinates': [pts[::-1]]}
+    assert gdc.json_reverse_func(json_geom) == expected
+
+
+def test_json_reverse_multipolygon(extent=[0, 0, 20, 10]):
+    """Reverse the point order from counter-clockwise to clockwise"""
+    pts = map(list, gdc.Extent(extent).corner_points())
+    json_geom = {'type': 'MultiPolygon', 'coordinates': [[pts]]}
+    expected = {'type': 'MultiPolygon', 'coordinates': [[pts[::-1]]]}
+    assert gdc.json_reverse_func(json_geom) == expected
+
+
+def test_json_strip_z_polygon(extent=[0, 0, 20, 10]):
+    """Strip Z value from coordinates"""
+    pts = map(list, gdc.Extent(extent).corner_points())
+    json_geom = {'type': 'Polygon', 'coordinates': [[p + [1.0] for p in pts]]}
+    expected = {'type': 'Polygon', 'coordinates': [pts]}
+    assert gdc.json_strip_z_func(json_geom) == expected
+
+
+def test_json_strip_z_multipolygon(extent=[0, 0, 20, 10]):
+    """Strip Z value from coordinates"""
+    pts = map(list, gdc.Extent(extent).corner_points())
+    json_geom = {
+        'type': 'MultiPolygon',
+        'coordinates': [[[p + [1.0] for p in pts]]]}
+    expected = {'type': 'MultiPolygon', 'coordinates': [[pts]]}
+    assert gdc.json_strip_z_func(json_geom) == expected
+
+
+def test_geo_2_ee_transform(geo=(1000, 10, 0, 2100, 0, -10),
+                            expected=(10, 0, 1000, 0, -10, 2100)):
+    """ EE crs transforms are different than GDAL geo transforms
+
+    EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
+    GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
+    """
+    assert gdc.geo_2_ee_transform(geo) == expected
+
+
+def test_ee_transform_2_geo(transform=(10, 0, 1000, 0, -10, 2100),
+                            expected=(1000, 10, 0, 2100, 0, -10)):
+    """ EE crs transforms are different than GDAL geo transforms
+
+    EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
+    GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
+    """
+    assert gdc.ee_transform_2_geo(transform) == expected

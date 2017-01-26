@@ -1,11 +1,9 @@
 # import datetime
-# import json
 import logging
 # import math
 # import sys
 
 import ee
-# from osgeo import ogr
 import pytest
 
 import ee_tools.ee_common as ee_common
@@ -560,51 +558,5 @@ def test_albedo_func(refl_sur, landsat, expected, tol=0.0001):
 #     cn -- coefficient
 #     cd -- coefficient
 
-#     """
-#     assert False
-
-
-# def test_feature_path_fields(feature_path):
-#     """"""
-#     assert False
-
-
-# def test_feature_ds_fields(feature_ds):
-#     """"""
-#     assert False
-
-
-# def test_feature_lyr_fields(feature_lyr):
-#     """"""
-#     assert False
-
-
-# def test_shapefile_2_geom_list_func(input_path, zone_field=None,
-#                                reverse_flag=False, simplify_flag=False):
-#     """Return a list of feature geometries in the shapefile
-
-#     Also return the FID and value in zone_field
-#     FID value will be returned if zone_field is not set or does not exist
-#     """
-#     assert False
-
-
-# def test_json_reverse_func(json_obj):
-#     """Reverse the point order from counter-clockwise to clockwise"""
-#     assert False
-
-
-# def test_geo_2_ee_transform(gdal_geo):
-#     """ EE crs transforms are different than GDAL geo transforms
-#     EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
-#     GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
-#     """
-#     assert False
-
-
-# def test_ee_transform_2_geo(gdal_geo):
-#     """ EE crs transforms are different than GDAL geo transforms
-#     EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
-#     GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
 #     """
 #     assert False
