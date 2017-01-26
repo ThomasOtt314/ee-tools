@@ -1,6 +1,10 @@
 # ee-tools
 Earth Engine Zonal Stats and Image Download Tools
 
+## Notes
+
+Currently, the output spatial reference set in the INI file must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference.  Eventually the code will handle this projection.
+
 ## Zonal Stats
 
 
@@ -11,6 +15,14 @@ Earth Engine Zonal Stats and Image Download Tools
 
 ## Using the Tools
 
+
+```
+> python ee_landsat_image_download.py -i example\test_ee_images.ini
+```
+
+```
+> python ee_shapefile_zonal_stats_export.py -i example\test_ee_zs.ini
+```
 
 
 ## Dependencies

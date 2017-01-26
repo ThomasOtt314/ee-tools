@@ -64,21 +64,31 @@ def ini_parse(ini_path, section='zonal_stats'):
         options['output_snap'] = [
             int(i) for i in str(config['INPUTS']['output_snap']).split(',')
             if i.strip().isdigit()][:2]
-    except:
-        options['output_snap'] = [15, 15]
+    except KeyError:
+        logging.error(
+            '\nERROR: {} was not set in the INI, '
+            'exiting\n'.format('output_snap'))
+        sys.exit()
+
     options['snap_x'], options['snap_y'] = options['output_snap']
 
     # Output cellsize
     try:
         options['output_cs'] = int(config['INPUTS']['output_cs'])
-    except:
-        options['output_cs'] = 30
+    except KeyError:
+        logging.error(
+            '\nERROR: {} was not set in the INI, '
+            'exiting\n'.format('output_cs'))
+        sys.exit()
 
     # Output EPSG code
     try:
         options['output_crs'] = str(config['INPUTS']['output_proj'])
-    except:
-        options['output_crs'] = ''
+    except KeyError:
+        logging.error(
+            '\nERROR: {} was not set in the INI, '
+            'exiting\n'.format('output_crs'))
+        sys.exit()
 
     # Compute OSR from EGSG code
     if options['output_crs']:

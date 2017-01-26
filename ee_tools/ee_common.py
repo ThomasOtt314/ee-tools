@@ -1390,3 +1390,55 @@ def daily_pet_func(doy, tmin, tmax, ea, rs, uz, zw, cn=900, cd=0.34):
         '(slope + psy * (cd * u2 + 1))',
         {'slope': es_slope, 'rn': rn, 'g': 0, 'psy': psy, 'cn': cn,
          't': tmean, 'u2': u2, 'es': es, 'ea': ea, 'cd': cd})
+
+
+def mosaic_landsat_images(landsat_coll, mosaic_method):
+    """"""
+
+    def mosaic_id_func(image):
+        scene_id = ee.String(ee.List(ee.String(
+            image.get('system:index')).split('_')).get(-1))
+        # scene_id = scene_id.slice(0, 16)
+        mosaic_id = scene_id.slice(0, 6).cat('XXX').cat(scene_id.slice(9, 16))
+        return image.setMulti({'MOSAIC_ID': mosaic_id})
+    landsat_coll = landsat_coll.map(mosaic_id_func)
+
+    mosaic_id_list = ee.List(ee.Dictionary(ee.FeatureCollection(
+        landsat_coll.aggregate_histogram('MOSAIC_ID'))).keys())
+    # print(mosaic_id_list.getInfo())
+
+    def set_mosaic_id(mosaic_id):
+        return ee.Feature(None, {'MOSAIC_ID': ee.String(mosaic_id)})
+    mosaic_id_coll = ee.FeatureCollection(mosaic_id_list.map(set_mosaic_id))
+    # print(mosaic_id_coll.getInfo())
+
+    join_coll = ee.Join.saveAll('join').apply(
+        mosaic_id_coll, landsat_coll,
+        ee.Filter.equals(leftField='MOSAIC_ID', rightField='MOSAIC_ID'))
+    # print(join_coll.getInfo()['features'][0]['properties'])
+
+    def aggregate_func(ftr):
+        # The composite image time will be 0 UTC (not Landsat time)
+        coll = ee.ImageCollection.fromImages(ftr.get('join'))
+        time = ee.Image(ee.List(ftr.get('join')).get(0)).get('system:time_start')
+        if mosaic_method.lower() == 'mean':
+            image = coll.mean()
+        elif mosaic_method.lower() == 'median':
+            image = coll.median()
+        elif mosaic_method.lower() == 'mosaic':
+            image = coll.mosaic()
+        elif mosaic_method.lower() == 'min':
+            image = coll.min()
+        elif mosaic_method.lower() == 'max':
+            image = coll.max()
+        else:
+            image = coll.first()
+        return ee.Image(image).setMulti({
+            'SCENE_ID': ee.String(ftr.get('MOSAIC_ID')),
+            # 'system:index': ee.String(ftr.get('MOSAIC_ID')),
+            'system:time_start': time})
+    mosaic_coll = ee.ImageCollection(join_coll.map(aggregate_func))
+    # print(mosaic_coll.getInfo())
+
+    return mosaic_coll
+
