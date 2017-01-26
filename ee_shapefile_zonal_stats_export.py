@@ -201,6 +201,9 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 # export_id = '{}_{}_landsat_{}'.format(
                 #     os.path.splitext(zone_filename)[0], zone_str, year_str)
                 output_id = '{}_landsat_{}'.format(zone_str, year_str)
+                if ini['mosaic_method']:
+                    export_id += '_' + ini['mosaic_method'].lower()
+                    output_id += '_' + ini['mosaic_method'].lower()
                 export_path = os.path.join(ini['export_ws'], export_id + '.csv')
                 output_path = os.path.join(zone_tables_ws, output_id + '.csv')
                 temp_path = os.path.join(
@@ -363,18 +366,22 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                             'TC_WET': input_mean.get('tc_wet'),
                             'TS': input_mean.get('ts')
                         })
+                stats_coll = landsat_coll.map(landsat_zonal_stats_func)
+
+                # # DEADBEEF - Test the function for a single image
                 # stats_info = landsat_zonal_stats_func(
                 #     ee.Image(landsat_coll.first())).getInfo()
                 # for k, v in sorted(stats_info['properties'].items()):
                 #     logging.info('{:24s}: {}'.format(k, v))
                 # raw_input('ENTER')
-                stats_coll = landsat_coll.map(landsat_zonal_stats_func)
 
+                # # DEADBEEF - Print the stats info to the screen
                 # stats_info = stats_coll.getInfo()
                 # import pprint
                 # pp = pprint.PrettyPrinter(indent=4)
                 # for ftr in stats_info['features']:
                 #     pp.pprint(ftr)
+                # return True
 
                 # Download the CSV to your Google Drive
                 logging.debug('  Starting export task')

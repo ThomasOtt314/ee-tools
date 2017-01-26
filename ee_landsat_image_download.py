@@ -254,9 +254,14 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
             # Clip using the feature geometry
             landsat_image = ee.Image(landsat_image).clip(zone_geom)
+
+            # # DEADBEEF - Display a single image
+            # ee_common.show_thumbnail(landsat_image.visualize(
+            #     bands=['fmask', 'fmask', 'fmask'], min=0, max=4))
             # ee_common.show_thumbnail(landsat_image.visualize(
             #     bands=['toa_red', 'toa_green', 'toa_blue'],
             #     min=0.05, max=0.35, gamma=1.4))
+            # return True
 
             # Set the masked values to a nodata value
             # so that the TIF can have a nodata value other than 0 set

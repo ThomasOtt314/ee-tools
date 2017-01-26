@@ -286,15 +286,17 @@ def ini_parse(ini_path, section='zonal_stats'):
     #     sys.exit()
 
     # Fmask source type
-    if options['fmask_flag']:
+    if options['fmask_flag'] and not options['fmask_type']:
+        logging.error(
+            '\nERROR: Fmask source type must be set if fmask_flag = True')
+        sys.exit()
+    if options['fmask_type']:
         options['fmask_type'] = options['fmask_type'].lower()
         if options['fmask_type'] not in ['fmask', 'cfmask']:
             logging.error(
                 '\nERROR: Invalid Fmask source type: {}\n'
                 '  Must be "fmask" or "cfmask"'.format(options['fmask_type']))
             sys.exit()
-    else:
-        options['fmask_type'] = None
 
     # Mosaic method
     if options['mosaic_method']:
