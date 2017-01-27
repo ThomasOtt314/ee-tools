@@ -38,7 +38,7 @@ def main(ini_path=None, overwrite_flag=True):
     ini_common.parse_section(ini, section='TABLES')
 
     landsat_annual_fields = [
-        ini['INPUTS']['zone_field'].upper(), 'YEAR', 'SCENE_COUNT',
+        'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
@@ -87,28 +87,23 @@ def main(ini_path=None, overwrite_flag=True):
     logging.info('\nProcessing zones')
     output_df = None
     zone_list = []
-    for fid, zone_str, zone_json in sorted(zone_geom_list):
-        logging.info('ZONE: {} (FID: {})'.format(zone_str, fid))
+    for zone_fid, zone_name, zone_json in zone_geom_list:
+        zone_name = zone_name.replace(' ', '_')
+        logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        zone_list.append(zone_name)
 
-        if (not ini['INPUTS']['zone_field'] or
-                ini['INPUTS']['zone_field'].upper() == 'FID'):
-            zone_str = 'fid_' + zone_str
-        else:
-            zone_str = zone_str.lower().replace(' ', '_')
-        zone_list.append(zone_str)
-
-        zone_output_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_str)
-        if not os.path.isdir(zone_output_ws):
+        zone_stats_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_name)
+        if not os.path.isdir(zone_stats_ws):
             logging.debug('Folder {} does not exist, skipping'.format(
-                zone_output_ws))
+                zone_stats_ws))
             continue
 
         landsat_daily_path = os.path.join(
-            zone_output_ws, '{}_landsat_daily.csv'.format(zone_str))
+            zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
         gridmet_daily_path = os.path.join(
-            zone_output_ws, '{}_gridmet_daily.csv'.format(zone_str))
+            zone_stats_ws, '{}_gridmet_daily.csv'.format(zone_name))
         gridmet_monthly_path = os.path.join(
-            zone_output_ws, '{}_gridmet_monthly.csv'.format(zone_str))
+            zone_stats_ws, '{}_gridmet_monthly.csv'.format(zone_name))
         if not os.path.isfile(landsat_daily_path):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
@@ -194,12 +189,12 @@ def main(ini_path=None, overwrite_flag=True):
         if landsat_df.empty:
             logging.error(
                 '  Empty Landsat dataframe after filtering, skipping zone')
-            zone_list.remove(zone_str)
+            zone_list.remove(zone_name)
             continue
 
         logging.debug('  Computing Landsat annual summaries')
         landsat_df = landsat_df\
-            .groupby([ini['INPUTS']['zone_field'], 'YEAR'])\
+            .groupby(['ZONE_FID', 'ZONE_NAME', 'YEAR'])\
             .agg({
                 'PIXEL_COUNT': {
                     'PIXEL_COUNT': 'mean',
@@ -272,7 +267,7 @@ def main(ini_path=None, overwrite_flag=True):
 
         # Group GRIDMET data by user specified range (default is water year)
         gridmet_df = gridmet_df\
-            .groupby([ini['INPUTS']['zone_field'], 'GROUP_YEAR'])\
+            .groupby(['ZONE_FID', 'ZONE_NAME', 'GROUP_YEAR'])\
             .agg({'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
         gridmet_df.columns = gridmet_df.columns.droplevel(0)
         gridmet_df.reset_index(inplace=True)
@@ -280,7 +275,9 @@ def main(ini_path=None, overwrite_flag=True):
         gridmet_df.sort_values(by='YEAR', inplace=True)
 
         # Merge Landsat and GRIDMET collections
-        zone_df = landsat_df.merge(gridmet_df, on=[ini['INPUTS']['zone_field'], 'YEAR'])
+        zone_df = landsat_df.merge(
+            gridmet_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
+        # zone_df = landsat_df.merge(gridmet_df, on=['ZONE_FID', 'YEAR'])
 
         if output_df is None:
             output_df = zone_df.copy()
@@ -293,14 +290,11 @@ def main(ini_path=None, overwrite_flag=True):
         logging.info('\nWriting summary tables to Excel')
         excel_f = ExcelWriter(output_path)
         logging.debug('  {}'.format(output_path))
-        for zone_str in zone_list:
-            logging.debug('  {}'.format(zone_str))
-            if zone_str.startswith('fid_'):
-                zone_df = output_df[output_df[ini['INPUTS']['zone_field']] == int(zone_str[4:])]
-            else:
-                zone_df = output_df[output_df[ini['INPUTS']['zone_field']] == zone_str]
+        for zone_name in zone_list:
+            logging.debug('  {}'.format(zone_name))
+            zone_df = output_df[output_df['ZONE_NAME'] == zone_name]
             zone_df.to_excel(
-                excel_f, sheet_name=zone_str, index=False, float_format='%.4f')
+                excel_f, sheet_name=zone_name, index=False, float_format='%.4f')
             del zone_df
         excel_f.save()
     else:
@@ -317,7 +311,7 @@ def arg_parse():
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
-        help='Debug level logging', action="store_const", dest="loglevel")
+        help='Debug level logging', action='store_const', dest='loglevel')
     # parser.add_argument(
     #     '-o', '--overwrite', default=False, action='store_true',
     #     help='Force overwrite of existing files')

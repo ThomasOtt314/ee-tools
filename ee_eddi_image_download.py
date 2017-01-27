@@ -2,7 +2,7 @@
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
 # Author:       Charles Morton
-# Created       2017-01-26
+# Created       2017-01-27
 # Python:       2.7
 #--------------------------------
 
@@ -98,7 +98,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
     # Merge geometries
-    if ini['merge_geom_flag']:
+    if ini['IMAGES']['merge_geom_flag']:
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone in zone_geom_list:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -106,8 +106,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             for zone_polygon in zone_multipolygon:
                 merge_geom.AddGeometry(zone_polygon)
         # merge_json = json.loads(merge_mp.ExportToJson())
-        zone_geom_list = [
-            [0, ini['INPUTS']['zone_filename'], json.loads(merge_geom.ExportToJson())]]
+        zone_geom_list = [[
+            0, ini['INPUTS']['zone_filename'],
+            json.loads(merge_geom.ExportToJson())]]
         ini['INPUTS']['zone_field'] = ''
 
     # Need zone_path projection to build EE geometries
@@ -132,13 +133,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
 
     # Download images for each feature separately
-    for fid, zone_str, zone_json in sorted(zone_geom_list):
-        logging.info('ZONE: {} ({})'.format(zone_str, fid))
-
-        if ini['INPUTS']['zone_field'].upper() == 'FID':
-            zone_str = 'fid_' + zone_str
-        else:
-            zone_str = zone_str.lower().replace(' ', '_')
+    for zone_fid, zone_name, zone_json in zone_geom_list:
+        zone_name = zone_name.replace(' ', '_')
+        logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
 
         # Build EE geometry object for zonal stats
         zone_geom = ee.Geometry(zone_json, zone_proj, False)
@@ -176,7 +173,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         logging.debug('  Output Shape: {}'.format(output_shape))
 
         zone_eddi_ws = os.path.join(
-            ini['IMAGES']['output_ws'], zone_str, eddi_folder)
+            ini['IMAGES']['output_ws'], zone_name, eddi_folder)
         if not os.path.isdir(zone_eddi_ws):
             os.makedirs(zone_eddi_ws)
 
@@ -197,7 +194,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         for tgt_dt in export_list:
             date_str = tgt_dt.strftime('%Y%m%d')
-            logging.info("{} {}".format(
+            logging.info('{} {}'.format(
                 tgt_dt.strftime('%Y-%m-%d'), output_name))
 
             if tgt_dt >= datetime.datetime.today():
@@ -440,7 +437,7 @@ def arg_parse():
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
-        help='Debug level logging', action="store_const", dest="loglevel")
+        help='Debug level logging', action='store_const', dest='loglevel')
     parser.add_argument(
         '-o', '--overwrite', default=False, action='store_true',
         help='Force overwrite of existing files')

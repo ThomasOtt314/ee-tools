@@ -57,7 +57,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
 
     # These may eventually be set in the INI file
     landsat_daily_fields = [
-        ini['INPUTS']['zone_field'].upper(), 'DATE', 'SCENE_ID', 'LANDSAT',
+        'ZONE_FID', 'ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT',
         'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
@@ -67,13 +67,13 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # 'NDWI_TOA', 'NDWI_SUR',
         'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
     gridmet_daily_fields = [
-        ini['INPUTS']['zone_field'].upper(), 'DATE',
+        'ZONE_FID', 'ZONE_NAME', 'DATE',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR', 'ETO', 'PPT']
     gridmet_monthly_fields = [
-        ini['INPUTS']['zone_field'].upper(), 'DATE',
+        'ZONE_FID', 'ZONE_NAME', 'DATE',
         'YEAR', 'MONTH', 'WATER_YEAR', 'ETO', 'PPT']
     pdsi_dekad_fields = [
-        ini['INPUTS']['zone_field'].upper(), 'DATE',
+        'ZONE_FID', 'ZONE_NAME', 'DATE',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'PDSI']
 
     # Get ee features from shapefile
@@ -137,24 +137,21 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
 
 
     # Calculate zonal stats for each feature separately
-    for fid, zone_str, zone_json in sorted(zone_geom_list):
-        logging.info('ZONE: {} (FID: {})'.format(zone_str, fid))
-
-        if (not ini['INPUTS']['zone_field'] or
-                ini['INPUTS']['zone_field'].upper() == 'FID'):
-            zone['name'] = 'fid_' + zone_str
-        else:
-            zone['name'] = zone_str.lower().replace(' ', '_')
+    for zone_fid, zone_name, zone_json in zone_geom_list:
+        zone['fid'] = zone_fid
+        zone['name'] = zone_name.replace(' ', '_')
+        zone['json'] = zone_json
+        logging.info('ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
 
         # Build EE geometry object for zonal stats
         zone['geom'] = ee.Geometry(
-            geo_json=zone_json, opt_proj=zone['proj'], opt_geodesic=False)
+            geo_json=zone['json'], opt_proj=zone['proj'], opt_geodesic=False)
         logging.debug('  Centroid: {}'.format(
             zone['geom'].centroid(100).getInfo()['coordinates']))
 
         # Use feature geometry to build extent, transform, and shape
         zone['extent'] = gdc.Extent(
-            ogr.CreateGeometryFromJson(json.dumps(zone_json)).GetEnvelope())
+            ogr.CreateGeometryFromJson(json.dumps(zone['json'])).GetEnvelope())
         # zone['extent'] = gdc.Extent(zone['geom'].GetEnvelope())
         zone['extent'] = zone['extent'].ogrenv_swap()
         zone['extent'].adjust_to_snap(
@@ -229,7 +226,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             datetime.timedelta(0, 1))
         start_date = start_dt.date().isoformat()
         end_date = end_dt.date().isoformat()
-        logging.info("  {}  {}".format(start_date, end_date))
+        logging.info('  {}  {}'.format(start_date, end_date))
 
         start_year = max(start_dt.date().year, ini['INPUTS']['start_year'])
         end_year = min(end_dt.date().year, ini['INPUTS']['end_year'])
@@ -237,14 +234,15 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             year_str = '{}_{}'.format(start_year, end_year)
         else:
             year_str = '{}'.format(year)
-        # logging.debug("  {}  {}".format(start_year, end_year))
+        # logging.debug('  {}  {}'.format(start_year, end_year))
 
         # Export Landsat zonal stats
         export_id = '{}_{}_landsat_{}'.format(
-            ini['INPUTS']['zone_filename'], zone['name'], year_str)
+            ini['INPUTS']['zone_filename'], zone['name'].lower(), year_str)
         # export_id = '{}_{}_landsat_{}'.format(
-        #     os.path.splitext(ini['INPUTS']['zone_filename'])[0], zone_str, year_str)
-        output_id = '{}_landsat_{}'.format(zone['name'], year_str)
+        #     os.path.splitext(ini['INPUTS']['zone_filename'])[0],
+        #     zone_name, year_str)
+        output_id = '{}_landsat_{}'.format(zone['name'].lower(), year_str)
         if ini['EXPORT']['mosaic_method']:
             export_id += '_' + ini['EXPORT']['mosaic_method'].lower()
             output_id += '_' + ini['EXPORT']['mosaic_method'].lower()
@@ -283,15 +281,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     export_df['PIXEL_COUNT'] - export_df['FMASK_COUNT'])
             export_df = export_df[export_fields]
             export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-
-            # Change fid zone strings back to integer values
-            if zone['name'].startswith('fid_'):
-                export_df[ini['INPUTS']['zone_field']] = int(zone['name'][4:])
-                export_df[ini['INPUTS']['zone_field']] = export_df[
-                    ini['INPUTS']['zone_field']].astype(np.int)
-            export_df.to_csv(
-                output_path, index=False,
-                columns=export_fields)
+            export_df.to_csv(output_path, index=False, columns=export_fields)
 
             # DEADBEEF - For now, also move to a temp Google Drive folder
             # shutil.move(export_path, temp_path)
@@ -339,7 +329,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         def landsat_zonal_stats_func(image):
             """"""
             scene_id = ee.String(image.get('SCENE_ID'))
-            date = ee.Date(image.get("system:time_start"))
+            date = ee.Date(image.get('system:time_start'))
             doy = ee.Number(date.getRelative('day', 'year')).add(1)
             # Using zone['geom'] as the geomtry should make it
             #   unnecessary to clip also
@@ -388,12 +378,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             return ee.Feature(
                 None,
                 {
-                    ini['INPUTS']['zone_field'].upper(): zone['name'],
+                    'ZONE_NAME': zone['name'],
+                    'ZONE_FID': zone['fid'],
                     'SCENE_ID': scene_id.slice(0, 16),
                     'LANDSAT': scene_id.slice(0, 3),
                     'PATH': ee.Number(scene_id.slice(3, 6)),
                     'ROW': ee.Number(scene_id.slice(6, 9)),
-                    'DATE': date.format("YYYY-MM-dd"),
+                    'DATE': date.format('YYYY-MM-dd'),
                     'YEAR': date.get('year'),
                     'MONTH': date.get('month'),
                     'DAY': date.get('day'),
@@ -437,6 +428,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # for ftr in stats_info['features']:
         #     pp.pprint(ftr)
         # raw_input('ENTER')
+        # return False
 
         # task = ee.batch.Export.table.toDrive(
         #     stats_coll,
@@ -479,7 +471,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         end_dt = (
             datetime.datetime(year + iter_years, 1, 1) -
             datetime.timedelta(0, 1))
-        logging.debug("  {}  {}".format(
+        logging.debug('  {}  {}'.format(
             start_dt.date().isoformat(), end_dt.date().isoformat()))
 
         start_year = max(start_dt.date().year, ini['INPUTS']['start_year'])
@@ -514,8 +506,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             zone['output_ws'], '{}_landsat_daily.csv'.format(zone['name']))
         logging.debug('  {}'.format(output_path))
         output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-        output_df.to_csv(
-            output_path, index=False, columns=export_fields)
+        output_df.to_csv(output_path, index=False, columns=export_fields)
 
 
 def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
@@ -571,13 +562,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         export_df = pd.read_csv(export_path)
         export_df = export_df[export_fields]
         export_df.sort_values(by=['DATE'], inplace=True)
-        if ini['INPUTS']['zone_field'] == 'FID':
-            # If zone_field is FID, zone['name'] is set to "FID_\d"
-            export_df[ini['INPUTS']['zone_field']] = int(zone['name'][4:])
-            export_df[ini['INPUTS']['zone_field']] = export_df[
-                ini['INPUTS']['zone_field']].astype(np.int)
-        export_df.to_csv(
-            output_path, index=False, columns=export_fields)
+        export_df.to_csv(output_path, index=False, columns=export_fields)
         os.remove(export_path)
         # shutil.move(export_path, output_path)
     elif os.path.isfile(output_path):
@@ -589,7 +574,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # Build function in loop to set water year ETo/PPT values
         def gridmet_zonal_stats_func(image):
             """"""
-            date = ee.Date(image.get("system:time_start"))
+            date = ee.Date(image.get('system:time_start'))
             year = ee.Number(date.get('year'))
             month = ee.Number(date.get('month'))
             doy = ee.Number(date.getRelative('day', 'year')).add(1)
@@ -605,8 +590,9 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             return ee.Feature(
                 None,
                 {
-                    ini['INPUTS']['zone_field'].upper(): zone['name'],
-                    'DATE': date.format("YYYY-MM-dd"),
+                    'ZONE_NAME': zone['name'],
+                    'ZONE_FID': zone['fid'],
+                    'DATE': date.format('YYYY-MM-dd'),
                     'YEAR': year,
                     'MONTH': month,
                     'DAY': date.get('day'),
@@ -709,13 +695,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
         export_df = pd.read_csv(export_path)
         export_df = export_df[export_fields]
         export_df.sort_values(by=['DATE'], inplace=True)
-        if ini['INPUTS']['zone_field'] == 'FID':
-            # If zone_field is FID, zone['name'] is set to "FID_\d"
-            export_df[ini['INPUTS']['zone_field']] = int(zone['name'][4:])
-            export_df[ini['INPUTS']['zone_field']] = export_df[
-                ini['INPUTS']['zone_field']].astype(np.int)
-        export_df.to_csv(
-            output_path, index=False, columns=export_fields)
+        export_df.to_csv(output_path, index=False, columns=export_fields)
         os.remove(export_path)
         # shutil.move(export_path, output_path)
     elif os.path.isfile(output_path):
@@ -727,7 +707,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
         # Build function in loop to set water year ETo/PPT values
         def gridmet_zonal_stats_func(image):
             """"""
-            date = ee.Date(image.get("system:time_start"))
+            date = ee.Date(image.get('system:time_start'))
             year = ee.Number(date.get('year'))
             month = ee.Number(date.get('month'))
             wyear = ee.Number(ee.Date.fromYMD(
@@ -742,8 +722,9 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
             return ee.Feature(
                 None,
                 {
-                    ini['INPUTS']['zone_field'].upper(): zone['name'],
-                    'DATE': date.format("YYYY-MM"),
+                    'ZONE_NAME': zone['name'],
+                    'ZONE_FID': zone['fid'],
+                    'DATE': date.format('YYYY-MM'),
                     'YEAR': year,
                     'MONTH': month,
                     'WATER_YEAR': wyear,
@@ -812,13 +793,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         export_df = pd.read_csv(export_path)
         export_df = export_df[export_fields]
         export_df.sort_values(by=['DATE'], inplace=True)
-        if ini['INPUTS']['zone_field'] == 'FID':
-            # If zone_field is FID, zone['name'] is set to "FID_\d"
-            export_df[ini['INPUTS']['zone_field']] = int(zone['name'][4:])
-            export_df[ini['INPUTS']['zone_field']] = export_df[
-                ini['INPUTS']['zone_field']].astype(np.int)
-        export_df.to_csv(
-            output_path, index=False, columns=export_fields)
+        export_df.to_csv(output_path, index=False, columns=export_fields)
         os.remove(export_path)
         # shutil.move(export_path, output_path)
     elif os.path.isfile(output_path):
@@ -830,7 +805,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # Build function in loop to set water year ETo/PPT values
         def pdsi_zonal_stats_func(image):
             """"""
-            date = ee.Date(image.get("system:time_start"))
+            date = ee.Date(image.get('system:time_start'))
             doy = ee.Number(date.getRelative('day', 'year')).add(1)
             input_mean = ee.Image(image) \
                 .reduceRegion(
@@ -842,8 +817,9 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             return ee.Feature(
                 None,
                 {
-                    ini['INPUTS']['zone_field'].upper(): zone['name'],
-                    'DATE': date.format("YYYY-MM-dd"),
+                    'ZONE_NAME': zone['name'],
+                    'ZONE_FID': zone['fid'],
+                    'DATE': date.format('YYYY-MM-dd'),
                     'YEAR': date.get('year'),
                     'MONTH': date.get('month'),
                     'DAY': date.get('day'),
@@ -887,7 +863,7 @@ def arg_parse():
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
-        help='Debug level logging', action="store_const", dest="loglevel")
+        help='Debug level logging', action='store_const', dest='loglevel')
     parser.add_argument(
         '-o', '--overwrite', default=False, action='store_true',
         help='Force overwrite of existing files')

@@ -133,11 +133,11 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
     # A couple of color palettes to sample from
     # import seaborn as sns
-    # print(sns.color_palette("hls", 20).as_hex())
-    # print(sns.color_palette("husl", 20).as_hex())
-    # print(sns.color_palette("hsv", 20).as_hex())
-    # print(sns.color_palette("Set1", 20).as_hex())
-    # print(sns.color_palette("Set2", 20).as_hex())
+    # print(sns.color_palette('hls', 20).as_hex())
+    # print(sns.color_palette('husl', 20).as_hex())
+    # print(sns.color_palette('hsv', 20).as_hex())
+    # print(sns.color_palette('Set1', 20).as_hex())
+    # print(sns.color_palette('Set2', 20).as_hex())
 
 
     # Hardcoded plot options
@@ -189,7 +189,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     # CSV parameters
     # Zone field will be inserted after it is read in from INI file
     landsat_annual_fields = [
-        ini['INPUTS']['zone_field'].upper(), 'YEAR', 'SCENE_COUNT',
+        'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
@@ -238,9 +238,9 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     plot_dict['ppt_plot_type'] = ini['FIGURES']['ppt_plot_type']
     plot_dict['scatter_best_fit'] = ini['FIGURES']['scatter_best_fit']
 
-    figures_ws = os.path.join(ini['SUMMARY']['output_ws'], figures_folder)
-    if not os.path.isdir(figures_ws):
-        os.makedirs(figures_ws)
+    # figures_ws = os.path.join(ini['SUMMARY']['output_ws'], figures_folder)
+    # if not os.path.isdir(figures_ws):
+    #     os.makedirs(figures_ws)
 
     # Start/end year
     year_list = range(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
@@ -274,32 +274,28 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
 
     logging.info('\nProcessing zones')
-    for fid, zone_str, zone_json in sorted(zone_geom_list):
-        logging.info('ZONE: {} (FID: {})'.format(zone_str, fid))
+    for zone_fid, zone_name, zone_json in zone_geom_list:
+        zone_name = zone_name.replace(' ', '_')
+        logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        # zone_list.append(zone_name)
 
-        if (not ini['INPUTS']['zone_field'] or
-                ini['INPUTS']['zone_field'].upper() == 'FID'):
-            zone_str = 'fid_' + zone_str
-        else:
-            zone_str = zone_str.lower().replace(' ', '_')
-        # zone_list.append(zone_str)
-
-        zone_output_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_str)
-        # zone_figures_ws = ini['SUMMARY']['output_ws']
-        # zone_figures_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_str)
-        if not os.path.isdir(zone_output_ws):
+        # CSV files are read from zone
+        zone_stats_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_name)
+        zone_figures_ws = os.path.join(
+            ini['SUMMARY']['output_ws'], zone_name, figures_folder)
+        if not os.path.isdir(zone_stats_ws):
             logging.debug('  Folder {} does not exist, skipping'.format(
-                zone_output_ws))
+                zone_stats_ws))
             continue
-        # elif not os.path.isdir(zone_figures_ws):
-        #     os.makedirs(zone_figures_ws)
+        elif not os.path.isdir(zone_figures_ws):
+            os.makedirs(zone_figures_ws)
 
         landsat_daily_path = os.path.join(
-            zone_output_ws, '{}_landsat_daily.csv'.format(zone_str))
+            zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
         gridmet_daily_path = os.path.join(
-            zone_output_ws, '{}_gridmet_daily.csv'.format(zone_str))
+            zone_stats_ws, '{}_gridmet_daily.csv'.format(zone_name))
         gridmet_monthly_path = os.path.join(
-            zone_output_ws, '{}_gridmet_monthly.csv'.format(zone_str))
+            zone_stats_ws, '{}_gridmet_monthly.csv'.format(zone_name))
         if not os.path.isfile(landsat_daily_path):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
@@ -388,7 +384,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
         logging.debug('  Computing Landsat annual summaries')
         landsat_df = landsat_df\
-            .groupby([ini['INPUTS']['zone_field'], 'YEAR'])\
+            .groupby(['ZONE_FID', 'ZONE_NAME', 'YEAR'])\
             .agg({
                 'PIXEL_COUNT': {
                     'PIXEL_COUNT': 'mean',
@@ -461,7 +457,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
         # Group GRIDMET data by user specified range (default is water year)
         gridmet_group_df = gridmet_df\
-            .groupby([ini['INPUTS']['zone_field'], 'GROUP_YEAR'])\
+            .groupby(['ZONE_FID', 'ZONE_NAME', 'GROUP_YEAR'])\
             .agg({'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
         gridmet_group_df.columns = gridmet_group_df.columns.droplevel(0)
         gridmet_group_df.reset_index(inplace=True)
@@ -470,7 +466,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
         # # Group GRIDMET data by month
         # gridmet_month_df = gridmet_df.groupby(
-        #     [ini['INPUTS']['zone_field'], 'GROUP_YEAR', 'MONTH']).agg({
+        #     ['ZONE_FID', 'ZONE_NAME', 'GROUP_YEAR', 'MONTH']).agg({
         #         'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
         # gridmet_month_df.columns = gridmet_month_df.columns.droplevel(0)
         # gridmet_month_df.reset_index(inplace=True)
@@ -481,17 +477,19 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # gridmet_month_df['MONTH'] = 'PPT_M' + gridmet_month_df['MONTH'].astype(str)
         # # Pivot rows up to separate columns
         # gridmet_month_df = gridmet_month_df.pivot_table(
-        #     'PPT', [ini['INPUTS']['zone_field'], 'YEAR'], 'MONTH')
+        #     'PPT', ['ZONE_FID', 'YEAR'], 'MONTH')
         # gridmet_month_df.reset_index(inplace=True)
-        # columns = [ini['INPUTS']['zone_field'], 'YEAR'] + ['PPT_M{}'.format(m) for m in gridmet_months]
+        # columns = ['ZONE_FID', 'YEAR'] + ['PPT_M{}'.format(m) for m in gridmet_months]
         # gridmet_month_df = gridmet_month_df[columns]
         # del gridmet_month_df.index.name
 
         # Merge Landsat and GRIDMET collections
         zone_df = landsat_df.merge(
-            gridmet_group_df, on=[ini['INPUTS']['zone_field'], 'YEAR'])
+            gridmet_group_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
+            # gridmet_group_df, on=['ZONE_FID', 'YEAR'])
         # zone_df = zone_df.merge(
-        #     gridmet_month_df, on=[ini['INPUTS']['zone_field'], 'YEAR'])
+        #     gridmet_month_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
+        #     gridmet_month_df, on=['ZONE_FID', 'YEAR'])
         if zone_df is None or zone_df.empty:
             logging.info('  Empty zone dataframe, not generating figures')
             continue
@@ -503,24 +501,24 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         logging.debug('  Generating figures')
         for band in timeseries_bands:
             timeseries_plot(
-                band, zone_df, zone_str, figures_ws,
+                band, zone_df, zone_name, zone_figures_ws,
                 ini['INPUTS']['start_year'], ini['INPUTS']['end_year'],
                 band_name, band_unit, band_color, plot_dict)
 
         for band_x, band_y in scatter_bands:
             scatter_plot(
-                band_x, band_y, zone_df, zone_str, figures_ws,
+                band_x, band_y, zone_df, zone_name, zone_figures_ws,
                 band_name, band_unit, band_color, plot_dict)
 
         for band in complementary_bands:
             complementary_plot(
-                band, zone_df, zone_str, figures_ws,
+                band, zone_df, zone_name, zone_figures_ws,
                 band_name, band_unit, band_color, plot_dict)
 
         del landsat_df, gridmet_df, zone_df
 
 
-def timeseries_plot(band, zone_df, zone_str, figures_ws,
+def timeseries_plot(band, zone_df, zone_name, figures_ws,
                     start_year, end_year,
                     band_name, band_unit, band_color, plot_dict):
     """"""
@@ -530,7 +528,7 @@ def timeseries_plot(band, zone_df, zone_str, figures_ws,
     figure_path = os.path.join(
         figures_ws,
         '{}_timeseries_{}_&_ppt.png'.format(
-            zone_str.lower(), band.lower(), ppt_band))
+            zone_name.lower(), band.lower(), ppt_band))
 
     fig = plt.figure(figsize=plot_dict['fig_size'])
     fig_ax = plot_dict['timeseries_ax']
@@ -551,7 +549,7 @@ def timeseries_plot(band, zone_df, zone_str, figures_ws,
     ax1 = fig.add_axes(band_ax)
 
     ax0 = fig.add_axes(fig_ax)
-    ax0.set_title('{}'.format(zone_str), size=plot_dict['title_fs'], y=1.01)
+    ax0.set_title('{}'.format(zone_name), size=plot_dict['title_fs'], y=1.01)
 
     ax2.set_xlabel('Year', fontsize=plot_dict['xlabel_fs'])
     ax2.xaxis.set_minor_locator(MultipleLocator(1))
@@ -560,8 +558,8 @@ def timeseries_plot(band, zone_df, zone_str, figures_ws,
         tick.set_ha('right')
     ax1.set_xlim([start_year - 1, end_year + 1])
     ax2.set_xlim([start_year - 1, end_year + 1])
-    ax1.yaxis.set_label_position("left")
-    ax2.yaxis.set_label_position("right")
+    ax1.yaxis.set_label_position('left')
+    ax2.yaxis.set_label_position('right')
     if plot_dict['center_ylabel']:
         fig.text(
             0.02, 0.5, '{} [{}]'.format(band_name[band], band_unit[band]),
@@ -637,7 +635,7 @@ def timeseries_plot(band, zone_df, zone_str, figures_ws,
     return True
 
 
-def scatter_plot(band_x, band_y, zone_df, zone_str, figures_ws,
+def scatter_plot(band_x, band_y, zone_df, zone_name, figures_ws,
                  band_name, band_unit, band_color, plot_dict):
     """"""
     logging.debug('    Scatter: {} vs {}'.format(
@@ -645,12 +643,12 @@ def scatter_plot(band_x, band_y, zone_df, zone_str, figures_ws,
     figure_path = os.path.join(
         figures_ws,
         '{}_scatter_{}_vs_{}.png'.format(
-            zone_str.lower(), band_x.lower(), band_y.lower()))
+            zone_name.lower(), band_x.lower(), band_y.lower()))
 
     fig = plt.figure(figsize=plot_dict['fig_size'])
     fig_ax = plot_dict['scatter_ax']
     ax0 = fig.add_axes(fig_ax)
-    ax0.set_title('{}'.format(zone_str), size=plot_dict['title_fs'], y=1.01)
+    ax0.set_title('{}'.format(zone_name), size=plot_dict['title_fs'], y=1.01)
     ax0.set_xlabel(
         '{}'.format(band_name[band_x]), fontsize=plot_dict['xlabel_fs'])
     ax0.set_ylabel(
@@ -682,18 +680,18 @@ def scatter_plot(band_x, band_y, zone_df, zone_str, figures_ws,
     return True
 
 
-def complementary_plot(band, zone_df, zone_str, figures_ws,
+def complementary_plot(band, zone_df, zone_name, figures_ws,
                        band_name, band_unit, band_color, plot_dict):
     """"""
     logging.debug('    Complementary: {}'.format(band_name[band]))
     figure_path = os.path.join(
         figures_ws,
-        '{}_complementary_{}.png'.format(zone_str.lower(), band.lower()))
+        '{}_complementary_{}.png'.format(zone_name.lower(), band.lower()))
 
     fig = plt.figure(figsize=plot_dict['fig_size'])
     fig_ax = plot_dict['complement_ax']
     ax0 = fig.add_axes(fig_ax)
-    ax0.set_title('{}'.format(zone_str), size=plot_dict['title_fs'], y=1.01)
+    ax0.set_title('{}'.format(zone_name), size=plot_dict['title_fs'], y=1.01)
 
     # Position the adjusted axes
     eto_ax = fig_ax[:]
@@ -711,8 +709,8 @@ def complementary_plot(band, zone_df, zone_str, figures_ws,
 
     ax2.set_xlabel(
         '{}'.format(band_name['ppt']), fontsize=plot_dict['xlabel_fs'])
-    ax1.yaxis.set_label_position("left")
-    ax2.yaxis.set_label_position("right")
+    ax1.yaxis.set_label_position('left')
+    ax2.yaxis.set_label_position('right')
     if plot_dict['center_ylabel']:
         fig.text(
             0.02, 0.5, '{} [{}]'.format(band_name['eto'], band_unit['eto']),
@@ -786,7 +784,7 @@ def arg_parse():
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
-        help='Debug level logging', action="store_const", dest="loglevel")
+        help='Debug level logging', action='store_const', dest='loglevel')
     parser.add_argument(
         '--show', default=False, action='store_true', help='Show plots')
     # parser.add_argument(

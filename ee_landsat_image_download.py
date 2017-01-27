@@ -2,7 +2,7 @@
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
 # Author:       Charles Morton
-# Created       2017-01-26
+# Created       2017-01-27
 # Python:       2.7
 #--------------------------------
 
@@ -69,7 +69,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # arcpy.CheckOutExtension('Spatial')
     # arcpy.env.overwriteOutput = True
     # arcpy.env.pyramid = 'PYRAMIDS 0'
-    # arcpy.env.compression = "LZW"
+    # arcpy.env.compression = 'LZW'
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
@@ -142,13 +142,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
 
     # Download images for each feature separately
-    for fid, zone_str, zone_json in sorted(zone_geom_list):
-        logging.info('\nZONE: {} (FID: {})'.format(zone_str, fid))
-
-        if ini['INPUTS']['zone_field'].upper() == 'FID':
-            zone_str = 'fid_' + zone_str
-        else:
-            zone_str = zone_str.lower().replace(' ', '_')
+    for zone_fid, zone_name, zone_json in zone_geom_list:
+        zone_name = zone_name.replace(' ', '_')
+        logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
 
         # Build EE geometry object for zonal stats
         zone_geom = ee.Geometry(
@@ -175,8 +171,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         output_transform = '[' + ','.join(map(str, zone_transform)) + ']'
         output_shape = '{1}x{0}'.format(*zone_shape)
 
-        zone_output_ws = os.path.join(ini['IMAGES']['output_ws'], zone_str)
-        zone_images_ws = os.path.join(zone_output_ws, images_folder)
+        zone_images_ws = os.path.join(
+            ini['IMAGES']['output_ws'], zone_name, images_folder)
         if not os.path.isdir(zone_images_ws):
             os.makedirs(zone_images_ws)
 
@@ -254,7 +250,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 landsat_str = '{}{}{}'.format(landsat, path, row)
             else:
                 landsat_str = '{}'.format(landsat)
-            logging.info("{} {}-{:02d}-{:02d} (DOY {})".format(
+            logging.info('{} {}-{:02d}-{:02d} (DOY {})'.format(
                 landsat.upper(), year, month, day, doy))
 
             zone_year_ws = os.path.join(zone_images_ws, year)
@@ -415,7 +411,7 @@ def arg_parse():
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
-        help='Debug level logging', action="store_const", dest="loglevel")
+        help='Debug level logging', action='store_const', dest='loglevel')
     parser.add_argument(
         '-o', '--overwrite', default=False, action='store_true',
         help='Force overwrite of existing files')
