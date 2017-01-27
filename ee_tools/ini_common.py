@@ -2,7 +2,7 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-01-26
+# Created       2017-01-27
 # Python:       2.7
 #--------------------------------
 
@@ -132,7 +132,7 @@ def parse_inputs(ini, section='INPUTS'):
     # MANDATORY PARAMETERS
     # section, input_name, output_name, description, get_type
     param_list = [
-        ['zone_input_ws', 'zone_input_ws', str],
+        ['zone_workspace', 'zone_input_ws', str],
         ['zone_filename', 'zone_filename', str],
         ['zone_field', 'zone_field', str]
     ]
@@ -272,7 +272,7 @@ def parse_export(ini, section='EXPORT'):
         ['output_cs', 'cellsize', float],
         ['output_proj', 'crs', str],
         # Google Drive
-        ['gdrive_ws', 'gdrive_ws', str],
+        ['gdrive_workspace', 'gdrive_ws', str],
         ['export_folder', 'export_folder', str],
     ]
     for input_name, output_name, get_type in param_list:
@@ -364,7 +364,7 @@ def parse_images(ini, section='IMAGES'):
     """"""
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['images_workspace', 'output_ws', str, os.getcwd()],
         ['download_bands', 'download_bands', str, ''],
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
         ['clip_landsat_flag', 'clip_landsat_flag', bool, True]
@@ -390,7 +390,7 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # OPTIONAL PARAMETERS
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['stats_workspace', 'output_ws', str, os.getcwd()],
         ['landsat_flag', 'landsat_flag', bool, True],
         ['gridmet_daily_flag', 'gridmet_daily_flag', bool, False],
         ['gridmet_monthly_flag', 'gridmet_monthly_flag', bool, False],
@@ -414,7 +414,7 @@ def parse_summary(ini, section='SUMMARY'):
     # OPTIONAL PARAMETERS
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['stats_workspace', 'output_ws', str, os.getcwd()],
         ['max_cloud_score', 'max_cloud_score', float, 70],
         ['max_fmask_pct', 'max_fmask_pct', float, 100],
         ['min_slc_off_pct', 'min_slc_off_pct', float, 50],
