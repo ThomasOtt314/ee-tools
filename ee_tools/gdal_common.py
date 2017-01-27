@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-01-25
+# Updated:      2017-01-27
 # Python:       2.7
 #--------------------------------
 
@@ -936,8 +936,9 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         zone_field_i = None
         logging.info('  Using FID as zone field')
     elif zone_field in feature_lyr_fields(input_lyr):
-        logging.debug('  Zone field: {}'.format(zone_field))
         zone_field_i = input_ftr_defn.GetFieldIndex(zone_field)
+        logging.debug('  Zone field: {}  (index: {})'.format(
+            zone_field, zone_field_i))
     else:
         logging.error('\nERROR: Zone field "{}" is not in the '
                       'shapefile'.format(zone_field))
@@ -947,7 +948,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
     input_ftr = input_lyr.GetNextFeature()
     while input_ftr:
         input_fid = input_ftr.GetFID()
-        if zone_field_i:
+        if zone_field_i is not None:
             input_zone = str(input_ftr.GetField(zone_field_i))
         else:
             input_zone = str(input_fid)
