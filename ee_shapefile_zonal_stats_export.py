@@ -2,7 +2,7 @@
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
 # Author:       Charles Morton
-# Created       2017-01-26
+# Created       2017-01-27
 # Python:       2.7
 #--------------------------------
 
@@ -497,10 +497,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             zone['tables_ws'],
             '{}_landsat_{}.csv'.format(zone['name'], year_str))
         try:
-            input_df = pd.read_csv(os.path.basename(input_path))
-        except:
-            # Th
-            logging.debug('  Error reading: {}'.format(input_path))
+            input_df = pd.read_csv(input_path)
+        except Exception as e:
+            logging.debug('    Error reading: {}'.format(
+                os.path.basename(input_path)))
             # raw_input('ENTER')
             continue
         try:
