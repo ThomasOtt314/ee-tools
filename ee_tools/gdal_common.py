@@ -585,6 +585,21 @@ def raster_ds_shape(raster_ds):
     return raster_ds.RasterYSize, raster_ds.RasterXSize
 
 
+def raster_path_set_nodata(raster_path, input_nodata):
+    """Set raster nodata value for all bands"""
+    raster_ds = gdal.Open(raster_path, 1)
+    raster_ds_set_nodata(raster_ds, input_nodata)
+    del raster_ds
+
+
+def raster_ds_set_nodata(raster_ds, input_nodata):
+    """Set raster dataset nodata value for all bands"""
+    band_cnt = raster_ds.RasterCount
+    for band_i in xrange(band_cnt):
+        band = raster_ds.GetRasterBand(band_i + 1)
+        band.SetNoDataValue(input_nodata)
+
+
 def extents_overlap(a_extent, b_extent):
     """Test if two extents overlap"""
     if ((a_extent.xmin > b_extent.xmax) or
@@ -951,7 +966,7 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
         if zone_field_i is not None:
             input_zone = str(input_ftr.GetField(zone_field_i))
         else:
-            input_zone = str(input_fid)
+            input_zone = 'fid_{}'.format(input_fid)
         input_geom = input_ftr.GetGeometryRef()
         if simplify_flag:
             input_geom = input_geom.Simplify(1)
@@ -995,10 +1010,13 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
 
         # Save the JSON object in the list
         ftr_geom_list.append([input_fid, input_zone, json_obj['geometry']])
+        # ftr_geom_list.append({
+        #     'fid': input_fid, 'name': input_zone,
+        #     'json': json_obj['geometry']})
         input_geom = None
         input_ftr = input_lyr.GetNextFeature()
     input_ds = None
-    return ftr_geom_list
+    return sorted(ftr_geom_list)
 
 
 def feature_path_fields(feature_path):

@@ -419,6 +419,16 @@ def test_geo_extent(geo=(1000, 10, 0, 2100, 0, -10), rows=10, cols=8,
 #     assert False
 
 
+# def test_raster_path_set_nodata(raster_path, input_nodata):
+#     """Set raster nodata value for all bands"""
+#     assert False
+
+
+# def test_raster_ds_set_nodata(raster_ds, input_nodata):
+#     """Set raster dataset nodata value for all bands"""
+#     assert False
+
+
 @pytest.mark.parametrize(
     "a,b,expected",
     [
