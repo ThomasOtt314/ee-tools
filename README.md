@@ -21,20 +21,13 @@ All of the scripts are controlled using INI files.  The INI file is structured i
 #### Sections
 
 Each of the scripts reads a different combination of INI sections.  There are seven sections currently used in the scripts:
-+ INPUTS
-  This section is used by all of the ee-tools
-+ EXPORT
-  This section has export specific parameters and is read by the zonal statistics and image download scripts.
-+ ZONAL_STATS
-  This section has zonal stats specific parameters.
-+ IMAGES
-  This section has image download specific parameters.
-+ SUMMARY
-  This section has summary specific parameters and is read by the summary figures and summary tables scripts.
-+ FIGURES
-  This section has summary figure specific parameters.
-+ TABLES
-  This section has summary table specific parameters.
++ INPUTS - Used by all of the ee-tools
++ EXPORT - Export specific parameters and is read by the zonal statistics and image download scripts.
++ ZONAL_STATS - Zonal stats specific parameters.
++ IMAGES - Image download specific parameters.
++ SUMMARY - Summary specific parameters and is read by the summary figures and summary tables scripts.
++ FIGURES - Summary figure specific parameters.
++ TABLES - Summary table specific parameters.
 
 ## Command Prompt / Terminal
 All of the scripts should be run from the command prompt (windows) or terminal (mac/linux).
@@ -99,10 +92,6 @@ To generate summary tables and figures, execute the following:
 > python ee_summary_tables.py -i example\ee_summary.ini
 > python ee_summary_figures.py -i example\ee_summary.ini
 ```
-
-## Notes
-
-
 
 ## Dependencies
 
