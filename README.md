@@ -1,28 +1,107 @@
 # ee-tools
 Earth Engine Zonal Stats and Image Download Tools
 
-## Notes
+The ee-tools can be separated into three main components:
++ Download time series of zonal statistics
++ Download daily Landsat and GRIDMET PPT/ETo imagery
++ Generate annual summary figures and tables
 
-Currently, the output spatial reference set in the INI file must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference.  Eventually the code will handle this projection.
+## Requirements
+See the dependencies section below for additional details on the Python specific requirements needed to run the ee-tools.
+
+#### Earth Engine
+To run the ee-tools you must have an Earth Engine account.
+
+#### Google Drive
+To run the zonal stats and image download scripts, you must have Google Drive installed on your computer.  The scripts first initiate Earth Engine export tasks that will write to your Google Drive, and then copy the files from Google Drive to the output workspace set in the INI file.
+
+## INI Files
+All of the scripts are controlled using INI files.  The INI file is structured into sections (defined by square brackets, i.e. [INPUTS]) and key/value pairs separated by an equals sign (i.e. "start_year = 1985").  Additional details on the INI structure can be found in the [Python configparser module documentation](https://docs.python.org/3/library/configparser.html#supported-ini-file-structure).  Example INI files are provided in the example folder.
+
+#### Sections
+
+Each of the scripts reads a different combination of INI sections.  There are seven sections currently used in the scripts:
++ INPUTS
+  This section is used by all of the ee-tools
++ EXPORT
+  This section has export specific parameters and is read by the zonal statistics and image download scripts.
++ ZONAL_STATS
+  This section has zonal stats specific parameters.
++ IMAGES
+  This section has image download specific parameters.
++ SUMMARY
+  This section has summary specific parameters and is read by the summary figures and summary tables scripts.
++ FIGURES
+  This section has summary figure specific parameters.
++ TABLES
+  This section has summary table specific parameters.
+
+## Command Prompt / Terminal
+All of the scripts should be run from the command prompt (windows) or terminal (mac/linux).
+
+#### Help
+To see what arguments are available for a script, and their default values, pass the "-h" argument to the script.
+```
+> python ee_shapefile_zonal_stats_export.py -h
+usage: ee_shapefile_zonal_stats_export.py [-h] [-i PATH] [-d] [-o]
+
+Earth Engine Zonal Statistics
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -i FILE, --ini FILE   Input file (default: None)
+  -d, --debug           Debug level logging (default: 20)
+  -o, --overwrite       Force overwrite of existing files (default: False)
+```
+
+#### Input file
+To set the input file, use the "-i" or "--ini" argument.  The INI file path can be absolute or relative to the current working directory.
+```
+> python ee_shapefile_zonal_stats_export.py -i example\ee_zs.ini
+```
+
+#### Overwrite
+
+
+## Study Area Zones
+The user must provide a shapefile of the zones they wish to analyze.  Zonal statistics for each feature in the shapefile will be computed.  Images can be downloaded separately for each zone separately (set [IMAGES] parameter merge_geometries=False) or as a single image that includes all zones (merge_geometries=True).
+
+#### Zone Field
+The user must indicate which field in the shapefile to use for setting the "Zone ID".  The field must be an integer or string type and the values must be unique for each feature/zone.  A good default is use the "FID" field since this is guaranteed to be unique and makes it easy to join the output tables to the shapefile.
+
+#### Spatial Reference / Projection
+Currently, the output spatial reference set in the INI file ([EXPORT] parameter "output_proj") must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference.  Eventually the code will handle this projection.
 
 ## Zonal Stats
+To initiate Earth Engine zonal statistics export tasks, execute the following:
+```
+> python ee_shapefile_zonal_stats_export.py -i example\ee_zs.ini
+```
 
-
+As the export tasks finish, the zonal stats CSV files will be written to your Google drive.  Once all of the exports have finished, rerun the script, and all of the CSV files will be copied to the output workspace set in the INI file.
 
 ## Image Download
-
-
-
-## Using the Tools
-
-
+To download Landsat images, execute the following:
 ```
-> python ee_landsat_image_download.py -i example\test_ee_images.ini
+> python ee_landsat_image_download.py -i example\ee_images.ini
 ```
 
+To download GRIDMET ETo/PPT images, execute the following:
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\test_ee_zs.ini
+> python ee_gridmet_image_download.py -i example\ee_images.ini
 ```
+
+The download scripts must be run twice (like the zonal stats script) in order to first export the TIF files to your Google drive and then copy them to the output workspace.
+
+## Summary Figures/Tables
+To generate summary tables and figures, execute the following:
+```
+> python ee_summary_tables.py -i example\ee_summary.ini
+> python ee_summary_figures.py -i example\ee_summary.ini
+```
+
+## Notes
+
 
 
 ## Dependencies
@@ -36,6 +115,7 @@ The following modules must be present to run all of the EE-Tools:
 * [gdal](http://gdal.org/)
 * [relativedelta](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
+* [pytest](http://doc.pytest.org/en/latest/) (for testing)
 
 #### Anaconda
 
@@ -71,6 +151,22 @@ The EarthEngine API must be installed through pip:
 > pip install earthengine-api
 ```
 
+After installing the EarthEngine API module, you will need to authenticate the Earth Engine API (see [setting-up-authentication-credentials](https://developers.google.com/earth-engine/python_install#setting-up-authentication-credentials)):
+```
+> python -c "import ee; ee.Initialize()"
+```
+
 #### ArcPy
 
-The ArcGIS ArcPy module may be needed for some operations.
+Currently the ArcGIS ArcPy module is used for computing raster statistics in some of the modules.  This dependency will eventually be removed.
+
+## Code
+
+#### Style Guide
+All code Python code should follow the PEP8 style guide.
+
+#### Tests
+
+```
+> python -m pytest
+```
