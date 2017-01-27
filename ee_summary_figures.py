@@ -1,24 +1,27 @@
 #--------------------------------
 # Name:         ee_summary_figures.py
 # Purpose:      Generate summary figures
-# Created       2016-10-17
+# Created       2017-01-27
 # Python:       2.7
 #--------------------------------
 
 import argparse
-import ConfigParser
 import datetime
 import logging
 import os
 import sys
 
+import matplotlib
+matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-import common
+import ee_tools.gdal_common as gdc
+import ee_tools.ini_common as ini_common
+import ee_tools.python_common as python_common
 
 
 def main(ini_path=None, overwrite_flag=True, show_flag=False):
@@ -31,6 +34,13 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     """
 
     logging.info('\nGenerate summary figures')
+
+    # Read config file
+    # ini = ini_common.ini_parse(ini_path, section='FIGURES')
+    ini = ini_common.read(ini_path)
+    ini_common.parse_section(ini, section='INPUTS')
+    ini_common.parse_section(ini, section='SUMMARY')
+    ini_common.parse_section(ini, section='FIGURES')
 
     # Band options
     band_list = [
@@ -136,9 +146,6 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
     plot_dict = dict()
 
-    # Plot PPT as a 'bar' or 'line' for now
-    # plot_dict['scatter_best_fit'] = True
-
     # Center y-labels in figure window (instead of centering on ticks/axes)
     plot_dict['center_ylabel'] = False
 
@@ -182,7 +189,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     # CSV parameters
     # Zone field will be inserted after it is read in from INI file
     landsat_annual_fields = [
-        'YEAR', 'SCENE_COUNT',
+        ini['INPUTS']['zone_field'].upper(), 'YEAR', 'SCENE_COUNT',
         'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
@@ -191,47 +198,13 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # 'NDWI_TOA', 'NDWI_SUR',
         'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
 
-
-    # Open config file
-    config = ConfigParser.ConfigParser()
-    try:
-        config.readfp(open(ini_path))
-    except:
-        logging.error('\nERROR: Input file could not be read, ' +
-                      'is not an input file, or does not exist\n' +
-                      'ERROR: ini_path = {}\n').format(ini_path)
-        sys.exit()
-    logging.info('\nReading Input File')
-
-    # Get and check config file parameters
-    # Get figure bands from INI file
-    try:
-        timeseries_bands = config.get(
-            'INPUTS', 'timeseries_bands').split(',')
-        timeseries_bands = map(
-            lambda x: x.strip().lower(), timeseries_bands)
-    except:
-        logging.warning('  timeseries_bands option not set in INI')
-        timeseries_bands = []
-    try:
-        scatter_bands = config.get(
-            'INPUTS', 'scatter_bands').split(',')
-        scatter_bands = [
-            map(lambda x: x.strip().lower(), b.split(':'))
-            for b in scatter_bands]
-    except:
-        logging.warning('  scatter_bands option not set in INI')
-        scatter_bands = []
-    try:
-        complementary_bands = config.get(
-            'INPUTS', 'complementary_bands').split(',')
-        complementary_bands = map(
-            lambda x: x.strip().lower(), complementary_bands)
-    except:
-        logging.warning('  complementary_bands option not set in INI')
-        complementary_bands = []
+    # Add merged row XXX to keep list
+    ini['INPUTS']['row_keep_list'].append('XXX')
 
     # Check figure bands
+    timeseries_bands = ini['FIGURES']['timeseries_bands']
+    scatter_bands = ini['FIGURES']['scatter_bands']
+    complementary_bands = ini['FIGURES']['complementary_bands']
     if timeseries_bands:
         logging.info('Timeseries Bands:')
         for band in timeseries_bands:
@@ -261,291 +234,59 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                 return False
             logging.info('  {}'.format(band))
 
-    # Plot options
-    # Plot PPT as a line or a bar chart
-    try:
-        plot_dict['ppt_plot_type'] = config.get(
-            'INPUTS', 'ppt_plot_type').strip().upper()
-    except:
-        plot_dict['ppt_plot_type'] = 'LINE'
-        logging.debug('Defaulting ppt_plot_type to LINE')
-    if plot_dict['ppt_plot_type'] not in ['LINE', 'BAR']:
-        logging.error('\nERROR: ppt_plot_type must be "LINE" or "BAR"')
-        sys.exit()
+    # Add input plot options
+    plot_dict['ppt_plot_type'] = ini['FIGURES']['ppt_plot_type']
+    plot_dict['scatter_best_fit'] = ini['FIGURES']['scatter_best_fit']
 
-    # Add a regression line and equation/R^2 to the scatter plot
-    try:
-        plot_dict['scatter_best_fit'] = config.getboolean(
-            'INPUTS', 'best_fit_flag')
-    except:
-        plot_dict['scatter_best_fit'] = False
-        logging.debug('Defaulting best_fit_flag to False')
-
-    #
-    zone_input_ws = config.get('INPUTS', 'zone_input_ws')
-    zone_filename = config.get('INPUTS', 'zone_filename')
-    zone_field = config.get('INPUTS', 'zone_field')
-    landsat_annual_fields.insert(0, zone_field)
-
-    # Build and check file paths
-    zone_path = os.path.join(zone_input_ws, zone_filename)
-    if not os.path.isfile(zone_path):
-        logging.error(
-            '\nERROR: The zone shapefile does not exist\n  {}'.format(
-                zone_path))
-        sys.exit()
-
-    try:
-        output_ws = config.get('INPUTS', 'output_ws')
-    except:
-        output_ws = os.getcwd()
-        logging.debug('Defaulting output workspace to {}'.format(output_ws))
-    if not os.path.isdir(output_ws):
-        logging.error(
-            '\nERROR: The output folder does not exist\n  {}'.format(
-                output_ws))
-        sys.exit()
-
-    figures_ws = os.path.join(output_ws, figures_folder)
+    figures_ws = os.path.join(ini['SUMMARY']['output_ws'], figures_folder)
     if not os.path.isdir(figures_ws):
         os.makedirs(figures_ws)
 
     # Start/end year
-    try:
-        start_year = int(config.get('INPUTS', 'start_year'))
-    except:
-        start_year = 1984
-        logging.debug('Defaulting start year to {}'.format(start_year))
-    try:
-        end_year = int(config.get('INPUTS', 'end_year'))
-    except:
-        end_year = datetime.datetime.today().year
-        logging.debug('Defaulting end year to {}'.format(end_year))
-    if start_year and end_year and end_year < start_year:
-        logging.error('\nERROR: End year must be >= start year')
-        sys.exit()
-    default_end_year = datetime.datetime.today().year + 1
-    if (start_year and start_year not in range(1984, default_end_year) or
-            end_year and end_year not in range(1984, default_end_year)):
-        logging.error(
-            '\nERROR: Year must be an integer from 1984-2016')
-        sys.exit()
-    year_list = range(start_year, end_year + 1)
-
-    # Start/end month
-    try:
-        start_month = int(config.get('INPUTS', 'start_month'))
-    except:
-        logging.debug('Defaulting start_month = None')
-        start_month = None
-    try:
-        end_month = int(config.get('INPUTS', 'end_month'))
-    except:
-        logging.debug('Defaulting end_month = None')
-        end_month = None
-    if start_month and start_month not in range(1, 13):
-        logging.error('\nERROR: Start month must be an integer from 1-12')
-        sys.exit()
-    elif end_month and end_month not in range(1, 13):
-        logging.error('\nERROR: End month must be an integer from 1-12')
-        sys.exit()
-    month_list = common.wrapped_range(start_month, end_month, 1, 12)
-
-    # Start/end DOY
-    try:
-        start_doy = int(config.get('INPUTS', 'start_doy'))
-    except:
-        logging.debug('Defaulting start_doy = None')
-        start_doy = None
-    try:
-        end_doy = int(config.get('INPUTS', 'end_doy'))
-    except:
-        logging.debug('Defaulting end_doy = None')
-        end_doy = None
-    if start_doy and start_doy not in range(1, 367):
-        logging.error('\nERROR: Start DOY must be an integer from 1-366')
-        sys.exit()
-    elif end_doy and end_doy not in range(1, 367):
-        logging.error('\nERROR: End DOY must be an integer from 1-366')
-        sys.exit()
-    doy_list = common.wrapped_range(start_doy, end_doy, 1, 366)
-
-    # Control which Landsat images are used
-    # Default to True so that all Landsats are used if not set
-    try:
-        landsat5_flag = config.getboolean('INPUTS', 'landsat5_flag')
-    except:
-        logging.debug('Defaulting landsat5_flag = True')
-        landsat5_flag = True
-    try:
-        landsat4_flag = config.getboolean('INPUTS', 'landsat4_flag')
-    except:
-        logging.debug('Defaulting landsat4_flag = True')
-        landsat4_flag = True
-    try:
-        landsat7_flag = config.getboolean('INPUTS', 'landsat7_flag')
-    except:
-        logging.debug('Defaulting landsat7_flag = True')
-        landsat7_flag = True
-    try:
-        landsat8_flag = config.getboolean('INPUTS', 'landsat8_flag')
-    except:
-        logging.debug('Defaulting landsat8_flag = True')
-        landsat8_flag = True
-
-    # Remove scenes with cloud score above target percentage
-    try:
-        max_cloud_score = config.getfloat('INPUTS', 'max_cloud_score')
-    except:
-        logging.debug(
-            'Not filtering by pixel count percent\n  (max_cloud_score = 100)')
-        max_cloud_score = 100
-    if max_cloud_score < 0 or max_cloud_score > 100:
-        logging.error('\nERROR: cloud_score must be in the range 0-100')
-        sys.exit()
-    if max_cloud_score > 0 and max_cloud_score < 1:
-        logging.error(
-            '\nWARNING: max_cloud_score must be a percent (0-100)' +
-            '\n  The value entered appears to be a decimal in the range 0-1')
-        raw_input('  Press ENTER to continue')
-
-    # Remove scenes with Fmask counts above the target percentage
-    try:
-        max_fmask_pct = config.getfloat('INPUTS', 'max_fmask_pct')
-    except:
-        logging.debug(
-            'Not filtering by pixel count percent\n  (max_fmask_pct = 100)')
-        max_fmask_pct = 100
-    if max_fmask_pct < 0 or max_fmask_pct > 100:
-        logging.error('\nERROR: max_fmask_pct must be in the range 0-100')
-        sys.exit()
-    if max_fmask_pct > 0 and max_fmask_pct < 1:
-        logging.error(
-            '\nWARNING: max_fmask_pct must be a percent (0-100)' +
-            '\n  The value entered appears to be a decimal in the range 0-1')
-        raw_input('  Press ENTER to continue')
-
-    # Remove SLC-off scenes with pixel counts below the target percentage
-    try:
-        min_slc_off_pct = config.getfloat(
-            'INPUTS', 'min_slc_off_pct')
-    except:
-        logging.debug(
-            'Not filtering SLC-off images by Fmask percent' +
-            '  (min_slc_off_pct = 0)')
-        min_slc_off_pct = 0
-    if min_slc_off_pct < 0 or min_slc_off_pct > 100:
-        logging.error(
-            '\nERROR: min_slc_off_pct must be in the range 0-100')
-        sys.exit()
-    if min_slc_off_pct > 0 and min_slc_off_pct < 1:
-        logging.error(
-            '\nWARNING: min_slc_off_pct must be a percent (0-100)' +
-            '\n  The value entered appears to be a decimal in the range 0-1')
-        raw_input('  Press ENTER to continue')
-
-    # Only process specific Landsat scenes
-    try:
-        scene_id_keep_path = config.get('INPUTS', 'scene_id_keep_path')
-        with open(scene_id_keep_path) as input_f:
-            scene_id_keep_list = input_f.readlines()
-        scene_id_keep_list = [x.strip()[:16] for x in scene_id_keep_list]
-    except IOError:
-        logging.error('\nFileIO Error: {}'.format(scene_id_keep_path))
-        sys.exit()
-    except:
-        logging.debug('Defaulting scene_id_keep_list = []')
-        scene_id_keep_list = []
-
-    # Skip specific landsat scenes
-    try:
-        scene_id_skip_path = config.get('INPUTS', 'scene_id_skip_path')
-        with open(scene_id_skip_path) as input_f:
-            scene_id_skip_list = input_f.readlines()
-        scene_id_skip_list = [x.strip()[:16] for x in scene_id_skip_list]
-    except IOError:
-        logging.error('\nFileIO Error: {}'.format(scene_id_skip_path))
-        sys.exit()
-    except:
-        logging.debug('Defaulting scene_id_skip_list = []')
-        scene_id_skip_list = []
-
-    # Only process certain Landsat path/rows
-    try:
-        path_keep_list = list(
-            common.parse_int_set(config.get('INPUTS', 'path_keep_list')))
-    except:
-        logging.debug('Defaulting path_keep_list = []')
-        path_keep_list = []
-    try:
-        row_keep_list = list(
-            common.parse_int_set(config.get('INPUTS', 'row_keep_list')))
-    except:
-        logging.debug('Defaulting row_keep_list = []')
-        row_keep_list = []
-
-    # Skip or keep certain FID
-    try:
-        fid_skip_list = list(
-            common.parse_int_set(config.get('INPUTS', 'fid_skip_list')))
-    except:
-        logging.debug('Defaulting fid_skip_list = []')
-        fid_skip_list = []
-    try:
-        fid_keep_list = list(
-            common.parse_int_set(config.get('INPUTS', 'fid_keep_list')))
-    except:
-        logging.debug('Defaulting fid_keep_list = []')
-        fid_keep_list = []
+    year_list = range(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
+    month_list = list(python_common.wrapped_range(
+        ini['INPUTS']['start_month'], ini['INPUTS']['end_month'], 1, 12))
+    doy_list = list(python_common.wrapped_range(
+        ini['INPUTS']['start_doy'], ini['INPUTS']['end_doy'], 1, 366))
 
     # GRIDMET month range (default to water year)
-    try:
-        gridmet_start_month = int(config.get('INPUTS', 'gridmet_start_month'))
-    except:
-        logging.debug('Defaulting gridmet_start_month = None')
-        gridmet_start_month = None
-    try:
-        gridmet_end_month = int(config.get('INPUTS', 'gridmet_end_month'))
-    except:
-        logging.debug('Defaulting gridmet_end_month = None')
-        gridmet_end_month = None
-    if gridmet_start_month and gridmet_start_month not in range(1, 13):
-        logging.error(
-            '\nERROR: GRIDMET start month must be an integer from 1-12')
-        sys.exit()
-    elif gridmet_end_month and gridmet_end_month not in range(1, 13):
-        logging.error(
-            '\nERROR: GRIDMET end month must be an integer from 1-12')
-        sys.exit()
-    if gridmet_start_month is None and gridmet_end_month is None:
-        gridmet_start_month = 10
-        gridmet_end_month = 9
-    gridmet_months = list(
-        common.month_range(gridmet_start_month, gridmet_end_month))
+    gridmet_start_month = ini['SUMMARY']['gridmet_start_month']
+    gridmet_end_month = ini['SUMMARY']['gridmet_end_month']
+    gridmet_months = list(python_common.month_range(
+        gridmet_start_month, gridmet_end_month))
     logging.info('\nGridmet months: {}'.format(
         ', '.join(map(str, gridmet_months))))
 
     # Get ee features from shapefile
-    zone_geom_list = common.shapefile_2_geom_list_func(
-        zone_path, zone_field=zone_field, reverse_flag=False)
+    zone_geom_list = gdc.shapefile_2_geom_list_func(
+        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        reverse_flag=False)
+
+    # Filter features by FID before merging geometries
+    if ini['INPUTS']['fid_keep_list']:
+        zone_geom_list = [
+            zone_obj for zone_obj in zone_geom_list
+            if zone_obj[0] in ini['INPUTS']['fid_keep_list']]
+    if ini['INPUTS']['fid_skip_list']:
+        zone_geom_list = [
+            zone_obj for zone_obj in zone_geom_list
+            if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
+
 
     logging.info('\nProcessing zones')
     for fid, zone_str, zone_json in sorted(zone_geom_list):
-        if fid_keep_list and fid not in fid_keep_list:
-            continue
-        elif fid_skip_list and fid in fid_skip_list:
-            continue
         logging.info('ZONE: {} (FID: {})'.format(zone_str, fid))
 
-        if not zone_field or zone_field.upper() == 'FID':
+        if (not ini['INPUTS']['zone_field'] or
+                ini['INPUTS']['zone_field'].upper() == 'FID'):
             zone_str = 'fid_' + zone_str
         else:
             zone_str = zone_str.lower().replace(' ', '_')
         # zone_list.append(zone_str)
 
-        zone_output_ws = os.path.join(output_ws, zone_str)
-        # zone_figures_ws = output_ws
-        # zone_figures_ws = os.path.join(output_ws, zone_str)
+        zone_output_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_str)
+        # zone_figures_ws = ini['SUMMARY']['output_ws']
+        # zone_figures_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_str)
         if not os.path.isdir(zone_output_ws):
             logging.debug('  Folder {} does not exist, skipping'.format(
                 zone_output_ws))
@@ -586,44 +327,49 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
             landsat_df = landsat_df[landsat_df['MONTH'].isin(month_list)]
         if doy_list:
             landsat_df = landsat_df[landsat_df['DOY'].isin(doy_list)]
+
         # Assume the default is for these to be True and only filter if False
-        if not landsat4_flag:
+        if not ini['INPUTS']['landsat4_flag']:
             landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT4']
-        if not landsat5_flag:
+        if not ini['INPUTS']['landsat5_flag']:
             landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT5']
-        if not landsat7_flag:
+        if not ini['INPUTS']['landsat7_flag']:
             landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LE7']
-        if not landsat8_flag:
+        if not ini['INPUTS']['landsat8_flag']:
             landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LC8']
-        if path_keep_list:
-            landsat_df = landsat_df[landsat_df['PATH'].isin(path_keep_list)]
-        if row_keep_list:
-            landsat_df = landsat_df[landsat_df['ROW'].isin(row_keep_list)]
-        if scene_id_keep_list:
+
+        if ini['INPUTS']['path_keep_list']:
             landsat_df = landsat_df[
-                landsat_df['SCENE_ID'].isin(scene_id_keep_list)]
-        if scene_id_skip_list:
-            landsat_df = landsat_df[np.logical_not(
-                landsat_df['SCENE_ID'].isin(scene_id_skip_list))]
+                landsat_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
+        if ini['INPUTS']['row_keep_list']:
+            landsat_df = landsat_df[
+                landsat_df['ROW'].isin(ini['INPUTS']['row_keep_list'])]
+
+        if ini['INPUTS']['scene_id_keep_list']:
+            landsat_df = landsat_df[landsat_df['SCENE_ID'].isin(
+                ini['INPUTS']['scene_id_keep_list'])]
+        if ini['INPUTS']['scene_id_skip_list']:
+            landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
+                ini['INPUTS']['scene_id_skip_list']))]
 
         # First filter by average cloud score
-        if max_cloud_score < 100 and not landsat_df.empty:
-            logging.debug(
-                '    Maximum cloud score: {0}'.format(max_cloud_score))
+        if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
+            logging.debug('    Maximum cloud score: {0}'.format(
+                ini['SUMMARY']['max_cloud_score']))
             landsat_df = landsat_df[
-                landsat_df['CLOUD_SCORE'] <= max_cloud_score]
+                landsat_df['CLOUD_SCORE'] <= ini['SUMMARY']['max_cloud_score']]
         # Filter by Fmask percentage
-        if max_fmask_pct < 100 and not landsat_df.empty:
+        if ini['SUMMARY']['max_fmask_pct'] < 100 and not landsat_df.empty:
             landsat_df['FMASK_PCT'] = 100 * (
                 landsat_df['FMASK_COUNT'] / landsat_df['PIXEL_COUNT'])
-            logging.debug(
-                '    Max Fmask threshold: {}'.format(max_fmask_pct))
+            logging.debug('    Max Fmask threshold: {}'.format(
+                ini['SUMMARY']['max_fmask_pct']))
             landsat_df = landsat_df[
-                landsat_df['FMASK_PCT'] <= max_fmask_pct]
+                landsat_df['FMASK_PCT'] <= ini['SUMMARY']['max_fmask_pct']]
         # Filter low count SLC-off images
-        if min_slc_off_pct > 0 and not landsat_df.empty:
+        if ini['SUMMARY']['min_slc_off_pct'] > 0 and not landsat_df.empty:
             logging.debug('    Mininum SLC-off threshold: {}%'.format(
-                max_fmask_pct))
+                ini['SUMMARY']['min_slc_off_pct']))
             logging.debug('    Maximum pixel count: {}'.format(
                 max_pixel_count))
             slc_off_mask = (
@@ -632,7 +378,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
             slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
             landsat_df = landsat_df[
-                ((slc_off_pct >= min_slc_off_pct) & slc_off_mask) |
+                ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
                 (~slc_off_mask)]
 
         if landsat_df.empty:
@@ -641,32 +387,34 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
             continue
 
         logging.debug('  Computing Landsat annual summaries')
-        landsat_df = landsat_df.groupby([zone_field, 'YEAR']).agg({
-            'PIXEL_COUNT': {
-                'PIXEL_COUNT': 'mean',
-                'SCENE_COUNT': 'count'},
-            'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-            'DATA_COUNT': {'DATA_COUNT': 'mean'},
-            'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
-            'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
-            'EVI_SUR': {'EVI_SUR': 'mean'},
-            'NDVI_SUR': {'NDVI_SUR': 'mean'},
-            'NDVI_TOA': {'NDVI_TOA': 'mean'},
-            'NDWI_GREEN_NIR_SUR': {'NDWI_GREEN_NIR_SUR': 'mean'},
-            'NDWI_GREEN_SWIR1_SUR': {'NDWI_GREEN_SWIR1_SUR': 'mean'},
-            'NDWI_NIR_SWIR1_SUR': {'NDWI_NIR_SWIR1_SUR': 'mean'},
-            # 'NDWI_GREEN_NIR_TOA': {'NDWI_GREEN_NIR_TOA': 'mean'},
-            # 'NDWI_GREEN_SWIR1_TOA': {'NDWI_GREEN_SWIR1_TOA': 'mean'},
-            # 'NDWI_NIR_SWIR1_TOA': {'NDWI_NIR_SWIR1_TOA': 'mean'},
-            # 'NDWI_SWIR1_GREEN_SUR': {'NDWI_SWIR1_GREEN_SUR': 'mean'},
-            # 'NDWI_SWIR1_GREEN_TOA': {'NDWI_SWIR1_GREEN_TOA': 'mean'},
-            # 'NDWI_SUR': {'NDWI_SUR': 'mean'},
-            # 'NDWI_TOA': {'NDWI_TOA': 'mean'},
-            'TC_BRIGHT': {'TC_BRIGHT': 'mean'},
-            'TC_GREEN': {'TC_GREEN': 'mean'},
-            'TC_WET': {'TC_WET': 'mean'},
-            'TS': {'TS': 'mean'},
-        })
+        landsat_df = landsat_df\
+            .groupby([ini['INPUTS']['zone_field'], 'YEAR'])\
+            .agg({
+                'PIXEL_COUNT': {
+                    'PIXEL_COUNT': 'mean',
+                    'SCENE_COUNT': 'count'},
+                'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
+                'DATA_COUNT': {'DATA_COUNT': 'mean'},
+                'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
+                'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
+                'EVI_SUR': {'EVI_SUR': 'mean'},
+                'NDVI_SUR': {'NDVI_SUR': 'mean'},
+                'NDVI_TOA': {'NDVI_TOA': 'mean'},
+                'NDWI_GREEN_NIR_SUR': {'NDWI_GREEN_NIR_SUR': 'mean'},
+                'NDWI_GREEN_SWIR1_SUR': {'NDWI_GREEN_SWIR1_SUR': 'mean'},
+                'NDWI_NIR_SWIR1_SUR': {'NDWI_NIR_SWIR1_SUR': 'mean'},
+                # 'NDWI_GREEN_NIR_TOA': {'NDWI_GREEN_NIR_TOA': 'mean'},
+                # 'NDWI_GREEN_SWIR1_TOA': {'NDWI_GREEN_SWIR1_TOA': 'mean'},
+                # 'NDWI_NIR_SWIR1_TOA': {'NDWI_NIR_SWIR1_TOA': 'mean'},
+                # 'NDWI_SWIR1_GREEN_SUR': {'NDWI_SWIR1_GREEN_SUR': 'mean'},
+                # 'NDWI_SWIR1_GREEN_TOA': {'NDWI_SWIR1_GREEN_TOA': 'mean'},
+                # 'NDWI_SUR': {'NDWI_SUR': 'mean'},
+                # 'NDWI_TOA': {'NDWI_TOA': 'mean'},
+                'TC_BRIGHT': {'TC_BRIGHT': 'mean'},
+                'TC_GREEN': {'TC_GREEN': 'mean'},
+                'TC_WET': {'TC_WET': 'mean'},
+                'TS': {'TS': 'mean'},
+            })
         landsat_df.columns = landsat_df.columns.droplevel(0)
         landsat_df.reset_index(inplace=True)
         landsat_df = landsat_df[landsat_annual_fields]
@@ -712,8 +460,9 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                 continue
 
         # Group GRIDMET data by user specified range (default is water year)
-        gridmet_group_df = gridmet_df.groupby([zone_field, 'GROUP_YEAR']).agg({
-            'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
+        gridmet_group_df = gridmet_df\
+            .groupby([ini['INPUTS']['zone_field'], 'GROUP_YEAR'])\
+            .agg({'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
         gridmet_group_df.columns = gridmet_group_df.columns.droplevel(0)
         gridmet_group_df.reset_index(inplace=True)
         gridmet_group_df.rename(columns={'GROUP_YEAR': 'YEAR'}, inplace=True)
@@ -721,7 +470,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
         # # Group GRIDMET data by month
         # gridmet_month_df = gridmet_df.groupby(
-        #     [zone_field, 'GROUP_YEAR', 'MONTH']).agg({
+        #     [ini['INPUTS']['zone_field'], 'GROUP_YEAR', 'MONTH']).agg({
         #         'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
         # gridmet_month_df.columns = gridmet_month_df.columns.droplevel(0)
         # gridmet_month_df.reset_index(inplace=True)
@@ -732,15 +481,17 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # gridmet_month_df['MONTH'] = 'PPT_M' + gridmet_month_df['MONTH'].astype(str)
         # # Pivot rows up to separate columns
         # gridmet_month_df = gridmet_month_df.pivot_table(
-        #     'PPT', [zone_field, 'YEAR'], 'MONTH')
+        #     'PPT', [ini['INPUTS']['zone_field'], 'YEAR'], 'MONTH')
         # gridmet_month_df.reset_index(inplace=True)
-        # columns = [zone_field, 'YEAR'] + ['PPT_M{}'.format(m) for m in gridmet_months]
+        # columns = [ini['INPUTS']['zone_field'], 'YEAR'] + ['PPT_M{}'.format(m) for m in gridmet_months]
         # gridmet_month_df = gridmet_month_df[columns]
         # del gridmet_month_df.index.name
 
         # Merge Landsat and GRIDMET collections
-        zone_df = landsat_df.merge(gridmet_group_df, on=[zone_field, 'YEAR'])
-        # zone_df = zone_df.merge(gridmet_month_df, on=[zone_field, 'YEAR'])
+        zone_df = landsat_df.merge(
+            gridmet_group_df, on=[ini['INPUTS']['zone_field'], 'YEAR'])
+        # zone_df = zone_df.merge(
+        #     gridmet_month_df, on=[ini['INPUTS']['zone_field'], 'YEAR'])
         if zone_df is None or zone_df.empty:
             logging.info('  Empty zone dataframe, not generating figures')
             continue
@@ -752,7 +503,8 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         logging.debug('  Generating figures')
         for band in timeseries_bands:
             timeseries_plot(
-                band, zone_df, zone_str, figures_ws, start_year, end_year,
+                band, zone_df, zone_str, figures_ws,
+                ini['INPUTS']['start_year'], ini['INPUTS']['end_year'],
                 band_name, band_unit, band_color, plot_dict)
 
         for band_x, band_y in scatter_bands:
@@ -857,8 +609,11 @@ def timeseries_plot(band, zone_df, zone_str, figures_ws,
     # Plot precipitation first (so that it is in back)
     if plot_dict['ppt_plot_type'] == 'BAR':
         ax2.bar(
-            zone_df['YEAR'].values - 0.5, zone_df['PPT'].values,
-            width=1, color='0.6', edgecolor='0.5', label=band_name[ppt_band])
+            left=zone_df['YEAR'].values, height=zone_df['PPT'].values,
+            align='center', width=1, color='0.6', edgecolor='0.5',
+            # left=zone_df['YEAR'].values - 0.5, height=zone_df['PPT'].values,
+            # align='edge', width=1, color='0.6', edgecolor='0.5',
+            label=band_name[ppt_band])
         # ax2.set_ylim = [min(zone_df['PPT'].values), max(zone_df['PPT'].values)]
     elif plot_dict['ppt_plot_type'] == 'LINE':
         ax2.plot(
@@ -874,10 +629,10 @@ def timeseries_plot(band, zone_df, zone_str, figures_ws,
         fontsize=plot_dict['legend_fs'], numpoints=1)
 
     if plot_dict['overwrite'] or not os.path.isfile(figure_path):
-        plt.savefig(figure_path, dpi=plot_dict['fig_dpi'])
+        fig.savefig(figure_path, dpi=plot_dict['fig_dpi'])
     if plot_dict['show']:
         plt.show()
-    plt.close()
+    plt.close(fig)
     del fig, ax0, ax1, ax2
     return True
 
@@ -921,7 +676,7 @@ def scatter_plot(band_x, band_y, zone_df, zone_str, figures_ws,
         plt.savefig(figure_path, dpi=plot_dict['fig_dpi'])
     if plot_dict['show']:
         plt.show()
-    plt.close()
+    plt.close(fig)
     del fig, ax0
 
     return True
@@ -1013,10 +768,10 @@ def complementary_plot(band, zone_df, zone_str, figures_ws,
         fontsize=plot_dict['legend_fs'], numpoints=1)
 
     if plot_dict['overwrite'] or not os.path.isfile(figure_path):
-        plt.savefig(figure_path, dpi=plot_dict['fig_dpi'])
+        fig.savefig(figure_path, dpi=plot_dict['fig_dpi'])
     if plot_dict['show']:
         plt.show()
-    plt.close()
+    plt.close(fig)
     del fig, ax0, ax1, ax2
     return True
 
@@ -1027,7 +782,7 @@ def arg_parse():
         description='Generate summary figures',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', required=True,
+        '-i', '--ini', type=lambda x: python_common.valid_file(x),
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
@@ -1038,6 +793,11 @@ def arg_parse():
     #     '-o', '--overwrite', default=False, action='store_true',
     #     help='Force overwrite of existing files')
     args = parser.parse_args()
+
+    if args.ini and os.path.isfile(os.path.abspath(args.ini)):
+        args.ini = os.path.abspath(args.ini)
+    else:
+        args.ini = python_common.get_ini_path(os.getcwd())
     return args
 
 
