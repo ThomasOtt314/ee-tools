@@ -12,10 +12,6 @@ import ee_tools.python_common as python_common
 #     assert False
 
 
-# def test_is_valid_file(parser, arg):
-#     assert False
-
-
 # def test_parse_int_set(nputstr=""):
 #     """Return list of numbers given a string of ranges
 
@@ -28,6 +24,10 @@ import ee_tools.python_common as python_common
 
 # def test_remove_file(file_path):
 #     """Remove a feature/raster and all of its anciallary files"""
+#     assert False
+
+
+# def test_valid_file(parser, arg):
 #     assert False
 
 

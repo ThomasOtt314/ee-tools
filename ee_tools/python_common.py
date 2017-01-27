@@ -1,10 +1,11 @@
 #--------------------------------
 # Name:         python_common.py
 # Purpose:      Common Python support functions
-# Created       2017-01-25
+# Created       2017-01-26
 # Python:       2.7
 #--------------------------------
 
+import argparse
 import glob
 import logging
 import os
@@ -18,13 +19,6 @@ def get_ini_path(workspace):
         title='Select the target INI file')
     root.destroy()
     return ini_path
-
-
-def is_valid_file(parser, arg):
-    if not os.path.isfile(arg):
-        parser.error('The file {} does not exist!'.format(arg))
-    else:
-        return arg
 
 
 def parse_int_set(nputstr=""):
@@ -71,6 +65,13 @@ def remove_file(file_path):
     file_ws = os.path.dirname(file_path)
     for file_name in glob.glob(os.path.splitext(file_path)[0] + ".*"):
         os.remove(os.path.join(file_ws, file_name))
+
+
+def valid_file(arg):
+    if os.path.isfile(arg):
+        return arg
+    else:
+        raise argparse.ArgumentTypeError('{} does not exist'.format(arg))
 
 
 def month_range(start, end):

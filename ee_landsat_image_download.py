@@ -2,7 +2,7 @@
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
 # Author:       Charles Morton
-# Created       2017-01-25
+# Created       2017-01-26
 # Python:       2.7
 #--------------------------------
 
@@ -21,8 +21,8 @@ import numpy as np
 from osgeo import ogr
 
 import ee_tools.ee_common as ee_common
-import ee_tools.ini_common as ini_common
 import ee_tools.gdal_common as gdc
+import ee_tools.ini_common as ini_common
 import ee_tools.python_common as python_common
 
 
@@ -49,7 +49,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    ini = ini_common.ini_parse(ini_path, section='image')
+    # ini = ini_common.ini_parse(ini_path, section='IMAGE')
+    ini = ini_common.read(ini_path)
+    ini_common.parse_section(ini, section='INPUTS')
+    ini_common.parse_section(ini, section='EXPORT')
+    ini_common.parse_section(ini, section='IMAGES')
 
     nodata_value = -9999
 
@@ -69,20 +73,21 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
+        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        reverse_flag=False)
 
     # Filter features by FID before merging geometries
-    if ini['fid_keep_list']:
+    if ini['INPUTS']['fid_keep_list']:
         zone_geom_list = [
-            [fid, zone, geom] for zone_geom in zone_geom_list
-            if fid in ini['fid_keep_list']]
-    if ini['fid_skip_list']:
+            zone_obj for zone_obj in zone_geom_list
+            if zone_obj[0] in ini['INPUTS']['fid_keep_list']]
+    if ini['INPUTS']['fid_skip_list']:
         zone_geom_list = [
-            [fid, zone, geom] for zone_geom in zone_geom_list
-            if fid not in ini['fid_skip_list']]
+            zone_obj for zone_obj in zone_geom_list
+            if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
     # Merge geometries
-    if ini['merge_geom_flag']:
+    if ini['IMAGES']['merge_geom_flag']:
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone in zone_geom_list:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -91,31 +96,36 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 merge_geom.AddGeometry(zone_polygon)
         # merge_json = json.loads(merge_mp.ExportToJson())
         zone_geom_list = [
-            [0, ini['zone_name'], json.loads(merge_geom.ExportToJson())]]
-        ini['zone_field'] = ''
+            [0, ini['INPUTS']['zone_filename'], json.loads(merge_geom.ExportToJson())]]
+        ini['INPUTS']['zone_field'] = ''
 
     # Need zone_path projection to build EE geometries
-    zone_osr = gdc.feature_path_osr(ini['zone_path'])
+    zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
     zone_proj = gdc.osr_proj(zone_osr)
     # zone_proj = ee.Projection(zone_proj).wkt().getInfo()
     # zone_proj = zone_proj.replace('\n', '').replace(' ', '')
-    logging.debug('  Zone Projection: {}'.format(zone_proj))
+    # logging.debug('  Zone Projection: {}'.format(zone_proj))
 
     # Check that shapefile has matching spatial reference
-    if not gdc.matching_spatref(zone_osr, ini['output_osr']):
+    if not gdc.matching_spatref(zone_osr, ini['EXPORT']['osr']):
         logging.warning('  Zone OSR:\n{}\n'.format(zone_osr))
-        logging.warning('  Output OSR:\n{}\n'.format(ini['output_osr']))
+        logging.warning('  Output OSR:\n{}\n'.format(
+            ini['EXPORT']['osr']))
         logging.warning('  Zone Proj4:   {}'.format(zone_osr.ExportToProj4()))
-        logging.warning('  Output Proj4: {}'.format(ini['output_osr'].ExportToProj4()))
+        logging.warning('  Output Proj4: {}'.format(
+            ini['EXPORT']['osr'].ExportToProj4()))
         logging.warning(
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
             'This will likely cause problems!')
         raw_input('Press ENTER to continue')
     else:
-        logging.debug('  Zone Projection:\n{}\n'.format(zone_osr))
-        logging.debug('  Output Projection:\n{}\n'.format(ini['output_osr']))
-        logging.debug('  Output Cellsize: {}'.format(ini['output_cs']))
+        logging.debug('  Zone Projection:\n{}\n'.format(
+            zone_osr.ExportToWkt()))
+        logging.debug('  Output Projection:\n{}\n'.format(
+            ini['EXPORT']['osr'].ExportToWkt()))
+        logging.debug('  Output Cellsize: {}'.format(
+            ini['EXPORT']['cellsize']))
 
 
     # Initialize Earth Engine API key
@@ -135,7 +145,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     for fid, zone_str, zone_json in sorted(zone_geom_list):
         logging.info('\nZONE: {} (FID: {})'.format(zone_str, fid))
 
-        if ini['zone_field'].upper() == 'FID':
+        if ini['INPUTS']['zone_field'].upper() == 'FID':
             zone_str = 'fid_' + zone_str
         else:
             zone_str = zone_str.lower().replace(' ', '_')
@@ -152,10 +162,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # zone_extent = gdc.Extent(zone_geom.GetEnvelope())
         zone_extent.ymin, zone_extent.xmax = zone_extent.xmax, zone_extent.ymin
         zone_extent.adjust_to_snap(
-            'EXPAND', ini['snap_x'], ini['snap_y'], ini['output_cs'])
-        zone_geo = zone_extent.geo(ini['output_cs'])
+            'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
+            ini['EXPORT']['cellsize'])
+        zone_geo = zone_extent.geo(ini['EXPORT']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
-        zone_shape = zone_extent.shape(ini['output_cs'])
+        zone_shape = zone_extent.shape(ini['EXPORT']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
@@ -164,19 +175,22 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         output_transform = '[' + ','.join(map(str, zone_transform)) + ']'
         output_shape = '{1}x{0}'.format(*zone_shape)
 
-        zone_output_ws = os.path.join(ini['output_ws'], zone_str)
+        zone_output_ws = os.path.join(ini['IMAGES']['output_ws'], zone_str)
         zone_images_ws = os.path.join(zone_output_ws, images_folder)
         if not os.path.isdir(zone_images_ws):
             os.makedirs(zone_images_ws)
 
         # Keyword arguments for ee_common.get_landsat_collection() and
         #   ee_common.get_landsat_image()
-        landsat_args = {k: v for k, v in ini.items() if k in [
-            'fmask_flag', 'acca_flag', 'fmask_type',
-            'start_year', 'end_year',
-            'start_month', 'end_month', 'start_doy', 'end_doy',
-            'scene_id_keep_list', 'scene_id_skip_list',
-            'path_keep_list', 'row_keep_list', 'adjust_method']}
+        landsat_args = {
+            k: v for section in ['INPUTS', 'EXPORT']
+            for k, v in ini[section].items()
+            if k in [
+                'fmask_flag', 'acca_flag', 'fmask_type',
+                'start_year', 'end_year',
+                'start_month', 'end_month', 'start_doy', 'end_doy',
+                'scene_id_keep_list', 'scene_id_skip_list',
+                'path_keep_list', 'row_keep_list', 'adjust_method']}
         # landsat_args['start_date'] = start_date
         # landsat_args['end_date'] = end_date
         landsat_args['zone_geom'] = zone_geom
@@ -187,25 +201,25 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Get list of available Landsat images
         scene_id_list = []
-        if ini['landsat4_flag']:
+        if ini['INPUTS']['landsat4_flag']:
             logging.debug('  Getting Landsat 4 scene_id list')
             scene_id_list.extend([
                 f['properties']['id']
                 for f in ee_common.get_landsat_collection('LT4', **landsat_args)\
                     .map(get_collection_ids).getInfo()['features']])
-        if ini['landsat5_flag']:
+        if ini['INPUTS']['landsat5_flag']:
             logging.debug('  Getting Landsat 5 scene_id list')
             scene_id_list.extend([
                 f['properties']['id']
                 for f in ee_common.get_landsat_collection('LT5', **landsat_args)\
                     .map(get_collection_ids).getInfo()['features']])
-        if ini['landsat7_flag']:
+        if ini['INPUTS']['landsat7_flag']:
             logging.debug('  Getting Landsat 7 scene_id list')
             scene_id_list.extend([
                 f['properties']['id']
                 for f in ee_common.get_landsat_collection('LE7', **landsat_args)\
                     .map(get_collection_ids).getInfo()['features']])
-        if ini['landsat8_flag']:
+        if ini['INPUTS']['landsat8_flag']:
             logging.debug('  Getting Landsat 8 scene_id list')
             scene_id_list.extend([
                 f['properties']['id']
@@ -216,7 +230,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # Keep scene_id components as string for set operation
         # If not mosaicing images, include path/row in set
         #   otherwise set to None
-        if not ini['mosaic_method']:
+        if not ini['EXPORT']['mosaic_method']:
             scene_id_list = set([
                 (image_id[9:13], image_id[13:16], image_id[0:3],
                     image_id[3:6], image_id[6:9])
@@ -236,7 +250,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             day = scene_dt.day
 
             # If not mosaicing images, include path/row in name
-            if not ini['mosaic_method']:
+            if not ini['EXPORT']['mosaic_method']:
                 landsat_str = '{}{}{}'.format(landsat, path, row)
             else:
                 landsat_str = '{}'.format(landsat)
@@ -248,14 +262,18 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 os.makedirs(zone_year_ws)
 
             # Get the prepped Landsat image by ID
-            landsat_image = ee_common.get_landsat_image(
-                landsat, year, doy, path, row, ini['mosaic_method'],
-                landsat_args)
+            landsat_image = ee.Image(ee_common.get_landsat_image(
+                landsat, year, doy, path, row, ini['EXPORT']['mosaic_method'],
+                landsat_args))
 
             # Clip using the feature geometry
-            landsat_image = ee.Image(landsat_image).clip(zone_geom)
+            if ini['IMAGES']['clip_landsat_flag']:
+                landsat_image = landsat_image.clip(zone_geom)
+            else:
+                landsat_image = landsat_image.clip(ee.Geometry.Rectangle(
+                    list(zone_extent), ini['EXPORT']['crs'], False))
 
-            # # DEADBEEF - Display a single image
+            # DEADBEEF - Display a single image
             # ee_common.show_thumbnail(landsat_image.visualize(
             #     bands=['fmask', 'fmask', 'fmask'], min=0, max=4))
             # ee_common.show_thumbnail(landsat_image.visualize(
@@ -267,18 +285,19 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             # so that the TIF can have a nodata value other than 0 set
             landsat_image = landsat_image.unmask(nodata_value, False)
 
-            for band in ini['download_bands']:
+            for band in ini['IMAGES']['download_bands']:
                 logging.debug('  Band: {}'.format(band))
 
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}{:02d}{:02d}_{}_{}_{}'.format(
-                    ini['zone_name'], year, month, day, doy,
+                    ini['INPUTS']['zone_filename'], year, month, day, doy,
                     landsat_str.lower(), band.lower())
                 output_id = '{}{:02d}{:02d}_{}_{}.{}'.format(
                     year, month, day, doy, landsat_str.lower(), band)
 
-                export_path = os.path.join(ini['export_ws'], export_id + '.tif')
+                export_path = os.path.join(
+                    ini['EXPORT']['export_ws'], export_id + '.tif')
                 output_path = os.path.join(
                     zone_year_ws, output_id + '.tif')
                 logging.debug('  Export: {}'.format(export_path))
@@ -362,19 +381,19 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     band_image,
                     description=export_id,
-                    folder=ini['export_folder'],
+                    folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
-                    crs=ini['output_crs'],
+                    crs=ini['EXPORT']['crs'],
                     crsTransform=output_transform)
                 try:
                     task.start()
                 except Exception as e:
-                    logging.error('  Unhandled error starting task, skipping')
-                    logging.error(str(e))
+                    logging.error(
+                        '  Unhandled error starting task, skipping\n'
+                        '  {}'.format(str(e)))
                     continue
                 # logging.debug(task.status())
-            # break
 
     # # Get current running tasks
     # logging.debug('\nRunning tasks')
@@ -386,30 +405,13 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     #         # tasks[t['id']] = t['description']
 
 
-def get_ini_path(workspace):
-    import Tkinter, tkFileDialog
-    root = Tkinter.Tk()
-    ini_path = tkFileDialog.askopenfilename(
-        initialdir=workspace, parent=root, filetypes=[('INI files', '.ini')],
-        title='Select the target INI file')
-    root.destroy()
-    return ini_path
-
-
-def is_valid_file(parser, arg):
-    if not os.path.isfile(arg):
-        parser.error('The file {} does not exist!'.format(arg))
-    else:
-        return arg
-
-
 def arg_parse():
     """"""
     parser = argparse.ArgumentParser(
         description='Earth Engine Landsat Image Download',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', type=lambda x: is_valid_file(parser, x),
+        '-i', '--ini', type=lambda x: python_common.valid_file(x),
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
@@ -422,7 +424,7 @@ def arg_parse():
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
     else:
-        args.ini = get_ini_path(os.getcwd())
+        args.ini = python_common.get_ini_path(os.getcwd())
     return args
 
 

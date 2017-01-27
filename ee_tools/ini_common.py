@@ -2,11 +2,12 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-01-25
+# Created       2017-01-26
 # Python:       2.7
 #--------------------------------
 
 # import ConfigParser
+from collections import defaultdict
 import datetime
 import logging
 import os
@@ -19,23 +20,8 @@ import ee_tools.gdal_common as gdc
 import ee_tools.python_common as python_common
 
 
-def ini_parse(ini_path, section='zonal_stats'):
-    """Read the input parameter file, set defaults, and check values
-
-    Eventually make this a class and/or separate out the validation
-        and the reading.
-
-    Args:
-        ini_path (str): Input INI file path
-        mode (str): Enable different parameters depending on export type.
-            Eventually handle this using INI sections.
-
-    Returns:
-        dict:
-
-    """
-    logging.debug('\nInput File')
-
+def read(ini_path):
+    logging.debug('\nReading Input File')
     # Open config file
     config = configparser.ConfigParser()
     try:
@@ -46,319 +32,498 @@ def ini_parse(ini_path, section='zonal_stats'):
                       'ERROR: ini_path = {}\n'.format(ini_path))
         sys.exit()
 
-    # Fow now, assume all values are in one INPUTS section
-    if 'INPUTS' not in config.sections():
-        logging.error('\nERROR: Input file must have an "INPUTS" section'
-                      '  Insert the following as the first line: [INPUTS]')
-        sys.exit()
+    # # Fow now, assume all values are in one INPUTS section
+    # if 'INPUTS' not in config.sections():
+    #     logging.error('\nERROR: Input file must have an "INPUTS" section'
+    #                   '  Insert the following as the first line: [INPUTS]')
+    #     sys.exit()
 
-    # Read all inputs directly into a dictionary
-    # options = config['INPUTS'].items()
+    # ini = defaultdict(dict)
+    ini = dict()
+    for section in config.keys():
+        ini[section] = {}
+        for k, v in config[section].items():
+            ini[section][k] = v
+    return ini
 
-    options = {}
 
-
-    # Get output spatial reference parameter separately for now
-    # Eventually move down and set below
-    try:
-        options['output_snap'] = [
-            int(i) for i in str(config['INPUTS']['output_snap']).split(',')
-            if i.strip().isdigit()][:2]
-    except KeyError:
+def parse_section(ini, section):
+    logging.debug('  Checking {} section'.format(section))
+    if section not in ini.keys():
         logging.error(
-            '\nERROR: {} was not set in the INI, '
-            'exiting\n'.format('output_snap'))
+            '\nERROR: Input file does not have an {} section'.format(section))
         sys.exit()
 
-    options['snap_x'], options['snap_y'] = options['output_snap']
+    if section == 'INPUTS':
+        parse_inputs(ini)
+    elif section == 'EXPORT':
+        parse_export(ini)
+    elif section == 'IMAGES':
+        parse_images(ini)
+    elif section == 'ZONAL_STATS':
+        parse_zonal_stats(ini)
+    elif section == 'SUMMARY':
+        parse_summary(ini)
+    elif section == 'TABLES':
+        parse_tables(ini)
+    elif section == 'FIGURES':
+        parse_figures(ini)
+    # return ini
 
-    # Output cellsize
+
+def get_param(ini, section, input_name, output_name, get_type,
+              default='MANDATORY'):
+    """Get INI parameters by type and set default values
+
+    Args:
+        ini (dict): Nested dictionary of INI file keys/values
+        section (str): Section name
+        input_name (str): Parameter name in INI file
+        output_name (str): Parameter name in code
+        get_type (): Python type
+        default (): Default value to use if parameter was not set.
+            Defaults to "MANDATORY".
+            "MANDATORY" will cause script to exit if key does not exist.
+    """
     try:
-        options['output_cs'] = int(config['INPUTS']['output_cs'])
-    except KeyError:
-        logging.error(
-            '\nERROR: {} was not set in the INI, '
-            'exiting\n'.format('output_cs'))
-        sys.exit()
-
-    # Output EPSG code
-    try:
-        options['output_crs'] = str(config['INPUTS']['output_proj'])
-    except KeyError:
-        logging.error(
-            '\nERROR: {} was not set in the INI, '
-            'exiting\n'.format('output_crs'))
-        sys.exit()
-
-    # Compute OSR from EGSG code
-    if options['output_crs']:
-        options['output_osr'] = gdc.epsg_osr(
-            int(options['output_crs'].split(':')[1]))
-    else:
-        options['output_osr'] = None
-
-    logging.debug('  Snap: {} {}'.format(options['snap_x'], options['snap_y']))
-    logging.debug('  Cellsize: {}'.format(options['output_cs']))
-    logging.debug('  CRS: {}'.format(options['output_crs']))
-    # logging.debug('  OSR: {}\n'.format(options['output_osr'].ExportToWkt()))
-
-
-    # Image download specific options
-    # Eventually move down and set below
-    if section.lower() == 'image':
-        try:
-            download_bands = str(config['IMAGE']['download_bands'])
-            options['download_bands'] = map(
-                lambda x: x.strip().lower(), download_bands.split(','))
-            logging.info('\n  Output Bands:')
-            for band in options['download_bands']:
-                logging.info('    {}'.format(band))
-        except KeyError:
-            options['download_bands'] = []
-            logging.debug('  Setting {} = {}'.format(
-                'download_bands', options['download_bands']))
-        except Exception as e:
-            logging.error('\nERROR: Unhandled error\n  {}'.format(e))
+        if get_type is bool:
+            ini[section][output_name] = (
+                ini[section][input_name].lower() == "true")
+            # ini[section][output_name] = distutils.util.strtobool(
+            #     ini[section][input_name])
+            # ini[section][output_name] = ini.getboolean(section, input_name)
+            # ini[section][output_name] = ini[section].getboolean(input_name)
+        elif get_type is int:
+            ini[section][output_name] = int(ini[section][input_name])
+        elif get_type is float:
+            ini[section][output_name] = float(ini[section][input_name])
+        elif get_type is list:
+            ini[section][output_name] = list(python_common.parse_int_set(
+                str(ini[section][input_name])))
+        else:
+            ini[section][output_name] = str(ini[section][input_name])
+            # Convert 'None' (strings) to None
+            if ini[section][output_name].lower() == 'none':
+                ini[section][output_name] = None
+    except (KeyError, configparser.NoOptionError):
+        if default == 'MANDATORY':
+            logging.error(
+                '\nERROR: {} was not set in the INI, exiting\n'.format(
+                    input_name))
             sys.exit()
+        else:
+            ini[section][output_name] = default
+            logging.debug('  Setting {} = {}'.format(
+                input_name, ini[section][output_name]))
+    except ValueError:
+        logging.error('\nERROR: Invalid value for "{}"'.format(
+            input_name))
+        sys.exit()
+    except Exception as e:
+        logging.error('\nERROR: Unhandled error\n  {}'.format(e))
+        sys.exit()
+
+    # If the parameter is renamed, remove the old name/parameter
+    if input_name != output_name:
+        del ini[section][input_name]
 
 
-    # Get mandatory parameters
+def parse_inputs(ini, section='INPUTS'):
+    # MANDATORY PARAMETERS
     # section, input_name, output_name, description, get_type
     param_list = [
-        # Read in zone shapefile information
-        ['INPUTS', 'zone_input_ws', 'zone_input_ws', str],
-        ['INPUTS', 'zone_filename', 'zone_filename', str],
-        ['INPUTS', 'zone_field', 'zone_field', str],
-        # Google Drive export folder
-        ['INPUTS', 'gdrive_ws', 'gdrive_ws', str],
-        ['INPUTS', 'export_folder', 'export_folder', str],
+        ['zone_input_ws', 'zone_input_ws', str],
+        ['zone_filename', 'zone_filename', str],
+        ['zone_field', 'zone_field', str]
     ]
-    for section, input_name, output_name, get_type in param_list:
-        try:
-            if get_type is bool:
-                options[output_name] = config[section].getboolean(input_name)
-            elif get_type is int:
-                options[output_name] = int(config[section][input_name])
-            else:
-                options[output_name] = str(config[section][input_name])
-        except KeyError:
-            logging.error(
-                '\nERROR: {} was not set in the INI'
-                ', exiting\n'.format(input_name))
-            sys.exit()
-        except ValueError:
-            logging.error('\nERROR: Invalid value for "{}"'.format(
-                input_name))
-            sys.exit()
-        except Exception as e:
-            logging.error('\nERROR: Unhandled error\n  {}'.format(e))
-            sys.exit()
+    for input_name, output_name, get_type in param_list:
+        get_param(ini, section, input_name, output_name, get_type)
+
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        # Control which Landsat images are used
+        ['landsat4_flag', 'landsat4_flag', bool, False],
+        ['landsat5_flag', 'landsat5_flag', bool, False],
+        ['landsat7_flag', 'landsat7_flag', bool, False],
+        ['landsat8_flag', 'landsat8_flag', bool, False],
+        # Date filtering
+        ['start_year', 'start_year', int, None],
+        ['end_year', 'end_year', int, None],
+        ['start_month', 'start_month', int, None],
+        ['end_month', 'end_month', int, None],
+        ['start_doy', 'start_doy', int, None],
+        ['end_doy', 'end_doy', int, None],
+        # Scene ID filtering
+        ['scene_id_keep_path', 'scene_id_keep_path', str, ''],
+        ['scene_id_skip_path', 'scene_id_skip_path', str, ''],
+        # Path/row filtering
+        ['path_keep_list', 'path_keep_list', list, []],
+        ['row_keep_list', 'row_keep_list', list, []],
+        # FID filtering
+        ['fid_skip_list', 'fid_skip_list', list, []],
+        ['fid_keep_list', 'fid_keep_list', list, []]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
 
     # Build and check file paths
-    options['zone_path'] = os.path.join(
-        options['zone_input_ws'], options['zone_filename'])
-    options['zone_name'] = os.path.splitext(options['zone_filename'])[0].lower()
-    options['export_ws'] = os.path.join(
-        options['gdrive_ws'], options['export_folder'])
-    if not os.path.isdir(options['export_ws']):
-        os.makedirs(options['export_ws'])
-    if not os.path.isdir(options['zone_input_ws']):
+    ini[section]['zone_path'] = os.path.join(
+        ini[section]['zone_input_ws'], ini[section]['zone_filename'])
+    # Strip off file extension from filename after building path
+    ini[section]['zone_filename'] = os.path.splitext(
+        ini[section]['zone_filename'])[0]
+    if not os.path.isdir(ini[section]['zone_input_ws']):
         logging.error(
             '\nERROR: The zone workspace does not exist, '
-            'exiting\n  {}'.format(options['zone_input_ws']))
+            'exiting\n  {}'.format(ini[section]['zone_input_ws']))
         sys.exit()
-    elif not os.path.isfile(options['zone_path']):
+    elif not os.path.isfile(ini[section]['zone_path']):
         logging.error(
             '\nERROR: The zone shapefile does not exist, '
-            'exiting\n  {}'.format(options['zone_path']))
+            'exiting\n  {}'.format(ini[section]['zone_path']))
         sys.exit()
 
-
-    # Get parameters with default values
-    # input_name, output_name, default, get_type
-    param_list = [
-        # Output folder
-        [section.upper(), 'output_ws', 'output_ws', os.getcwd(), str],
-        # ['INPUTS', output_ws_param, 'output_ws', os.getcwd(), str],
-        # Zonal stats options
-        ['ZONAL_STATS', 'landsat_flag', 'landsat_flag', True, bool],
-        ['ZONAL_STATS', 'gridmet_daily_flag', 'gridmet_daily_flag', False, bool],
-        ['ZONAL_STATS', 'gridmet_monthly_flag', 'gridmet_monthly_flag', False, bool],
-        ['ZONAL_STATS', 'pdsi_flag', 'pdsi_flag', False, bool],
-        # Image download options
-        ['IMAGE', 'merge_geometries_flag', 'merge_geom_flag', False, bool],
-        # Control which Landsat images are used
-        ['INPUTS', 'landsat4_flag', 'landsat4_flag', False, bool],
-        ['INPUTS', 'landsat5_flag', 'landsat5_flag', False, bool],
-        ['INPUTS', 'landsat7_flag', 'landsat7_flag', False, bool],
-        ['INPUTS', 'landsat8_flag', 'landsat8_flag', False, bool],
-        # Cloudmasking
-        ['INPUTS', 'acca_flag', 'acca_flag', False, bool],
-        ['INPUTS', 'fmask_flag', 'fmask_flag', False, bool],
-        ['INPUTS', 'fmask_type', 'fmask_type', None, str],
-        #
-        ['INPUTS', 'mosaic_method', 'mosaic_method', 'mean', str],
-        ['INPUTS', 'adjust_method', 'adjust_method', None, str],
-        # Date filtering
-        ['INPUTS', 'start_year', 'start_year', None, int],
-        ['INPUTS', 'end_year', 'end_year', None, int],
-        ['INPUTS', 'start_month', 'start_month', None, int],
-        ['INPUTS', 'end_month', 'end_month', None, int],
-        ['INPUTS', 'start_doy', 'start_doy', None, int],
-        ['INPUTS', 'end_doy', 'end_doy', None, int],
-        # Scene ID filtering
-        ['INPUTS', 'scene_id_keep_path', 'scene_id_keep_path', '', str],
-        ['INPUTS', 'scene_id_skip_path', 'scene_id_skip_path', '', str],
-        # Path/row filtering
-        ['INPUTS', 'path_keep_list', 'path_keep_list', [], list],
-        ['INPUTS', 'row_keep_list', 'row_keep_list', [], list],
-        # FID filtering
-        ['INPUTS', 'fid_skip_list', 'fid_skip_list', [], list],
-        ['INPUTS', 'fid_keep_list', 'fid_keep_list', [], list]
-    ]
-    for section, input_name, output_name, default, get_type in param_list:
-        try:
-            # print(input_name)
-            if get_type is bool:
-                options[output_name] = config[section].getboolean(input_name)
-            elif get_type is int:
-                options[output_name] = int(config[section][input_name])
-            elif get_type is list:
-                options[output_name] = list(python_common.parse_int_set(
-                    str(config[section][input_name])))
-            else:
-                options[output_name] = str(config[section][input_name])
-                # Convert 'None' (strings) to None
-                if options[output_name].lower() == 'none':
-                    options[output_name] = None
-            # print(options[output_name])
-        except KeyError:
-            options[output_name] = default
-            logging.debug('  Setting {} = {}'.format(
-                input_name, options[output_name]))
-        except ValueError:
-            logging.error('\nERROR: Invalid value for "{}"'.format(
-                input_name))
-            sys.exit()
-        except Exception as e:
-            logging.error('\nERROR: Unhandled error\n  {}'.format(e))
-            sys.exit()
-
-        # # Convert 'None' strings to None
-        # # This could probably be handled somewhere else...
-        # if (type(options[output_name]) is str and
-        #         options[output_name].lower() == 'none'):
-        #     options[output_name] = None
-
-
-    # Build output folder if necessary
-    if not os.path.isdir(options['output_ws']):
-        os.makedirs(options['output_ws'])
-
     # Start/end year
-    if (options['start_year'] and options['end_year'] and
-            options['end_year'] < options['start_year']):
+    if (ini[section]['start_year'] and ini[section]['end_year'] and
+            ini[section]['end_year'] < ini[section]['start_year']):
         logging.error(
             '\nERROR: End year must be >= start year')
         sys.exit()
     default_end_year = datetime.datetime.today().year + 1
-    if ((options['start_year'] and
-            options['start_year'] not in range(1984, default_end_year)) or
-        (options['end_year'] and
-            options['end_year'] not in range(1984, default_end_year))):
+    if ((ini[section]['start_year'] and
+            ini[section]['start_year'] not in range(1984, default_end_year)) or
+        (ini[section]['end_year'] and
+            ini[section]['end_year'] not in range(1984, default_end_year))):
         logging.error('\nERROR: Year must be an integer from 1984-{}'.format(
             default_end_year - 1))
         sys.exit()
 
     # Start/end month
-    if options['start_month'] and options['start_month'] not in range(1, 13):
+    if (ini[section]['start_month'] and
+            ini[section]['start_month'] not in range(1, 13)):
         logging.error(
             '\nERROR: Start month must be an integer from 1-12')
         sys.exit()
-    elif options['end_month'] and options['end_month'] not in range(1, 13):
+    elif (ini[section]['end_month'] and
+            ini[section]['end_month'] not in range(1, 13)):
         logging.error('\nERROR: End month must be an integer from 1-12')
         sys.exit()
 
     # Start/end DOY
-    if options['end_doy'] and options['end_doy'] > 273:
+    if ini[section]['end_doy'] and ini[section]['end_doy'] > 273:
         logging.error(
             '\nERROR: End DOY has to be in the same water year as start DOY')
         sys.exit()
-    if options['start_doy'] and options['start_doy'] not in range(1, 367):
+    if (ini[section]['start_doy'] and
+            ini[section]['start_doy'] not in range(1, 367)):
         logging.error(
             '\nERROR: Start DOY must be an integer from 1-366')
         sys.exit()
-    elif options['end_doy'] and options['end_doy'] not in range(1, 367):
+    elif (ini[section]['end_doy'] and
+            ini[section]['end_doy'] not in range(1, 367)):
         logging.error('\nERROR: End DOY must be an integer from 1-366')
         sys.exit()
-    # if options['end_doy'] < options['start_doy']:
+    # if ini[section]['end_doy'] < ini[section]['start_doy']:
     #     logging.error('\nERROR: End DOY must be >= start DOY')
     #     sys.exit()
-
-    # Fmask source type
-    if options['fmask_flag'] and not options['fmask_type']:
-        logging.error(
-            '\nERROR: Fmask source type must be set if fmask_flag = True')
-        sys.exit()
-    if options['fmask_type']:
-        options['fmask_type'] = options['fmask_type'].lower()
-        if options['fmask_type'] not in ['fmask', 'cfmask']:
-            logging.error(
-                '\nERROR: Invalid Fmask source type: {}\n'
-                '  Must be "fmask" or "cfmask"'.format(options['fmask_type']))
-            sys.exit()
-
-    # Mosaic method
-    if options['mosaic_method']:
-        options['mosaic_method'] = options['mosaic_method'].lower()
-        mosaic_method_list = ['mean', 'median', 'mosaic', 'min', 'max']
-        if options['mosaic_method'] not in mosaic_method_list:
-            logging.error(
-                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
-                    options['mosaic_method'], ', '.join(mosaic_method_list)))
-            sys.exit()
-
-    # Adjust Landsat Red and NIR bands
-    if options['adjust_method']:
-        options['adjust_method'] = options['adjust_method'].upper()
-        adjust_method_list = ['OLI_2_ETM', 'ETM_2_OLI']
-        if options['adjust_method'] not in mosaic_method_list:
-            logging.error(
-                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
-                    options['adjust_method'], ', '.join(adjust_method_list)))
-            sys.exit()
 
     # Intentionally don't apply scene_id skip/keep lists
     # Compute zonal stats for all available images
     # Filter by scene_id when making summary tables
     logging.info('  Not applying scene_id keep or skip lists')
-    options['scene_id_keep_list'] = []
-    options['scene_id_skip_list'] = []
+    ini[section]['scene_id_keep_list'] = []
+    ini[section]['scene_id_skip_list'] = []
 
     # # Only process specific Landsat scenes
     # try:
     #     with open(config['scene_id_keep_path']) as input_f:
     #         scene_id_keep_list = input_f.readlines()
-    #     options['scene_id_keep_list'] = [
+    #     ini[section]['scene_id_keep_list'] = [
     #         x.strip()[:16] for x in scene_id_keep_list]
     # except IOError:
     #     logging.error('\nFileIO Error: {}'.format(
     #         config['scene_id_keep_path']))
     #     sys.exit()
     # except:
-    #     options['scene_id_keep_list'] = []
+    #     ini[section]['scene_id_keep_list'] = []
 
     # # Skip specific landsat scenes
     # try:
     #     with open(config['scene_id_skip_path']) as input_f:
     #         scene_id_skip_list = input_f.readlines()
-    #     options['scene_id_skip_list'] = [
+    #     ini[section]['scene_id_skip_list'] = [
     #         x.strip()[:16] for x in scene_id_skip_list]
     # except IOError:
     #     logging.error('\nFileIO Error: {}'.format(
     #         config['scene_id_skip_path']))
     #     sys.exit()
     # except:
-    #     options['scene_id_skip_list'] = []
+    #     ini[section]['scene_id_skip_list'] = []
 
-    return options
+
+def parse_export(ini, section='EXPORT'):
+    """"""
+    # MANDATORY PARAMETERS
+    # section, input_name, output_name, description, get_type
+    param_list = [
+        # Output spatial reference
+        ['output_snap', 'snap', str],
+        ['output_cs', 'cellsize', float],
+        ['output_proj', 'crs', str],
+        # Google Drive
+        ['gdrive_ws', 'gdrive_ws', str],
+        ['export_folder', 'export_folder', str],
+    ]
+    for input_name, output_name, get_type in param_list:
+        get_param(ini, section, input_name, output_name, get_type)
+
+    # OPTIONAL PARAMETERS
+    # section, input_name, output_name, description, get_type, default
+    param_list = [
+        # Cloud masking
+        ['acca_flag', 'acca_flag', bool, False],
+        ['fmask_flag', 'fmask_flag', bool, False],
+        #
+        ['fmask_type', 'fmask_type', str, None],
+        ['mosaic_method', 'mosaic_method', str, 'mean'],
+        ['adjust_method', 'adjust_method', str, None]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Build and check file paths
+    ini[section]['export_ws'] = os.path.join(
+        ini[section]['gdrive_ws'], ini[section]['export_folder'])
+    if not os.path.isdir(ini[section]['export_ws']):
+        os.makedirs(ini[section]['export_ws'])
+
+    # Convert snap points to list
+    ini[section]['snap'] = [
+        int(i) for i in ini[section]['snap'].split(',')
+        if i.strip().isdigit()][:2]
+    # Compute snap points separately
+    ini[section]['snap_x'], ini[section]['snap_y'] = ini[section]['snap']
+
+    # Compute OSR from EGSG code
+    try:
+        ini[section]['osr'] = gdc.epsg_osr(
+            int(ini[section]['crs'].split(':')[1]))
+    except:
+        logging.error(
+            '\nERROR: The output projection could not be converted to a '
+            'spatial reference object\n  {}'.format(
+                ini[section]['crs']))
+        sys.exit()
+
+    logging.debug('  Snap: {} {}'.format(
+        ini[section]['snap_x'], ini[section]['snap_y']))
+    logging.debug('  Cellsize: {}'.format(ini[section]['cellsize']))
+    logging.debug('  CRS: {}'.format(ini[section]['crs']))
+    # logging.debug('  OSR: {}\n'.format(
+    #     ini[section]['osr'].ExportToWkt())
+
+    # Fmask source type
+    if ini[section]['fmask_flag'] and not ini[section]['fmask_type']:
+        logging.error(
+            '\nERROR: Fmask source type must be set if fmask_flag = True')
+        sys.exit()
+    if ini[section]['fmask_type']:
+        ini[section]['fmask_type'] = ini[section]['fmask_type'].lower()
+        if ini[section]['fmask_type'] not in ['fmask', 'cfmask']:
+            logging.error(
+                '\nERROR: Invalid Fmask source type: {}\n'
+                '  Must be "fmask" or "cfmask"'.format(
+                    ini[section]['fmask_type']))
+            sys.exit()
+
+    # Mosaic method
+    if ini[section]['mosaic_method']:
+        ini[section]['mosaic_method'] = ini[section]['mosaic_method'].lower()
+        mosaic_method_list = ['mean', 'median', 'mosaic', 'min', 'max']
+        if ini[section]['mosaic_method'] not in mosaic_method_list:
+            logging.error(
+                '\nERROR: Invalid mosaic method: {}\n''  Must be: {}'.format(
+                    ini[section]['mosaic_method'],
+                    ', '.join(mosaic_method_list)))
+            sys.exit()
+
+    # Adjust Landsat Red and NIR bands
+    if ini[section]['adjust_method']:
+        ini[section]['adjust_method'] = ini[section]['adjust_method'].upper()
+        adjust_method_list = ['OLI_2_ETM', 'ETM_2_OLI']
+        if ini[section]['adjust_method'] not in mosaic_method_list:
+            logging.error(
+                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
+                    ini[section]['adjust_method'],
+                    ', '.join(adjust_method_list)))
+            sys.exit()
+
+
+def parse_images(ini, section='IMAGES'):
+    """"""
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['download_bands', 'download_bands', str, ''],
+        ['merge_geometries_flag', 'merge_geom_flag', bool, False],
+        ['clip_landsat_flag', 'clip_landsat_flag', bool, True]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Build output folder if necessary
+    if not os.path.isdir(ini[section]['output_ws']):
+        os.makedirs(ini[section]['output_ws'])
+
+    # Image download bands
+    ini[section]['download_bands'] = map(
+        lambda x: x.strip().lower(), ini[section]['download_bands'].split(','))
+    logging.info('\n  Output Bands:')
+    for band in ini[section]['download_bands']:
+        logging.info('    {}'.format(band))
+
+
+def parse_zonal_stats(ini, section='ZONAL_STATS'):
+    """"""
+
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['landsat_flag', 'landsat_flag', bool, True],
+        ['gridmet_daily_flag', 'gridmet_daily_flag', bool, False],
+        ['gridmet_monthly_flag', 'gridmet_monthly_flag', bool, False],
+        ['pdsi_flag', 'pdsi_flag', bool, False],
+        ['year_step', 'year_step', int, 1]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Build output folder if necessary
+    if not os.path.isdir(ini[section]['output_ws']):
+        os.makedirs(ini[section]['output_ws'])
+
+    if ini[section]['year_step'] < 1 or ini[section]['year_step'] > 40:
+        logging.error('\nERROR: year_step must be an integer from 1-40')
+        sys.exit()
+
+
+def parse_summary(ini, section='SUMMARY'):
+    """"""
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['max_cloud_score', 'max_cloud_score', float, 70],
+        ['max_fmask_pct', 'max_fmask_pct', float, 100],
+        ['min_slc_off_pct', 'min_slc_off_pct', float, 50],
+        ['gridmet_start_month', 'gridmet_start_month', int, 10],
+        ['gridmet_end_month', 'gridmet_end_month', int, 9]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Remove scenes with cloud score above target percentage
+    if (ini[section]['max_cloud_score'] < 0 or
+            ini[section]['max_cloud_score'] > 100):
+        logging.error('\nERROR: max_cloud_score must be in the range 0-100')
+        sys.exit()
+    if (ini[section]['max_cloud_score'] > 0 and
+            ini[section]['max_cloud_score'] < 1):
+        logging.error(
+            '\nWARNING: max_cloud_score must be a percent (0-100)' +
+            '\n  The value entered appears to be a decimal in the range 0-1')
+        raw_input('  Press ENTER to continue')
+
+    # Remove scenes with Fmask counts above the target percentage
+    if (ini[section]['max_fmask_pct'] < 0 or
+            ini[section]['max_fmask_pct'] > 100):
+        logging.error('\nERROR: max_fmask_pct must be in the range 0-100')
+        sys.exit()
+    if (ini[section]['max_fmask_pct'] > 0 and
+            ini[section]['max_fmask_pct'] < 1):
+        logging.error(
+            '\nWARNING: max_fmask_pct must be a percent (0-100)' +
+            '\n  The value entered appears to be a decimal in the range 0-1')
+        raw_input('  Press ENTER to continue')
+
+    # Remove SLC-off scenes with pixel counts below the target percentage
+    if (ini[section]['min_slc_off_pct'] < 0 or
+            ini[section]['min_slc_off_pct'] > 100):
+        logging.error(
+            '\nERROR: min_slc_off_pct must be in the range 0-100')
+        sys.exit()
+    if (ini[section]['min_slc_off_pct'] > 0 and
+            ini[section]['min_slc_off_pct'] < 1):
+        logging.error(
+            '\nWARNING: min_slc_off_pct must be a percent (0-100)' +
+            '\n  The value entered appears to be a decimal in the range 0-1')
+        raw_input('  Press ENTER to continue')
+
+    # GRIDMET month range (default to water year)
+    if (ini[section]['gridmet_start_month'] and
+            ini[section]['gridmet_start_month'] not in range(1, 13)):
+        logging.error(
+            '\nERROR: GRIDMET start month must be an integer from 1-12')
+        sys.exit()
+    elif (ini[section]['gridmet_end_month'] and
+            ini[section]['gridmet_end_month'] not in range(1, 13)):
+        logging.error(
+            '\nERROR: GRIDMET end month must be an integer from 1-12')
+        sys.exit()
+    if (ini[section]['gridmet_start_month'] is None and
+            ini[section]['gridmet_end_month'] is None):
+        ini[section]['gridmet_start_month'] = 10
+        ini[section]['gridmet_end_month'] = 9
+
+
+def parse_tables(ini, section='TABLES'):
+    """"""
+    # MANDATORY PARAMETERS
+    # param_section, input_name, output_name, get_type
+    param_list = [
+        ['output_filename', 'output_filename', str]
+    ]
+    for input_name, output_name, get_type in param_list:
+        get_param(ini, section, input_name, output_name, get_type)
+
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_ws', 'output_ws', str, os.getcwd()]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+
+def parse_figures(ini, section='FIGURES'):
+    """"""
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_ws', 'output_ws', str, os.getcwd()],
+        ['ppt_plot_type', 'ppt_plot_type', str, 'LINE'],
+        ['best_fit_flag', 'scatter_best_fit', bool, False],
+        ['timeseries_bands', 'timeseries_bands', str, 'ndvi_toa'],
+        ['scatter_bands', 'scatter_bands', str, 'ppt:ndvi_sur, ppt:evi_sur'],
+        ['complementary_bands', 'complementary_bands', str, 'evi_sur']
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    ini[section]['timeseries_bands'] = map(
+        lambda x: x.strip().lower(),
+        ini[section]['timeseries_bands'].split(','))
+
+    ini[section]['scatter_bands'] = [
+        map(lambda x: x.strip().lower(), b.split(':'))
+        for b in ini[section]['scatter_bands'].split(',')]
+
+    ini[section]['complementary_bands'] = map(
+        lambda x: x.strip().lower(),
+        ini[section]['complementary_bands'].split(','))
+
+    if ini[section]['ppt_plot_type'].upper() not in ['LINE', 'BAR']:
+        logging.error('\nERROR: ppt_plot_type must be "LINE" or "BAR"')
+        sys.exit()

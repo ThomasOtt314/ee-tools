@@ -2,7 +2,7 @@
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
 # Author:       Charles Morton
-# Created       2017-01-25
+# Created       2017-01-26
 # Python:       2.7
 #--------------------------------
 
@@ -20,7 +20,7 @@ from dateutil.relativedelta import relativedelta
 import ee
 from osgeo import ogr
 
-import ee_tools.ee_common as ee_common
+# import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
 import ee_tools.ini_common as ini_common
 import ee_tools.python_common as python_common
@@ -38,8 +38,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine GRIDMET Image Download')
 
-    start_year = 1984
-    end_year = 2016
+    # Do we need to support separate GRIDMET years?
+    # start_year = 1984
+    # end_year = 2016
 
     gridmet_download_bands = {
         'pet': 'ETo',
@@ -67,37 +68,42 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         pdsi_folder = 'pdsi'
 
     # Read config file
-    ini = ini_common.ini_parse(ini_path, section='image')
+    # ini = ini_common.ini_parse(ini_path, section='IMAGE')
+    ini = ini_common.read(ini_path)
+    ini_common.parse_section(ini, section='INPUTS')
+    ini_common.parse_section(ini, section='EXPORT')
+    ini_common.parse_section(ini, section='IMAGES')
 
     nodata_value = -9999
 
     # Manually set output spatial reference
     logging.info('\nHardcoding GRIDMET snap, cellsize and spatial reference')
     ini['output_x'], ini['output_y'] = -124.79299639209513, 49.41685579737572
-    ini['output_cs'] = 0.041666001963701
-    # ini['output_cs'] = [0.041666001963701, 0.041666001489718]
+    ini['EXPORT']['cellsize'] = 0.041666001963701
+    # ini['EXPORT']['cellsize'] = [0.041666001963701, 0.041666001489718]
     # ini['output_x'], ini['output_y'] = -124.79166666666666666667, 25.04166666666666666667
-    # ini['output_cs'] = 1. / 24
-    ini['output_osr'] = gdc.epsg_osr(4326)
-    # ini['output_osr'] = gdc.epsg_osr(4269)
-    ini['output_crs'] = 'EPSG:4326'
+    # ini['EXPORT']['cellsize'] = 1. / 24
+    ini['EXPORT']['osr'] = gdc.epsg_osr(4326)
+    # ini['EXPORT']['osr'] = gdc.epsg_osr(4269)
+    ini['EXPORT']['crs'] = 'EPSG:4326'
     logging.debug('  Snap: {} {}'.format(ini['output_x'], ini['output_y']))
-    logging.debug('  Cellsize: {}'.format(ini['output_cs']))
-    logging.debug('  OSR: {}'.format(ini['output_osr']))
+    logging.debug('  Cellsize: {}'.format(ini['EXPORT']['cellsize']))
+    logging.debug('  OSR: {}'.format(ini['EXPORT']['osr']))
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['zone_path'], zone_field=ini['zone_field'], reverse_flag=False)
+        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        reverse_flag=False)
 
     # Filter features by FID before merging geometries
-    if ini['fid_keep_list']:
+    if ini['INPUTS']['fid_keep_list']:
         zone_geom_list = [
-            [fid, zone, geom] for zone_geom in zone_geom_list
-            if fid in ini['fid_keep_list']]
-    if ini['fid_skip_list']:
+            zone_obj for zone_obj in zone_geom_list
+            if zone_obj[0] in ini['INPUTS']['fid_keep_list']]
+    if ini['INPUTS']['fid_skip_list']:
         zone_geom_list = [
-            [fid, zone, geom] for zone_geom in zone_geom_list
-            if fid not in ini['fid_skip_list']]
+            zone_obj for zone_obj in zone_geom_list
+            if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
     # Merge geometries
     if ini['merge_geom_flag']:
@@ -109,11 +115,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 merge_geom.AddGeometry(zone_polygon)
         # merge_json = json.loads(merge_mp.ExportToJson())
         zone_geom_list = [
-            [0, ini['zone_name'], json.loads(merge_geom.ExportToJson())]]
-        ini['zone_field'] = ''
+            [0, ini['INPUTS']['zone_filename'], json.loads(merge_geom.ExportToJson())]]
+        ini['INPUTS']['zone_field'] = ''
 
     # Need zone_path projection to build EE geometries
-    zone_osr = gdc.feature_path_osr(zone_path)
+    zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
     zone_proj = gdc.osr_proj(zone_osr)
     # zone_proj = ee.Projection(zone_proj).wkt().getInfo()
     # zone_proj = zone_proj.replace('\n', '').replace(' ', '')
@@ -137,7 +143,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     for fid, zone_str, zone_json in sorted(zone_geom_list):
         logging.info('ZONE: {} ({})'.format(zone_str, fid))
 
-        if ini['zone_field'].upper() == 'FID':
+        if ini['INPUTS']['zone_field'].upper() == 'FID':
             zone_str = 'fid_' + zone_str
         else:
             zone_str = zone_str.lower().replace(' ', '_')
@@ -147,7 +153,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Project the zone_geom to the GRIDMET projection
         # if zone_proj != output_proj:
-        zone_geom = zone_geom.transform(output_crs, 0.0001)
+        zone_geom = zone_geom.transform(ini['EXPORT']['crs'], 0.0001)
 
         # Get the extent from the Earth Engine geometry object?
         zone_extent = zone_geom.bounds().getInfo()['coordinates'][0]
@@ -162,10 +168,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Adjust extent to match raster
         zone_extent.adjust_to_snap(
-            'EXPAND', ini['output_x'], ini['output_y'], ini['output_cs'])
-        zone_geo = zone_extent.geo(ini['output_cs'])
+            'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
+            ini['EXPORT']['cellsize'])
+        zone_geo = zone_extent.geo(ini['EXPORT']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
-        zone_shape = zone_extent.shape(ini['output_cs'])
+        zone_shape = zone_extent.shape(ini['EXPORT']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
@@ -173,12 +180,12 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         output_transform = '[' + ','.join(map(str, zone_transform)) + ']'
         output_shape = '[{1}x{0}]'.format(*zone_shape)
-        logging.debug('  Output Projection: {}'.format(ini['output_crs']))
+        logging.debug('  Output Projection: {}'.format(ini['EXPORT']['crs']))
         logging.debug('  Output Transform: {}'.format(output_transform))
         logging.debug('  Output Shape: {}'.format(output_shape))
 
         zone_gridmet_ws = os.path.join(
-            ini['output_ws'], zone_str, gridmet_folder)
+            ini['IMAGES']['output_ws'], zone_str, gridmet_folder)
         zone_pdsi_ws = os.path.join(ini['output_ws'], zone_str, pdsi_folder)
         if not os.path.isdir(zone_gridmet_ws):
             os.makedirs(zone_gridmet_ws)
@@ -189,13 +196,15 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         if gridmet_flag:
             # Process each image in the collection by date
             export_list = []
-            for year in xrange(ini['start_year'], ini['end_year'] + 1):
+            for year in xrange(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
                 for b_key, b_name in sorted(gridmet_download_bands.items()):
                     if gridmet_monthly_flag:
                         # Monthly
                         for start_month in xrange(1, 13):
                             start_dt = datetime.datetime(year, start_month, 1)
-                            end_dt = start_dt + relativedelta(months=1) - datetime.timedelta(0, 1)
+                            end_dt = (
+                                start_dt + relativedelta(months=1) -
+                                datetime.timedelta(0, 1))
                             export_list.append([
                                 start_dt, end_dt,
                                 '{:04d}{:02d}'.format(year, start_month),
@@ -221,10 +230,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}_gridmet_{}'.format(
-                    ini['zone_name'], date_str, b_name.lower())
+                    ini['INPUTS']['zone_filename'], date_str, b_name.lower())
                 output_id = '{}_gridmet.{}'.format(date_str, b_name.lower())
 
-                export_path = os.path.join(ini['export_ws'], export_id + '.tif')
+                export_path = os.path.join(
+                    ini['EXPORT']['export_ws'], export_id + '.tif')
                 output_path = os.path.join(
                     zone_gridmet_ws, output_id + '.tif')
                 logging.debug('  Export: {}'.format(export_path))
@@ -269,10 +279,10 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     gridmet_image,
                     description=export_id,
-                    folder=ini['export_folder'],
+                    folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
-                    crs=ini['output_crs'],
+                    crs=ini['EXPORT']['crs'],
                     crsTransform=output_transform)
                 try:
                     task.start()
@@ -288,7 +298,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             # Process each image in the collection by date
             export_list = []
             b_name = 'pdsi'
-            for year in xrange(ini['start_year'], ini['end_year'] + 1):
+            for year in xrange(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
                 # Dekad
                 for start_month in xrange(1, 13):
                     for start_day, end_day in zip([1, 10, 20], [10, 20, 30]):
@@ -322,11 +332,12 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
                 export_id = '{}_{}_{}'.format(
-                    os.path.splitext(zone_filename)[0].lower(),
+                    os.path.splitext(ini['INPUTS']['zone_filename'])[0].lower(),
                     date_str, b_name.lower())
                 output_id = '{}_{}'.format(date_str, b_name.lower())
 
-                export_path = os.path.join(ini['export_ws'], export_id + '.tif')
+                export_path = os.path.join(
+                    ini['EXPORT']['export_ws'], export_id + '.tif')
                 output_path = os.path.join(
                     zone_pdsi_ws, output_id + '.tif')
                 logging.debug('  Export: {}'.format(export_path))
@@ -374,16 +385,17 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     pdsi_image,
                     description=export_id,
-                    folder=ini['export_folder'],
+                    folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
-                    crs=ini['output_crs'],
+                    crs=ini['EXPORT']['crs'],
                     crsTransform=output_transform)
                 try:
                     task.start()
                 except Exception as e:
                     logging.error(
-                        '  Unhandled error starting download task, skipping')
+                        '  Unhandled error starting task, skipping\n'
+                        '  {}'.format(str(e)))
                     continue
                 # logging.debug(task.status())
 
@@ -403,7 +415,7 @@ def arg_parse():
         description='Earth Engine GRIDMET Image Download',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', required=True,
+        '-i', '--ini', type=lambda x: python_common.valid_file(x),
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
@@ -412,6 +424,11 @@ def arg_parse():
         '-o', '--overwrite', default=False, action='store_true',
         help='Force overwrite of existing files')
     args = parser.parse_args()
+
+    if args.ini and os.path.isfile(os.path.abspath(args.ini)):
+        args.ini = os.path.abspath(args.ini)
+    else:
+        args.ini = python_common.get_ini_path(os.getcwd())
     return args
 
 
