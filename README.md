@@ -7,7 +7,7 @@ The ee-tools can be separated into three main components:
 + Generate annual summary figures and tables
 
 ## Requirements
-See the dependencies section below for additional details on the Python specific requirements needed to run the ee-tools.
+See the [Dependencies](## Dependencies) section below for additional details on the Python specific requirements needed to run the ee-tools.
 
 #### Earth Engine
 To run the ee-tools you must have an Earth Engine account.
@@ -19,7 +19,6 @@ To run the zonal stats and image download scripts, you must have Google Drive in
 All of the scripts are controlled using INI files.  The INI file is structured into sections (defined by square brackets, i.e. [INPUTS]) and key/value pairs separated by an equals sign (i.e. "start_year = 1985").  Additional details on the INI structure can be found in the [Python configparser module documentation](https://docs.python.org/3/library/configparser.html#supported-ini-file-structure).  Example INI files are provided in the example folder.
 
 #### Sections
-
 Each of the scripts reads a different combination of INI sections.  There are seven sections currently used in the scripts:
 + INPUTS - Used by all of the ee-tools
 + EXPORT - Export specific parameters and is read by the zonal statistics and image download scripts.
@@ -30,7 +29,7 @@ Each of the scripts reads a different combination of INI sections.  There are se
 + TABLES - Summary table specific parameters.
 
 ## Command Prompt / Terminal
-All of the scripts should be run from the command prompt (windows) or terminal (mac/linux).
+All of the scripts should be run from the command prompt (windows) or terminal (mac/linux).  Some of the scripts can also be run by double clicking, in which case the script will open a GUI asking you to select an INI file.
 
 #### Help
 To see what arguments are available for a script, and their default values, pass the "-h" argument to the script.
@@ -63,7 +62,7 @@ The user must provide a shapefile of the zones they wish to analyze.  Zonal stat
 The user must indicate which field in the shapefile to use for setting the "Zone ID".  The field must be an integer or string type and the values must be unique for each feature/zone.  A good default is use the "FID" field since this is guaranteed to be unique and makes it easy to join the output tables to the shapefile.
 
 #### Spatial Reference / Projection
-Currently, the output spatial reference set in the INI file ([EXPORT] parameter "output_proj") must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference.  Eventually the code will handle this projection.
+Currently, the output spatial reference set in the INI file ([EXPORT] parameter "output_proj") must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference.  Eventually the code will be able to project the zones geometries to the output projection automatically.
 
 ## Zonal Stats
 To initiate Earth Engine zonal statistics export tasks, execute the following:
@@ -94,7 +93,6 @@ To generate summary tables and figures, execute the following:
 ```
 
 ## Dependencies
-
 The EE-Tools have only been tested using Python 2.7 but they may work with Python 3.x.
 
 The following modules must be present to run all of the EE-Tools:
@@ -104,10 +102,9 @@ The following modules must be present to run all of the EE-Tools:
 * [gdal](http://gdal.org/)
 * [relativedelta](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
-* [pytest](http://doc.pytest.org/en/latest/) (for testing)
+* [pytest](http://doc.pytest.org/en/latest/) (only used for testing)
 
 #### Anaconda
-
 The easiest way of obtaining Python and all of the necessary external modules, is to install [Anaconda](https://www.continuum.io/downloads).
 
 It is important to double check that you are calling the Anaconda version, especially if you have two or more version of Python installed (e.g. Anaconda and ArcGIS).
@@ -130,11 +127,10 @@ The external modules can then be installed one by one:
 
 or all together:
 ```
-> conda install gdal numpy pandas configparser
+> conda install gdal numpy pandas configparser relativedelta
 ```
 
 #### EarthEngine-API / PIP
-
 The EarthEngine API must be installed through pip:
 ```
 > pip install earthengine-api
@@ -145,17 +141,34 @@ After installing the EarthEngine API module, you will need to authenticate the E
 > python -c "import ee; ee.Initialize()"
 ```
 
-#### ArcPy
+#### GDAL
+After installing GDAL, you may need to manually set the GDAL_DATA user environmental variable.
 
+###### Windows
+You can check the current value of the variable at the command prompt:
+```
+echo %GDAL_DATA%
+```
+
+If GDAL_DATA is set, this will return a folder path (something similar to C:\Anaconda2\Library\share\gdal)
+
+If GDAL_DATA is not set, it can be set from the command prompt (note, your path may vary):
+```
+> setx GDAL_DATA "C:\Anaconda2\Library\share\gdal"
+```
+
+The GDAL_DATA environment variable can also be set through the Windows Control Panel (System -> Advanced system settings -> Environment Variables).
+
+#### ArcPy
 Currently the ArcGIS ArcPy module is used for computing raster statistics in some of the modules.  This dependency will eventually be removed.
 
 ## Code
 
 #### Style Guide
-All code Python code should follow the PEP8 style guide.
+All Python code should follow the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/).
 
 #### Tests
-
+The full test suite can be run using [Pytest](http://doc.pytest.org/en/latest/):
 ```
 > python -m pytest
 ```
