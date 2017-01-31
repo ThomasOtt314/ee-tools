@@ -39,50 +39,76 @@ class Extent:
 
     def adjust_to_snap(self, method, snap_x, snap_y, cs):
         if method.upper() == 'ROUND':
-            self.xmin = math.floor((self.xmin - snap_x) / cs + 0.5) * cs + snap_x
-            self.ymin = math.floor((self.ymin - snap_y) / cs + 0.5) * cs + snap_y
-            self.xmax = math.floor((self.xmax - snap_x) / cs + 0.5) * cs + snap_x
-            self.ymax = math.floor((self.ymax - snap_y) / cs + 0.5) * cs + snap_y
+            xmin = math.floor((self.xmin - snap_x) / cs + 0.5) * cs + snap_x
+            ymin = math.floor((self.ymin - snap_y) / cs + 0.5) * cs + snap_y
+            xmax = math.floor((self.xmax - snap_x) / cs + 0.5) * cs + snap_x
+            ymax = math.floor((self.ymax - snap_y) / cs + 0.5) * cs + snap_y
         elif method.upper() == 'EXPAND':
-            self.xmin = math.floor((self.xmin - snap_x) / cs) * cs + snap_x
-            self.ymin = math.floor((self.ymin - snap_y) / cs) * cs + snap_y
-            self.xmax = math.ceil((self.xmax - snap_x) / cs) * cs + snap_x
-            self.ymax = math.ceil((self.ymax - snap_y) / cs) * cs + snap_y
+            xmin = math.floor((self.xmin - snap_x) / cs) * cs + snap_x
+            ymin = math.floor((self.ymin - snap_y) / cs) * cs + snap_y
+            xmax = math.ceil((self.xmax - snap_x) / cs) * cs + snap_x
+            ymax = math.ceil((self.ymax - snap_y) / cs) * cs + snap_y
         elif method.upper() == 'SHRINK':
-            self.xmin = math.ceil((self.xmin - snap_x) / cs) * cs + snap_x
-            self.ymin = math.ceil((self.ymin - snap_y) / cs) * cs + snap_y
-            self.xmax = math.floor((self.xmax - snap_x) / cs) * cs + snap_x
-            self.ymax = math.floor((self.ymax - snap_y) / cs) * cs + snap_y
+            xmin = math.ceil((self.xmin - snap_x) / cs) * cs + snap_x
+            ymin = math.ceil((self.ymin - snap_y) / cs) * cs + snap_y
+            xmax = math.floor((self.xmax - snap_x) / cs) * cs + snap_x
+            ymax = math.floor((self.ymax - snap_y) / cs) * cs + snap_y
+        return Extent((xmin, ymin, xmax, ymax))
 
-    def buffer_extent(self, distance):
-        self.xmin -= distance
-        self.ymin -= distance
-        self.xmax += distance
-        self.ymax += distance
+        # if method.upper() == 'ROUND':
+        #     self.xmin = math.floor((self.xmin - snap_x) / cs + 0.5) * cs + snap_x
+        #     self.ymin = math.floor((self.ymin - snap_y) / cs + 0.5) * cs + snap_y
+        #     self.xmax = math.floor((self.xmax - snap_x) / cs + 0.5) * cs + snap_x
+        #     self.ymax = math.floor((self.ymax - snap_y) / cs + 0.5) * cs + snap_y
+        # elif method.upper() == 'EXPAND':
+        #     self.xmin = math.floor((self.xmin - snap_x) / cs) * cs + snap_x
+        #     self.ymin = math.floor((self.ymin - snap_y) / cs) * cs + snap_y
+        #     self.xmax = math.ceil((self.xmax - snap_x) / cs) * cs + snap_x
+        #     self.ymax = math.ceil((self.ymax - snap_y) / cs) * cs + snap_y
+        # elif method.upper() == 'SHRINK':
+        #     self.xmin = math.ceil((self.xmin - snap_x) / cs) * cs + snap_x
+        #     self.ymin = math.ceil((self.ymin - snap_y) / cs) * cs + snap_y
+        #     self.xmax = math.floor((self.xmax - snap_x) / cs) * cs + snap_x
+        #     self.ymax = math.floor((self.ymax - snap_y) / cs) * cs + snap_y
 
-    # def split_extent(self):
-    #     """List of extent terms (xmin, ymin, xmax, ymax)"""
-    #     return self.xmin, self.ymin, self.xmax, self.ymax
+    def buffer(self, distance):
+        xmin = self.xmin - distance
+        ymin = self.ymin - distance
+        xmax = self.xmax + distance
+        ymax = self.ymax + distance
+        return Extent((xmin, ymin, xmax, ymax))
+        # self.xmin -= distance
+        # self.ymin -= distance
+        # self.xmax += distance
+        # self.ymax += distance
 
-    # def copy(self):
-    #     """Return a copy of the extent"""
-    #     return Extent((self.xmin, self.ymin, self.xmax, self.ymax))
+    # DEADBEEF
+    # def split(self):
+    #     """List of extent terms (xmin, ymin, xmax, ymax)
+
+    #     This method is redundant to __iter__
+    #     """
+    #     return [self.xmin, self.ymin, self.xmax, self.ymax]
+
+    def copy(self):
+        """Return a copy of the extent"""
+        return Extent((self.xmin, self.ymin, self.xmax, self.ymax))
 
     def corner_points(self):
         """Corner points in clockwise order starting with upper-left point"""
         return [(self.xmin, self.ymax), (self.xmax, self.ymax),
                 (self.xmax, self.ymin), (self.xmin, self.ymin)]
 
-    # def ul_lr_swap(self):
-    #     """Copy of extent object reordered as xmin, ymax, xmax, ymin
+    def ul_lr_swap(self):
+        """Copy of extent object reordered as xmin, ymax, xmax, ymin
 
-    #     Some gdal utilities want the extent described using upper-left and
-    #     lower-right points.
-    #         gdal_translate -projwin ulx uly lrx lry
-    #         gdal_merge -ul_lr ulx uly lrx lry
+        Some gdal utilities want the extent described using upper-left and
+        lower-right points.
+            gdal_translate -projwin ulx uly lrx lry
+            gdal_merge -ul_lr ulx uly lrx lry
 
-    #     """
-    #     return Extent((self.xmin, self.ymax, self.xmax, self.ymin))
+        """
+        return Extent((self.xmin, self.ymax, self.xmax, self.ymin))
 
     def ogrenv_swap(self):
         """Copy of extent object reordered as xmin, xmax, ymin, ymax
@@ -91,20 +117,21 @@ class Extent:
         """
         return Extent((self.xmin, self.xmax, self.ymin, self.ymax))
 
-    # def origin(self):
-    #     """Origin (upper-left corner) of the extent"""
-    #     return (self.xmin, self.ymax)
+    def origin(self):
+        """Origin (upper-left corner) of the extent"""
+        return (self.xmin, self.ymax)
 
-    # def center(self):
-    #     """Centroid of the extent"""
-    #     return ((self.xmin + 0.5 * (self.xmax - self.xmin)),
-    #             (self.ymin + 0.5 * (self.ymax - self.ymin)))
+    def center(self):
+        """Centroid of the extent"""
+        return ((self.xmin + 0.5 * (self.xmax - self.xmin)),
+                (self.ymin + 0.5 * (self.ymax - self.ymin)))
 
     def shape(self, cs):
         """Return number of rows and columns of the extent
 
         Args:
             cs (int): cellsize
+
         Returns:
             tuple of raster rows and columns
         """
@@ -116,25 +143,25 @@ class Extent:
         """Geo-tranform of the extent"""
         return (self.xmin, abs(cs), 0., self.ymax, 0., -abs(cs))
 
-    # def geometry(self):
-    #     """GDAL geometry object of the extent"""
-    #     ring = ogr.Geometry(ogr.wkbLinearRing)
-    #     for point in self.corner_points():
-    #         ring.AddPoint(point[0], point[1])
-    #     ring.CloseRings()
-    #     polygon = ogr.Geometry(ogr.wkbPolygon)
-    #     polygon.AddGeometry(ring)
-    #     return polygon
+    def geometry(self):
+        """GDAL geometry object of the extent"""
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        for point in self.corner_points():
+            ring.AddPoint(point[0], point[1])
+        ring.CloseRings()
+        polygon = ogr.Geometry(ogr.wkbPolygon)
+        polygon.AddGeometry(ring)
+        return polygon
 
-    # def intersect_point(self, xy):
-    #     """"Test if Point XY intersects the extent"""
-    #     if ((xy[0] > self.xmax) or
-    #         (xy[0] < self.xmin) or
-    #         (xy[1] > self.ymax) or
-    #         (xy[1] < self.ymin)):
-    #         return False
-    #     else:
-    #         return True
+    def intersect_point(self, xy):
+        """"Test if Point XY intersects the extent"""
+        if ((xy[0] > self.xmax) or
+            (xy[0] < self.xmin) or
+            (xy[1] > self.ymax) or
+            (xy[1] < self.ymin)):
+            return False
+        else:
+            return True
 
 
 def raster_driver(raster_path):
@@ -869,9 +896,8 @@ def project_array(input_array, resampling_type,
 
     # If input array has nan, make a copy in order to set nodata values
     copy_array = np.array(input_array, copy=True)
-    if ((input_array.dtype == np.float32 or
-         input_array.dtype == np.float64) and
-        np.isnan(copy_array).any()):
+    if (input_array.dtype in [np.float32, np.float64] and
+            np.isnan(copy_array).any()):
         copy_array[np.isnan(copy_array)] = input_nodata
 
     # For 2d arrays, insert an a "band" dimension at the beginning

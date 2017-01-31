@@ -432,10 +432,12 @@ def test_albedo_func(refl_sur, landsat, expected, tol=0.0001):
 
 
 # def test_etg_func(etstar, eto, ppt):
+#     """Compute groundwater ET (ETg) (ET* x (ETo - PPT))"""
 #     assert False
 
 
 # def test_et_func(etg, ppt):
+#     """Compute net ET (ETg + PPT)"""
 #     assert False
 
 

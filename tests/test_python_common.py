@@ -12,14 +12,22 @@ import ee_tools.python_common as python_common
 #     assert False
 
 
-# def test_parse_int_set(nputstr=""):
-#     """Return list of numbers given a string of ranges
+@pytest.mark.parametrize(
+    "inputstr,expected",
+    [
+        ["2-4, 7, 9-10", set([2, 3, 4, 7, 9, 10])],
+        ["", set()],
+        ["A", set()]
+    ]
+)
+def test_parse_int_set(inputstr, expected):
+    """Return list of numbers given a string of ranges
 
-#     Originally in python_common.py
+    Originally in python_common.py
 
-#     http://thoughtsbyclayg.blogspot.com/2008/10/parsing-list-of-numbers-in-python.html
-#     """
-#     assert False
+    http://thoughtsbyclayg.blogspot.com/2008/10/parsing-list-of-numbers-in-python.html
+    """
+    assert python_common.parse_int_set(inputstr) == expected
 
 
 # def test_remove_file(file_path):

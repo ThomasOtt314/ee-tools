@@ -1057,10 +1057,12 @@ def etstar_func(evi, c0, c1, c2):
 
 
 def etg_func(etstar, eto, ppt):
+    """Compute groundwater ET (ETg) (ET* x (ETo - PPT))"""
     return etstar.multiply(eto.subtract(ppt))
 
 
 def et_func(etg, ppt):
+    """Compute net ET (ETg + PPT)"""
     return etg.add(ppt)
 
 
