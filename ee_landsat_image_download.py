@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Author:       Charles Morton
 # Created       2017-01-27
 # Python:       2.7
 #--------------------------------

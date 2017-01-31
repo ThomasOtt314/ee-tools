@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Author:       Charles Morton
 # Created       2017-01-27
 # Python:       2.7
 #--------------------------------
@@ -16,7 +15,6 @@ import os
 import sys
 
 import ee
-import numpy as np
 from osgeo import ogr
 import pandas as pd
 

@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
-# Author:       Charles Morton
 # Created       2017-01-27
 # Python:       2.7
 #--------------------------------

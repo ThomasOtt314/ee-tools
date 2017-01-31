@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Author:       Charles Morton
 # Created       2017-01-27
 # Python:       2.7
 #--------------------------------
@@ -259,6 +258,18 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         gdc.raster_path_set_nodata(output_path, nodata_value)
                         arcpy.CalculateStatistics_management(output_path)
                         # gdc.raster_statistics(output_path)
+                        # subprocess.call([
+                        #         'gdalwarp',
+                        #         '-ot', float_output_type, '-overwrite',
+                        #         '-of', 'GTiff', '-co', 'COMPRESS=LZW',
+                        #         '-srcnodata', str(nodata_value),
+                        #         '-dstnodata', '{:f}'.format(float_nodata_value),
+                        #         export_path, output_path])
+                        # with open(os.devnull, 'w') as devnull:
+                        #     subprocess.call(
+                        #         ['gdalinfo', '-stats', output_path],
+                        #         stdout=devnull)
+                        # subprocess.call(['gdalmanage', 'delete', export_path])
                         continue
                     elif os.path.isfile(output_path):
                         logging.debug('  Output image already exists, skipping')
