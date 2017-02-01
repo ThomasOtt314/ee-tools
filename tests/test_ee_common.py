@@ -36,7 +36,7 @@ def image_value(image, band_name):
         scale=1).getInfo()[band_name]
 
 
-# def get_landsat_images(landsat4_flag=False, landsat5_flag=True,
+# def test_get_landsat_images(landsat4_flag=False, landsat5_flag=True,
 #                        landsat7_flag=True, landsat8_flag=True,
 #                        landsat_coll_args={}):
 #     """Compute Landsat derived images
@@ -58,7 +58,7 @@ def image_value(image, band_name):
 #     assert False
 
 
-# def get_landsat_image(landsat, year, doy, landsat_coll_args={}):
+# def test_get_landsat_image(landsat, year, doy, landsat_coll_args={}):
 #     """Return a single Landsat image
 
 #     Mosaic images from different rows
@@ -118,51 +118,51 @@ def image_value(image, band_name):
 #     assert False
 
 
-# def landsat_acca_band_func(refl_toa):
+# def test_landsat_acca_band_func(refl_toa):
 #     """Add ACCA like cloud score band to Landsat collection"""
 #     assert False
 
 
-# def landsat_fmask_band_func(refl_toa):
+# def test_landsat_fmask_band_func(refl_toa):
 #     """Get Fmask band from the joined properties"""
 #     assert False
 
 
-# def landsat_empty_fmask_band_func(refl_toa):
+# def test_landsat_empty_fmask_band_func(refl_toa):
 #     """Add an empty fmask band"""
 #     assert False
 
 
-# def landsat45_images_func(refl_toa):
+# def test_landsat45_images_func(refl_toa):
 #     """EE mappable function for calling landsat_image_func for Landsat 4/5"""
 #     assert False
 
 
-# def landsat7_images_func(refl_toa):
+# def test_landsat7_images_func(refl_toa):
 #     """EE mappable function for calling landsat_image_func for Landsat 7"""
 #     assert False
 
 
-# def landsat8_images_func(refl_toa):
+# def test_landsat8_images_func(refl_toa):
 #     """EE mappable function for calling landsat_image_func for Landsat 8"""
 #     assert False
 
 
 # # DEADBEEF - This is an awful way of passing the adjust_mode to the function
-# def landsat45_adjust_func(refl_toa):
+# def test_landsat45_adjust_func(refl_toa):
 #     """EE mappable function for calling landsat_image_func for Landsat 4/5"""
 #     assert False
 
-# def landsat7_adjust_func(refl_toa):
+# def test_landsat7_adjust_func(refl_toa):
 #     """EE mappable function for calling landsat_image_func for Landsat 7"""
 #     assert False
 
-# def landsat8_adjust_func(refl_toa):
+# def test_landsat8_adjust_func(refl_toa):
 #     """EE mappable function for calling landsat_image_func for Landsat 8"""
 #     assert False
 
 
-# def landsat_images_func(refl_toa_orig, landsat, adjust_mode=''):
+# def test_landsat_images_func(refl_toa_orig, landsat, adjust_mode=''):
 #     """Calculate Landsat products
 
 #     Args:

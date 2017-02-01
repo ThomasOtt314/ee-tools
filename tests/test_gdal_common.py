@@ -1,77 +1,112 @@
+import os
+
 import numpy as np
-from numpy.testing import assert_array_equal
 from osgeo import gdal, osr
 import pytest
 
 import ee_tools.gdal_common as gdc
 
 
-test_extent = [2000, 1000, 2100, 1080]
-test_cs = 10
-# Is it bad to have these being built the same as in gdal_common?
-# These could be computed using the Extent methods instead
-test_geo = (test_extent[0], test_cs, 0., test_extent[3], 0., -test_cs)
-test_transform = (test_cs, 0, test_extent[0], 0, -test_cs, test_extent[3])
-test_cols = int(round(abs((test_extent[0] - test_extent[2]) / test_cs), 0))
-test_rows = int(round(abs((test_extent[3] - test_extent[1]) / -test_cs), 0))
-test_shape = (test_rows, test_cols)
-test_origin = (test_extent[0], test_extent[3])
-test_centroid = (test_extent[0] + 0.5 * (test_extent[0] + test_extent[2]),
-                 test_extent[1] + 0.5 * (test_extent[1] + test_extent[3]))
-test_gtype = gdal.GDT_Byte
-test_dtype = np.uint8
-test_nodata = 255
-test_epsg = 32611
-test_proj4 = "+proj=utm +zone=11 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
-test_wkt = (
-    'PROJCS["WGS 84 / UTM zone 11N",'
-    'GEOGCS["WGS 84",'
-        'DATUM["WGS_1984",'
-            'SPHEROID["WGS 84",6378137,298.257223563,'
-                'AUTHORITY["EPSG","7030"]],'
-            'AUTHORITY["EPSG","6326"]],'
-        'PRIMEM["Greenwich",0,'
-            'AUTHORITY["EPSG","8901"]],'
-        'UNIT["degree",0.01745329251994328,'
-            'AUTHORITY["EPSG","9122"]],'
-        'AUTHORITY["EPSG","4326"]],'
-    'UNIT["metre",1,'
-        'AUTHORITY["EPSG","9001"]],'
-    'PROJECTION["Transverse_Mercator"],'
-    'PARAMETER["latitude_of_origin",0],'
-    'PARAMETER["central_meridian",-117],'
-    'PARAMETER["scale_factor",0.9996],'
-    'PARAMETER["false_easting",500000],'
-    'PARAMETER["false_northing",0],'
-    'AUTHORITY["EPSG","32611"],'
-    'AXIS["Easting",EAST],'
-    'AXIS["Northing",NORTH]]')
-test_array = np.random.random_integers(
-    0, 100, (test_rows, test_cols)).astype(test_dtype)
-# test = osr.SpatialReference()
-# test_osr.ImportFromProj4(test_proj4)
+# Test Geo Arrays
+geo_array_params = [
+    {
+        'extent': [2000, 1000, 2100, 1080], 'cellsize': 10, 'epsg': 32611,
+        'dtype': np.uint8, 'v_min': 0, 'v_max': 100, 'nodata': 255
+    }
+    # {
+    #     'extent': [2000, 1000, 2100, 1080], 'cellsize': 10, 'epsg': 3311,
+    #     'dtype': np.float32, 'v_min': 0, 'v_max': 100, 'nodata': 255
+    # }
+]
 
 
-@pytest.fixture(scope='session')
-def raster_ds():
-    """Build a raster of random values
+class GeoArray:
+    """"""
+    def __init__(self, extent, cellsize, epsg, dtype, v_min, v_max, nodata):
+        # Intentionally not making extent an extent object
+        self.extent = extent
+        self.cellsize = cellsize
 
-    For now the raster is has random values from 0-100 and nodata of 255
-    """
+        # Is it bad to have these being built the same as in gdal_common?
+        # These could be computed using the Extent methods instead
+        self.geo = (
+            self.extent[0], self.cellsize, 0.,
+            self.extent[3], 0., -self.cellsize)
+        self.transform = (
+            self.cellsize, 0, self.extent[0],
+            0, -self.cellsize, self.extent[3])
+        self.cols = int(round(abs(
+            (self.extent[0] - self.extent[2]) / self.cellsize), 0))
+        self.rows = int(round(abs(
+            (self.extent[3] - self.extent[1]) / -self.cellsize), 0))
+        self.shape = (self.rows, self.cols)
+        self.origin = (self.extent[0], self.extent[3])
+        self.center = (
+            self.extent[0] + 0.5 * abs(self.extent[2] - self.extent[0]),
+            self.extent[1] + 0.5 * abs(self.extent[3] - self.extent[1]))
 
-    img_driver = gdal.GetDriverByName('MEM')
-    # img_driver = gdal.GetDriverByName('HFA')
-    output_ds = img_driver.Create('', test_cols, test_rows, 1, test_gtype)
-    output_ds.SetProjection(test_wkt)
-    output_ds.SetGeoTransform(test_geo)
+        # Spatial Reference
+        self.epsg = epsg
+        self.osr = osr.SpatialReference()
+        self.osr.ImportFromEPSG(self.epsg)
+        self.proj4 = self.osr.ExportToProj4()
+        self.wkt = self.osr.ExportToWkt()
+        # self.osr = gdc.epsg_osr(epsg)
+        # self.proj4 = gdc.osr_proj4(self.osr)
+        # self.wkt = gdc.osr_wkt(self.osr)
+
+        # Array/Raster Type
+        # self.gtype = gtype
+        self.dtype = dtype
+        self.gtype = gdc.numpy_to_gdal_type(dtype)
+
+        # Array
+        self.array = np.random.uniform(low=v_min, high=v_max, size=self.shape)\
+            .astype(self.dtype)
+        self.nodata = nodata
+
+
+@pytest.fixture(scope='module', params=geo_array_params)
+def geo_array(request):
+    return GeoArray(**request.param)
+
+
+@pytest.fixture(scope='module')
+def raster_ds(geo_array):
+    """Build an in memory raster dataset"""
+    print('Building in-memory raster dataset')
+
+    driver = gdal.GetDriverByName('MEM')
+    # driver = gdal.GetDriverByName('HFA')
+    output_ds = driver.Create(
+        '', geo_array.cols, geo_array.rows, 1, geo_array.gtype)
+    output_ds.SetProjection(geo_array.wkt)
+    output_ds.SetGeoTransform(geo_array.geo)
     output_band = output_ds.GetRasterBand(1)
-    output_band.SetNoDataValue(test_nodata)
-    output_band.WriteArray(test_array, 0, 0)
-    # output_ds.close()
-    return output_ds
+    output_band.SetNoDataValue(geo_array.nodata)
+    output_band.WriteArray(geo_array.array, 0, 0)
+    yield output_ds
+
+    print('Closing in-memory raster datasets')
+    output_ds = None
 
 
-def test_extent_properties(extent=test_extent):
+def test_osr(epsg=32611):
+    """Test building OSR from EPSG code to test GDAL_DATA environment variable
+
+    This should fail if GDAL_DATA is not set or is invalid.
+    """
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(epsg)
+    wkt = sr.ExportToWkt()
+    print('GDAL_DATA = {}'.format(os.environ['GDAL_DATA']))
+    print('EPSG: {}'.format(epsg))
+    print('WKT: {}'.format(wkt))
+    assert wkt
+
+
+def test_extent_properties(geo_array):
+    extent = geo_array.extent
     extent_obj = gdc.Extent(extent)
     assert extent_obj.xmin == extent[0]
     assert extent_obj.ymin == extent[1]
@@ -84,62 +119,67 @@ def test_extent_rounding(extent=[0.111111, 0.111111, 0.888888, 0.888888],
     assert list(gdc.Extent(extent, ndigits=ndigits)) == expected
 
 
-def test_extent_str(extent=test_extent):
+def test_extent_str(geo_array):
+    extent = geo_array.extent
     expected = ' '.join(['{:.1f}'.format(x) for x in extent])
     assert str(gdc.Extent(extent)) == expected
 
 
-def test_extent_list(extent=test_extent):
+def test_extent_list(geo_array):
+    extent = geo_array.extent
     assert list(gdc.Extent(extent)) == extent
 
 
-def test_extent_adjust_to_snap_round(extent=test_extent, cs=test_cs):
-    extent_mod = extent[:]
+def test_extent_adjust_to_snap_round(geo_array):
+    extent_mod = geo_array.extent[:]
     # Adjust test extent out to the rounding limits
-    extent_mod[0] = extent_mod[0] + 0.499 * cs
-    extent_mod[1] = extent_mod[1] - 0.5 * cs
-    extent_mod[2] = extent_mod[2] - 0.5 * cs
-    extent_mod[3] = extent_mod[3] + 0.499 * cs
-    extent_mod = list(gdc.Extent(extent_mod).adjust_to_snap('ROUND', 0, 0, cs))
-    assert extent_mod == extent
+    extent_mod[0] = extent_mod[0] + 0.499 * geo_array.cellsize
+    extent_mod[1] = extent_mod[1] - 0.5 * geo_array.cellsize
+    extent_mod[2] = extent_mod[2] - 0.5 * geo_array.cellsize
+    extent_mod[3] = extent_mod[3] + 0.499 * geo_array.cellsize
+    extent_mod = list(gdc.Extent(extent_mod).adjust_to_snap(
+        'ROUND', 0, 0, geo_array.cellsize))
+    assert extent_mod == geo_array.extent
 
 
-def test_extent_adjust_to_snap_expand(extent=test_extent, cs=test_cs):
-    extent_mod = extent[:]
+def test_extent_adjust_to_snap_expand(geo_array):
+    extent_mod = geo_array.extent[:]
     # Shrink the test extent in almost a full cellsize
-    extent_mod[0] = extent_mod[0] + 0.99 * cs
-    extent_mod[1] = extent_mod[1] + 0.5 * cs
-    extent_mod[2] = extent_mod[2] - 0.5 * cs
-    extent_mod[3] = extent_mod[3] - 0.99 * cs
-    extent_mod = list(gdc.Extent(extent_mod).adjust_to_snap('EXPAND', 0, 0, cs))
-    assert extent_mod == extent
+    extent_mod[0] = extent_mod[0] + 0.99 * geo_array.cellsize
+    extent_mod[1] = extent_mod[1] + 0.5 * geo_array.cellsize
+    extent_mod[2] = extent_mod[2] - 0.5 * geo_array.cellsize
+    extent_mod[3] = extent_mod[3] - 0.99 * geo_array.cellsize
+    extent_mod = list(gdc.Extent(extent_mod).adjust_to_snap(
+        'EXPAND', 0, 0, geo_array.cellsize))
+    assert extent_mod == geo_array.extent
 
 
-def test_extent_adjust_to_snap_shrink(extent=test_extent, cs=test_cs):
-    extent_mod = extent[:]
+def test_extent_adjust_to_snap_shrink(geo_array):
+    extent_mod = geo_array.extent[:]
     # Expand the test extent out almost a full cellsize
-    extent_mod[0] = extent_mod[0] - 0.99 * cs
-    extent_mod[1] = extent_mod[1] - 0.5 * cs
-    extent_mod[2] = extent_mod[2] + 0.5 * cs
-    extent_mod[3] = extent_mod[3] + 0.99 * cs
-    extent_mod = list(gdc.Extent(extent_mod).adjust_to_snap('SHRINK', 0, 0, cs))
-    assert extent_mod == extent
+    extent_mod[0] = extent_mod[0] - 0.99 * geo_array.cellsize
+    extent_mod[1] = extent_mod[1] - 0.5 * geo_array.cellsize
+    extent_mod[2] = extent_mod[2] + 0.5 * geo_array.cellsize
+    extent_mod[3] = extent_mod[3] + 0.99 * geo_array.cellsize
+    extent_mod = list(gdc.Extent(extent_mod).adjust_to_snap(
+        'SHRINK', 0, 0, geo_array.cellsize))
+    assert extent_mod == geo_array.extent
 
 
-@pytest.mark.parametrize(
-    "extent,distance",
-    [
-        [test_extent, 10],
-        [test_extent, -10]
-    ]
-)
-def test_extent_buffer(extent, distance):
-    expected = extent[:]
-    expected[0] = expected[0] - distance
-    expected[1] = expected[1] - distance
-    expected[2] = expected[2] + distance
-    expected[3] = expected[3] + distance
-    assert list(gdc.Extent(extent).buffer(distance)) == expected
+# @pytest.mark.parametrize(
+#     "geo_array,distance",
+#     [
+#         [geo_array, 10],
+#         [geo_array, -10]
+#     ]
+# )
+# def test_extent_buffer(geo_array, distance):
+#     expected = geo_array.extent[:]
+#     expected[0] = expected[0] - distance
+#     expected[1] = expected[1] - distance
+#     expected[2] = expected[2] + distance
+#     expected[3] = expected[3] + distance
+#     assert list(gdc.Extent(geo_array.extent).buffer(distance)) == expected
 
 
 # def test_extent_split(extent=test_extent):
@@ -147,27 +187,27 @@ def test_extent_buffer(extent, distance):
 #     assert gdc.Extent(extent).split() == extent
 
 
-def test_extent_copy(extent=test_extent):
+def test_extent_copy(geo_array):
     """Return a copy of the extent"""
-    orig_extent = gdc.Extent(extent)
+    orig_extent = gdc.Extent(geo_array.extent)
     copy_extent = orig_extent.copy()
     # Modify the original extent
-    orig_extent.buffer(10)
+    orig_extent = orig_extent.buffer(10)
     # Check that the copy hasn't changed
-    assert list(copy_extent) == extent
+    assert list(copy_extent) == geo_array.extent
 
 
-def test_extent_corner_points(extent=test_extent):
+def test_extent_corner_points(geo_array):
     """Corner points in clockwise order starting with upper-left point"""
     expected = [
-        (test_extent[0], test_extent[3]),
-        (test_extent[2], test_extent[3]),
-        (test_extent[2], test_extent[1]),
-        (test_extent[0], test_extent[1])]
-    assert gdc.Extent(extent).corner_points() == expected
+        (geo_array.extent[0], geo_array.extent[3]),
+        (geo_array.extent[2], geo_array.extent[3]),
+        (geo_array.extent[2], geo_array.extent[1]),
+        (geo_array.extent[0], geo_array.extent[1])]
+    assert gdc.Extent(geo_array.extent).corner_points() == expected
 
 
-def test_extent_ul_lr_swap(extent=test_extent):
+def test_extent_ul_lr_swap(geo_array):
     """Copy of extent object reordered as xmin, ymax, xmax, ymin
 
     Some gdal utilities want the extent described using upper-left and
@@ -176,32 +216,34 @@ def test_extent_ul_lr_swap(extent=test_extent):
         gdal_merge -ul_lr ulx uly lrx lry
 
     """
-    expected = [test_extent[0], test_extent[3], test_extent[2], test_extent[1]]
-    assert list(gdc.Extent(extent).ul_lr_swap()) == expected
+    expected = [
+        geo_array.extent[0], geo_array.extent[3],
+        geo_array.extent[2], geo_array.extent[1]]
+    assert list(gdc.Extent(geo_array.extent).ul_lr_swap()) == expected
 
 
-def test_extent_ogrenv_swap(extent=test_extent):
+def test_extent_ogrenv_swap(geo_array):
     """Copy of extent object reordered as xmin, xmax, ymin, ymax
 
     OGR feature (shapefile) extents are different than GDAL raster extents
     """
-    expected = [test_extent[0], test_extent[2], test_extent[1], test_extent[3]]
-    assert list(gdc.Extent(extent).ogrenv_swap()) == expected
+    expected = [
+        geo_array.extent[0], geo_array.extent[2],
+        geo_array.extent[1], geo_array.extent[3]]
+    assert list(gdc.Extent(geo_array.extent).ogrenv_swap()) == expected
 
 
-def test_extent_origin(extent=test_extent, expected=test_origin):
+def test_extent_origin(geo_array):
     """Origin (upper-left corner) of the extent"""
-    assert gdc.Extent(extent).origin() == expected
+    assert gdc.Extent(geo_array.extent).origin() == geo_array.origin
 
 
-def test_extent_center(extent=test_extent,
-                       expected=(2050, 1040)):
+def test_extent_center(geo_array):
     """Centroid of the extent"""
-    assert gdc.Extent(extent).center() == expected
+    assert gdc.Extent(geo_array.extent).center() == geo_array.center
 
 
-def test_extent_shape(extent=test_extent, cs=test_cs,
-                      expected=(8, 10)):
+def test_extent_shape(geo_array):
     """Return number of rows and columns of the extent
 
     Args:
@@ -209,38 +251,37 @@ def test_extent_shape(extent=test_extent, cs=test_cs,
     Returns:
         tuple of raster rows and columns
     """
-    assert gdc.Extent(extent).shape(cs=cs) == expected
+    extent = gdc.Extent(geo_array.extent)
+    assert extent.shape(cs=geo_array.cellsize) == geo_array.shape
 
 
-def test_extent_geo(extent=test_extent, cs=test_cs, expected=test_geo):
+def test_extent_geo(geo_array):
     """Geo-tranform of the extent"""
-    assert gdc.Extent(extent).geo(cs=cs) == expected
+    extent = gdc.Extent(geo_array.extent)
+    assert extent.geo(cs=geo_array.cellsize) == geo_array.geo
 
 
-def test_extent_geometry(extent=test_extent):
+def test_extent_geometry(geo_array):
     """Check GDAL geometry by checking if WKT matches"""
-    extent_wkt = gdc.Extent(extent).geometry().ExportToWkt()
+    extent_wkt = gdc.Extent(geo_array.extent).geometry().ExportToWkt()
     expected = [
         "{} {} 0".format(int(x), int(y))
-        for x, y in gdc.Extent(extent).corner_points()]
+        for x, y in gdc.Extent(geo_array.extent).corner_points()]
     # First point is repeated in geometry
     expected = "POLYGON (({}))".format(','.join(expected + [expected[0]]))
     assert extent_wkt == expected
 
 
-@pytest.mark.parametrize(
-    "extent,xy,expected",
-    [
-        [test_extent, [1990, 990], False],
-        [test_extent, [2000, 1000], True],
-        [test_extent, [2050, 1040], True],
-        [test_extent, [2050, 1081], False],
-        [test_extent, [2101, 1081], False]
-    ]
-)
-def test_extent_intersect_point(extent, xy, expected):
+def test_extent_intersect_point(geo_array):
     """"Test if Point XY intersects the extent"""
-    assert gdc.Extent(extent).intersect_point(xy) == expected
+    extent = gdc.Extent(geo_array.extent)
+    origin = geo_array.origin
+    cs = geo_array.cellsize
+    assert not extent.intersect_point([origin[0] - cs, origin[1] + cs])
+    assert extent.intersect_point([origin[0], origin[1]])
+    assert extent.intersect_point([origin[0] + cs, origin[1] - cs])
+    # assert extent.intersect_point(xy) == expected
+    # assert extent.intersect_point(xy) == expected
 
 
 # def test_raster_driver(raster_path):
@@ -319,9 +360,9 @@ def test_extent_intersect_point(extent, xy, expected):
 #     assert False
 
 
-def test_raster_ds_geo(raster_ds, expected=test_geo):
+def test_raster_ds_geo(raster_ds, geo_array):
     """Return the geo-transform of an opened raster dataset"""
-    assert gdc.raster_ds_geo(raster_ds) == test_geo
+    assert gdc.raster_ds_geo(raster_ds) == geo_array.geo
 
 
 # def test_round_geo(geo, n=10):
@@ -329,32 +370,32 @@ def test_raster_ds_geo(raster_ds, expected=test_geo):
 #     assert False
 
 
-def test_raster_ds_extent(raster_ds, expected=test_extent):
+def test_raster_ds_extent(raster_ds, geo_array):
     """Return the extent of an opened raster dataset"""
-    assert list(gdc.raster_ds_extent(raster_ds)) == test_extent
+    assert list(gdc.raster_ds_extent(raster_ds)) == geo_array.extent
 
 
-def test_geo_cellsize(geo=test_geo, x_only=False,
-                      expected=(test_cs, -test_cs)):
+def test_geo_cellsize(geo_array):
     """Return pixel width & pixel height of a geo-transform"""
-    assert gdc.geo_cellsize(geo, x_only) == expected
+    cellsize = gdc.geo_cellsize(geo_array.geo, x_only=False)
+    assert cellsize == (geo_array.cellsize, -geo_array.cellsize)
 
 
-def test_geo_cellsize_x_only(geo=test_geo, x_only=True,
-                             expected=test_cs):
+def test_geo_cellsize_x_only(geo_array):
     """Return pixel width of a geo-transform"""
-    assert gdc.geo_cellsize(geo, x_only) == expected
+    assert gdc.geo_cellsize(geo_array.geo, x_only=True) == geo_array.cellsize
 
 
-def test_geo_origin(geo=test_geo, expected=test_origin):
+def test_geo_origin(geo_array):
     """Return upper-left corner of geo-transform"""
-    assert gdc.geo_origin(geo) == expected
+    assert gdc.geo_origin(geo_array.geo) == geo_array.origin
 
 
-def test_geo_extent(geo=test_geo, rows=test_rows, cols=test_cols,
-                    expected=test_extent):
+def test_geo_extent(geo_array):
     """Return the extent from a geo-transform and array shape (rows, cols)"""
-    assert list(gdc.geo_extent(geo, rows, cols)) == expected
+    extent = list(gdc.geo_extent(
+        geo_array.geo, geo_array.rows, geo_array.cols))
+    assert extent == geo_array.extent
 
 
 # def test_raster_path_shape(raster_path):
@@ -363,9 +404,9 @@ def test_geo_extent(geo=test_geo, rows=test_rows, cols=test_cols,
 #     assert False
 
 
-def test_raster_ds_shape(raster_ds, expected=test_shape):
+def test_raster_ds_shape(raster_ds, geo_array):
     """Return the number of rows and columns in an opened raster dataset"""
-    assert gdc.raster_ds_shape(raster_ds) == test_shape
+    assert gdc.raster_ds_shape(raster_ds) == geo_array.shape
 
 
 # def test_raster_path_set_nodata(raster_path, input_nodata):
@@ -463,7 +504,7 @@ def test_intersect_extents(extent_list, expected):
 #     assert False
 
 
-def test_raster_ds_to_array(raster_ds, expected=test_array):
+def test_raster_ds_to_array(raster_ds, geo_array):
     """Test reading NumPy array from raster
 
     Output array size will match the mask_extent if mask_extent is set
@@ -477,15 +518,15 @@ def test_raster_ds_to_array(raster_ds, expected=test_array):
     """
     assert np.array_equal(
         gdc.raster_ds_to_array(raster_ds, return_nodata=False),
-        test_array)
+        geo_array.array)
 
 
-def test_raster_ds_to_array_with_nodata(raster_ds, expected=test_array):
+def test_raster_ds_to_array_with_nodata(raster_ds, geo_array):
     """Test reading raster array and nodata value"""
     raster_array, raster_nodata = gdc.raster_ds_to_array(
         raster_ds, return_nodata=True)
-    assert np.array_equal(raster_array, test_array)
-    assert raster_nodata == test_nodata
+    assert np.array_equal(raster_array, geo_array.array)
+    assert raster_nodata == geo_array.nodata
 
 
 # def test_project_array(input_array, resampling_type,
@@ -541,33 +582,33 @@ def test_raster_ds_to_array_with_nodata(raster_ds, expected=test_array):
 #     assert False
 
 
-def test_json_reverse_polygon(extent=test_extent):
+def test_json_reverse_polygon(geo_array):
     """Reverse the point order from counter-clockwise to clockwise"""
-    pts = map(list, gdc.Extent(extent).corner_points())
+    pts = map(list, gdc.Extent(geo_array.extent).corner_points())
     json_geom = {'type': 'Polygon', 'coordinates': [pts]}
     expected = {'type': 'Polygon', 'coordinates': [pts[::-1]]}
     assert gdc.json_reverse_func(json_geom) == expected
 
 
-def test_json_reverse_multipolygon(extent=test_extent):
+def test_json_reverse_multipolygon(geo_array):
     """Reverse the point order from counter-clockwise to clockwise"""
-    pts = map(list, gdc.Extent(extent).corner_points())
+    pts = map(list, gdc.Extent(geo_array.extent).corner_points())
     json_geom = {'type': 'MultiPolygon', 'coordinates': [[pts]]}
     expected = {'type': 'MultiPolygon', 'coordinates': [[pts[::-1]]]}
     assert gdc.json_reverse_func(json_geom) == expected
 
 
-def test_json_strip_z_polygon(extent=test_extent):
+def test_json_strip_z_polygon(geo_array):
     """Strip Z value from coordinates"""
-    pts = map(list, gdc.Extent(extent).corner_points())
+    pts = map(list, gdc.Extent(geo_array.extent).corner_points())
     json_geom = {'type': 'Polygon', 'coordinates': [[p + [1.0] for p in pts]]}
     expected = {'type': 'Polygon', 'coordinates': [pts]}
     assert gdc.json_strip_z_func(json_geom) == expected
 
 
-def test_json_strip_z_multipolygon(extent=test_extent):
+def test_json_strip_z_multipolygon(geo_array):
     """Strip Z value from coordinates"""
-    pts = map(list, gdc.Extent(extent).corner_points())
+    pts = map(list, gdc.Extent(geo_array.extent).corner_points())
     json_geom = {
         'type': 'MultiPolygon',
         'coordinates': [[[p + [1.0] for p in pts]]]}
@@ -575,19 +616,19 @@ def test_json_strip_z_multipolygon(extent=test_extent):
     assert gdc.json_strip_z_func(json_geom) == expected
 
 
-def test_geo_2_ee_transform(geo=test_geo, expected=test_transform):
+def test_geo_2_ee_transform(geo_array):
     """ EE crs transforms are different than GDAL geo transforms
 
     EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
     GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
     """
-    assert gdc.geo_2_ee_transform(geo) == expected
+    assert gdc.geo_2_ee_transform(geo_array.geo) == geo_array.transform
 
 
-def test_ee_transform_2_geo(transform=test_transform, expected=test_geo):
+def test_ee_transform_2_geo(geo_array):
     """ EE crs transforms are different than GDAL geo transforms
 
     EE: [xScale, xShearing, xTranslation, yShearing, yScale, yTranslation]
     GDAL: [xTranslation, xScale, xShearing, yTranslation, yShearing, yScale]
     """
-    assert gdc.ee_transform_2_geo(transform) == expected
+    assert gdc.ee_transform_2_geo(geo_array.transform) == geo_array.geo
