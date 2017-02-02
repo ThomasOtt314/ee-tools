@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-01-27
+# Updated:      2017-02-01
 # Python:       2.7
 #--------------------------------
 
@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import math
+import os
 import sys
 
 import numpy as np
@@ -156,9 +157,9 @@ class Extent:
     def intersect_point(self, xy):
         """"Test if Point XY intersects the extent"""
         if ((xy[0] > self.xmax) or
-            (xy[0] < self.xmin) or
-            (xy[1] > self.ymax) or
-            (xy[1] < self.ymin)):
+                (xy[0] < self.xmin) or
+                (xy[1] > self.ymax) or
+                (xy[1] < self.ymin)):
             return False
         else:
             return True
@@ -190,7 +191,10 @@ def raster_driver(raster_path):
     elif raster_path == '':
         return gdal.GetDriverByName('MEM')
     else:
-        sys.exit()
+        raise SystemExit('Unsupported or invalid raster extension: '
+                         '{}'.format(os.path.basename(raster_path)))
+        # raise ValueError('Unsupported or invalid raster extension: '
+        #                  '{}'.format(os.path.basename(raster_path)))
 
 
 def numpy_to_gdal_type(numpy_type):
@@ -210,32 +214,34 @@ def numpy_to_gdal_type(numpy_type):
 
     """
     if numpy_type == np.bool:
-        g_type = gdal.GDT_Byte
+        return gdal.GDT_Byte
     elif numpy_type == np.int:
-        g_type = gdal.GDT_Int32
+        return gdal.GDT_Int32
     elif numpy_type == np.int8:
-        g_type = gdal.GDT_Int16
+        return gdal.GDT_Int16
     elif numpy_type == np.int16:
-        g_type = gdal.GDT_Int16
+        return gdal.GDT_Int16
     elif numpy_type == np.int32:
-        g_type = gdal.GDT_Int32
+        return gdal.GDT_Int32
     elif numpy_type == np.uint8:
-        g_type = gdal.GDT_Byte
+        return gdal.GDT_Byte
     elif numpy_type == np.uint16:
-        g_type = gdal.GDT_UInt16
+        return gdal.GDT_UInt16
     elif numpy_type == np.uint32:
-        g_type = gdal.GDT_UInt32
+        return gdal.GDT_UInt32
     elif numpy_type == np.float:
-        g_type = gdal.GDT_Float64
+        return gdal.GDT_Float64
     # elif numpy_type == np.float16:
-    #     g_type = gdal.GDT_Float32
+    #     return gdal.GDT_Float32
     elif numpy_type == np.float32:
-        g_type = gdal.GDT_Float32
+        return gdal.GDT_Float32
     elif numpy_type == np.float64:
-        g_type = gdal.GDT_Float32
+        return gdal.GDT_Float32
     else:
-        g_type = None
-    return g_type
+        raise SystemExit('Unsupported or invalid NumPy array dtype: '
+                         '{}'.format(numpy_type))
+        # raise ValueError('Unsupported or invalid NumPy array dtype: '
+        #                  '{}'.format(numpy_type))
 
 
 def numpy_type_nodata(numpy_type):
@@ -251,32 +257,34 @@ def numpy_type_nodata(numpy_type):
 
     """
     if numpy_type == np.bool:
-        nodata_value = 0
+        return 0
     elif numpy_type == np.int:
-        nodata_value = int(np.iinfo(np.int32).min)
+        return int(np.iinfo(np.int32).min)
     elif numpy_type == np.int8:
-        nodata_value = int(np.iinfo(np.int8).min)
+        return int(np.iinfo(np.int8).min)
     elif numpy_type == np.int16:
-        nodata_value = int(np.iinfo(np.int16).min)
+        return int(np.iinfo(np.int16).min)
     elif numpy_type == np.int32:
-        nodata_value = int(np.iinfo(np.int32).min)
+        return int(np.iinfo(np.int32).min)
     elif numpy_type == np.uint8:
-        nodata_value = int(np.iinfo(np.uint8).max)
+        return int(np.iinfo(np.uint8).max)
     elif numpy_type == np.uint16:
-        nodata_value = int(np.iinfo(np.uint16).max)
+        return int(np.iinfo(np.uint16).max)
     elif numpy_type == np.uint32:
-        nodata_value = int(np.iinfo(np.uint32).max)
+        return int(np.iinfo(np.uint32).max)
     elif numpy_type == np.float:
-        nodata_value = float(np.finfo(np.float64).min)
+        return float(np.finfo(np.float64).min)
     elif numpy_type == np.float16:
-        nodata_value = float(np.finfo(np.float32).min)
+        return float(np.finfo(np.float32).min)
     elif numpy_type == np.float32:
-        nodata_value = float(np.finfo(np.float32).min)
+        return float(np.finfo(np.float32).min)
     elif numpy_type == np.float64:
-        nodata_value = float(np.finfo(np.float32).min)
+        return float(np.finfo(np.float32).min)
     else:
-        nodata_value = None
-    return nodata_value
+        raise SystemExit('Unsupported or invalid NumPy array dtype: '
+                         '{}'.format(numpy_type))
+        # raise ValueError('Unsupported or invalid NumPy array dtype: '
+        #                  '{}'.format(numpy_type))
 
 
 def gdal_to_numpy_type(gdal_type):
@@ -290,22 +298,26 @@ def gdal_to_numpy_type(gdal_type):
 
     """
     if gdal_type == gdal.GDT_Unknown:
-        numpy_type = np.float64
+        return np.float64
     elif gdal_type == gdal.GDT_Byte:
-        numpy_type = np.uint8
+        return np.uint8
     elif gdal_type == gdal.GDT_UInt16:
-        numpy_type = np.uint16
+        return np.uint16
     elif gdal_type == gdal.GDT_Int16:
-        numpy_type = np.int16
+        return np.int16
     elif gdal_type == gdal.GDT_UInt32:
-        numpy_type = np.uint32
+        return np.uint32
     elif gdal_type == gdal.GDT_Int32:
-        numpy_type = np.int32
+        return np.int32
     elif gdal_type == gdal.GDT_Float32:
-        numpy_type = np.float32
+        return np.float32
     elif gdal_type == gdal.GDT_Float64:
-        numpy_type = np.float64
-    return numpy_type
+        return np.float64
+    else:
+        raise SystemExit('Unsupported or invalid GDAL data type: '
+                         '{}'.format(gdal_type))
+        # raise ValueError('Unsupported or invalid GDAL data type: '
+        #                  '{}'.format(gdal_type))
 
 
 def matching_spatref(osr_a, osr_b):
@@ -383,12 +395,18 @@ def epsg_osr(input_epsg):
 
     """
     input_osr = osr.SpatialReference()
-    input_osr.ImportFromEPSG(input_epsg)
-    return input_osr
+    result = input_osr.ImportFromEPSG(input_epsg)
+    if result == 0:
+        return input_osr
+    else:
+        raise SystemExit('Could not set spatial reference from EPSG:'
+                         ' {}'.format(input_epsg))
+        # raise ValueError('Could not set spatial reference from EPSG:'
+        #                  ' {}'.format(input_epsg))
 
 
 def proj4_osr(input_proj4):
-    """Return the spatial reference object of an PROJ4 code
+    """Return the spatial reference object of a PROJ4 string
 
     Args:
         input_proj4 (str): PROJ4 projection or coordinate system description
@@ -398,8 +416,14 @@ def proj4_osr(input_proj4):
 
     """
     input_osr = osr.SpatialReference()
-    input_osr.ImportFromProj4(input_proj4)
-    return input_osr
+    result = input_osr.ImportFromProj4(input_proj4)
+    if result == 0:
+        return input_osr
+    else:
+        raise SystemExit('Could not set spatial reference from PROJ4:\n'
+                         '  {}'.format(input_proj4))
+        # raise ValueError('Could not set spatial reference from PROJ4:\n'
+        #                  '  {}'.format(input_proj4))
 
 
 def feature_path_osr(feature_path):
@@ -754,7 +778,7 @@ def array_geo_offsets(full_geo, sub_geo, cs):
 
 
 def raster_to_array(input_raster, band=1, mask_extent=None,
-                    fill_value=None, return_nodata=True):
+                    default_nodata_value=None, return_nodata=True):
     """Return a NumPy array from a raster
 
     Output array size will match the mask_extent if mask_extent is set
@@ -763,8 +787,10 @@ def raster_to_array(input_raster, band=1, mask_extent=None,
         input_raster (str): Filepath to the raster for array creation
         band (int): band to convert to array in the input raster
         mask_extent: Mask defining desired portion of raster
-        fill_value (float): Value to Initialize empty array with
-        return_nodata (bool): If True, the function will return the no data value
+        default_nodata_value (float): Value to use if not set in raster.
+            The raster nodata or this value will be used to initialize
+                the output arrays.
+        return_nodata (bool): If True, return no data value with the array
 
     Returns:
         output_array: The array of the raster values
@@ -772,7 +798,8 @@ def raster_to_array(input_raster, band=1, mask_extent=None,
     """
     input_raster_ds = gdal.Open(input_raster, 0)
     output_array, output_nodata = raster_ds_to_array(
-        input_raster_ds, band, mask_extent, fill_value, return_nodata=True)
+        input_raster_ds, band, mask_extent, default_nodata_value,
+        return_nodata=True)
     input_raster_ds = None
     if return_nodata:
         return output_array, output_nodata
@@ -781,7 +808,7 @@ def raster_to_array(input_raster, band=1, mask_extent=None,
 
 
 def raster_ds_to_array(input_raster_ds, band=1, mask_extent=None,
-                       fill_value=None, return_nodata=True):
+                       default_nodata_value=None, return_nodata=True):
     """Return a NumPy array from an opened raster dataset
 
     Output array size will match the mask_extent if mask_extent is set
@@ -790,8 +817,10 @@ def raster_ds_to_array(input_raster_ds, band=1, mask_extent=None,
         input_raster_ds (): opened raster dataset as gdal raster
         band (int): band number to read the array from
         mask_extent (): subset extent of the raster if desired
-        fill_value (float): Value to Initialize empty array with
-        return_nodata (bool): If True, returns no data value with the array
+        default_nodata_value (float): Value to use if not set in raster.
+            The raster nodata value or this value will be used to initialize
+                the output arrays.
+        return_nodata (bool): If True, return no data value with the array
 
     Returns:
         output_array: The array of the raster values
@@ -806,13 +835,13 @@ def raster_ds_to_array(input_raster_ds, band=1, mask_extent=None,
     input_type = input_band.DataType
     numpy_type = gdal_to_numpy_type(input_type)
     input_nodata = input_band.GetNoDataValue()
-    # Use fill_value as the raster nodata value if raster doesn't have a
+    # Use default_nodata_value as the raster nodata value if raster doesn't have a
     #   nodata value set
-    if input_nodata is None and fill_value is not None:
-        input_nodata = fill_value
-    # If raster doesn't have a nodata value and fill value isn't set
+    if input_nodata is None and default_nodata_value is not None:
+        input_nodata = default_nodata_value
+    # If raster doesn't have a nodata value and default_nodata_value isn't set
     #   use default nodata value for raster data type
-    elif input_nodata is None and fill_value is None:
+    elif input_nodata is None and default_nodata_value is None:
         input_nodata = numpy_type_nodata(numpy_type)
 
     #
@@ -840,8 +869,7 @@ def raster_ds_to_array(input_raster_ds, band=1, mask_extent=None,
         output_array = input_band.ReadAsArray(
             0, 0, input_raster_ds.RasterXSize, input_raster_ds.RasterYSize)
     # For float types, set nodata values to nan
-    if (output_array.dtype == np.float32 or
-            output_array.dtype == np.float64):
+    if output_array.dtype in [np.float32, np.float64]:
         output_nodata = np.nan
         if input_nodata is not None:
             output_array[output_array == input_nodata] = output_nodata
@@ -946,8 +974,7 @@ def project_array(input_array, resampling_type,
             0, 0, output_cols, output_rows)
 
     # For float types, set nodata values to nan
-    if (output_array.dtype == np.float32 or
-        output_array.dtype == np.float64):
+    if output_array.dtype in [np.float32, np.float64]:
         output_nodata = np.nan
         output_array[output_array == input_nodata] = output_nodata
     else:
