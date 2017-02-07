@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import sys
+from time import sleep
 
 import ee
 from osgeo import ogr
@@ -429,7 +430,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # return False
 
         # task = ee.batch.Export.table.toDrive(
-        #     stats_coll,
+        #     collection=stats_coll,
         #     description=export_id,
         #     folder=ini['EXPORT']['export_folder'],
         #     fileNamePrefix=export_id,
@@ -439,23 +440,22 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
         # Download the CSV to your Google Drive
         logging.debug('  Starting export task')
-        i = 0
-        while i <= 2:
+        for i in range(1, 6):
             try:
                 task = ee.batch.Export.table.toDrive(
-                    stats_coll,
+                    collection=stats_coll,
                     description=export_id,
                     folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     fileFormat='CSV')
                 task.start()
-                logging.debug('  Active: {}'.format(task.active()))
-                # logging.debug('  Status: {}'.format(task.status()))
                 break
             except Exception as e:
-                logging.error('  EE Exception submitting task, retrying')
+                logging.error('  Exception: {}, retry {}'.format(e, i))
                 logging.debug('{}'.format(e))
-                i += 1
+                sleep(i ** 2)
+        # logging.debug('  Status: {}'.format(task.status()))
+        logging.debug('  Active: {}'.format(task.active()))
 
 
     # Combine/merge annual files into a single CSV
@@ -602,19 +602,22 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
         logging.debug('  Starting export task')
-        try:
-            task = ee.batch.Export.table.toDrive(
-                stats_coll,
-                description=export_id,
-                folder=ini['EXPORT']['export_folder'],
-                fileNamePrefix=export_id,
-                fileFormat='CSV')
-            task.start()
-            logging.debug('  Active: {}'.format(task.active()))
-            # logging.debug('  Status: {}'.format(task.status()))
-        except Exception as e:
-            logging.error('  EE Exception submitting task, skipping')
-            logging.debug('  {}'.format(e))
+        for i in range(1, 6):
+            try:
+                task = ee.batch.Export.table.toDrive(
+                    collection=stats_coll,
+                    description=export_id,
+                    folder=ini['EXPORT']['export_folder'],
+                    fileNamePrefix=export_id,
+                    fileFormat='CSV')
+                task.start()
+                break
+            except Exception as e:
+                logging.error('  Exception: {}, retry {}'.format(e, i))
+                logging.debug('{}'.format(e))
+                sleep(i ** 2)
+        # logging.debug('  Status: {}'.format(task.status()))
+        logging.debug('  Active: {}'.format(task.active()))
 
 
 def gridmet_monthly_func(export_fields, ini, zone, tasks,
@@ -732,19 +735,22 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
         stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
         logging.debug('  Starting export task')
-        try:
-            task = ee.batch.Export.table.toDrive(
-                stats_coll,
-                description=export_id,
-                folder=ini['EXPORT']['export_folder'],
-                fileNamePrefix=export_id,
-                fileFormat='CSV')
-            task.start()
-            logging.debug('  Active: {}'.format(task.active()))
-            # logging.debug('  Status: {}'.format(task.status()))
-        except Exception as e:
-            logging.error('  EE Exception submitting task, skipping')
-            logging.debug('  {}'.format(e))
+        for i in range(1, 6):
+            try:
+                task = ee.batch.Export.table.toDrive(
+                    collection=stats_coll,
+                    description=export_id,
+                    folder=ini['EXPORT']['export_folder'],
+                    fileNamePrefix=export_id,
+                    fileFormat='CSV')
+                task.start()
+                break
+            except Exception as e:
+                logging.error('  Exception: {}, retry {}'.format(e, i))
+                logging.debug('{}'.format(e))
+                sleep(i ** 2)
+        # logging.debug('  Status: {}'.format(task.status()))
+        logging.debug('  Active: {}'.format(task.active()))
 
 
 def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
@@ -827,19 +833,22 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         stats_coll = pdsi_coll.map(pdsi_zonal_stats_func)
 
         logging.debug('  Starting export task')
-        try:
-            task = ee.batch.Export.table.toDrive(
-                stats_coll,
-                description=export_id,
-                folder=ini['EXPORT']['export_folder'],
-                fileNamePrefix=export_id,
-                fileFormat='CSV')
-            task.start()
-            logging.debug('  Active: {}'.format(task.active()))
-            # logging.debug('  Status: {}'.format(task.status()))
-        except Exception as e:
-            logging.error('  EE Exception submitting task, skipping')
-            logging.debug('{}'.format(e))
+        for i in range(1, 6):
+            try:
+                task = ee.batch.Export.table.toDrive(
+                    collection=stats_coll,
+                    description=export_id,
+                    folder=ini['EXPORT']['export_folder'],
+                    fileNamePrefix=export_id,
+                    fileFormat='CSV')
+                task.start()
+                break
+            except Exception as e:
+                logging.error('  Exception: {}, retry {}'.format(e, i))
+                logging.debug('{}'.format(e))
+                sleep(i ** 2)
+        # logging.debug('  Status: {}'.format(task.status()))
+        logging.debug('  Active: {}'.format(task.active()))
 
     # # Get current running tasks
     # logging.debug('\nRunning tasks')
