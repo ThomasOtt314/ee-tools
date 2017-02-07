@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-01-27
+# Created       2017-02-07
 # Python:       2.7
 #--------------------------------
 
@@ -93,7 +93,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
 
     # Need zone_path projection to build EE geometries
     zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
-    zone['proj'] = gdc.osr_proj(zone['osr'])
+    zone['proj'] = gdc.osr_wkt(zone['osr'])
     # zone['proj'] = ee.Projection(zone['proj']).wkt().getInfo()
     # zone['proj'] = zone['proj'].replace('\n', '').replace(' ', '')
     # logging.debug('  Zone Projection: {}'.format(zone['proj']))

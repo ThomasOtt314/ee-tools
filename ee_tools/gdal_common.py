@@ -370,20 +370,6 @@ def matching_spatref(osr_a, osr_b):
 #         return False
 
 
-def osr_proj(input_osr):
-    """Return the projection WKT of a spatial reference object
-
-    Args:
-        input_osr (:class:`osr.SpatialReference`): the input OSR
-            spatial reference
-
-    Returns:
-        WKT: :class:`osr.SpatialReference` in WKT format
-
-    """
-    return input_osr.ExportToWkt()
-
-
 def epsg_osr(input_epsg):
     """Return the spatial reference object of an EPSG code
 
@@ -405,6 +391,41 @@ def epsg_osr(input_epsg):
         #                  ' {}'.format(input_epsg))
 
 
+def wkt_osr(input_wkt):
+    """Return the spatial reference object of a projection WKT
+    Args:
+        input_proj (:class:`osr.SpatialReference` WKT): Input
+            WKT formatted :class:`osr.SpatialReference` object
+            to be used in creation of an :class:`osr.SpatialReference`
+    Returns:
+        osr.SpatialReference: OSR SpatialReference object as represented
+            by the input WKT
+    """
+    input_osr = osr.SpatialReference()
+    result = input_osr.ImportFromWkt(input_wkt)
+    if result == 0:
+        return input_osr
+    else:
+        raise SystemExit('Could not set spatial reference from WKT:'
+                         ' {}'.format(input_wkt))
+        # raise ValueError('Could not set spatial reference from WKT:'
+        #                  ' {}'.format(input_epsg))
+
+
+def osr_wkt(input_osr):
+    """Return the projection WKT of a spatial reference object
+
+    Args:
+        input_osr (:class:`osr.SpatialReference`): the input OSR
+            spatial reference
+
+    Returns:
+        WKT: :class:`osr.SpatialReference` in WKT format
+
+    """
+    return input_osr.ExportToWkt()
+
+
 def proj4_osr(input_proj4):
     """Return the spatial reference object of a PROJ4 string
 
@@ -424,6 +445,17 @@ def proj4_osr(input_proj4):
                          '  {}'.format(input_proj4))
         # raise ValueError('Could not set spatial reference from PROJ4:\n'
         #                  '  {}'.format(input_proj4))
+
+
+def osr_proj4(input_osr):
+    """Return the PROJ4 code of an osr.SpatialReference
+    Args:
+        input_osr (:class:`osr.SpatialReference`): OSR Spatial reference
+            of the input projection/GCS
+    Returns:
+        str: Proj4 string of the projection or GCS
+    """
+    return input_osr.ExportToProj4()
 
 
 def feature_path_osr(feature_path):
@@ -494,7 +526,7 @@ def feature_lyr_extent(feature_lyr):
     return f_env
 
 
-def raster_ds_geo(raster_ds):
+def raster_ds_geo(raster_ds, ndigits=None):
     """Return the geo-transform of an opened raster dataset
 
     Args:
@@ -504,10 +536,13 @@ def raster_ds_geo(raster_ds):
         tuple: :class:`gdal.Geotransform` of the input dataset
 
     """
-    return round_geo(raster_ds.GetGeoTransform())
+    if ndigits is not None:
+        return round_geo(raster_ds.GetGeoTransform(), ndigits)
+    else:
+        return raster_ds.GetGeoTransform()
 
 
-def round_geo(geo, n=10):
+def round_geo(geo, ndigits):
     """Round the values of a geotransform to n digits
 
     Args:
@@ -519,7 +554,7 @@ def round_geo(geo, n=10):
         tuple: :class:`gdal.Geotransform` rounded to n digits
 
     """
-    return tuple([round(i, n) for i in geo])
+    return tuple([round(i, ndigits) for i in geo])
 
 
 def raster_ds_extent(raster_ds):

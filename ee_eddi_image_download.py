@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
-# Created       2017-01-27
+# Created       2017-02-07
 # Python:       2.7
 #--------------------------------
 
@@ -112,7 +112,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Need zone_path projection to build EE geometries
     zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
-    zone_proj = gdc.osr_proj(zone_osr)
+    zone_proj = gdc.osr_wkt(zone_osr)
     # zone_proj = ee.Projection(zone_proj).wkt().getInfo()
     # zone_proj = zone_proj.replace('\n', '').replace(' ', '')
     logging.debug('  Zone Projection: {}'.format(zone_proj))
