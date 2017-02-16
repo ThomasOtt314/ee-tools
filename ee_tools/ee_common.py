@@ -2,7 +2,7 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-01-25
+# Created       2017-02-15
 # Python:       2.7
 #--------------------------------
 
@@ -191,6 +191,9 @@ def get_landsat_image(landsat, year, doy, path=None, row=None,
         image_args['path_keep_list'] = [int(path)]
     if row:
         image_args['row_keep_list'] = [int(row)]
+    # if path and row:
+    #     image_args['pathrow_keep_list'] = [
+    #         'p{:03d}r{:03d}'.format(int(path), int(row))]
 
     landsat_coll = get_landsat_collection(landsat, **image_args)
 
@@ -265,7 +268,7 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
                            start_doy=None, end_doy=None,
                            scene_id_keep_list=[], scene_id_skip_list=[],
                            path_keep_list=[], row_keep_list=[],
-                           adjust_method=None):
+                           path_row_geom=None, adjust_method=None):
     """Build and filter a Landsat collection
 
     If fmask_type is 'fmask', an fmask collection is built but not used.
@@ -281,7 +284,7 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
         fmask_type (str): 'none', 'fmask' or 'cfmask'
         fmask_flag (bool): if True, mask Fmask cloud, shadow, and snow pixels
         acca_flag (bool): if True, mask pixels with clouds scores > 50
-        zone_geom ():
+        zone_geom (ee.Geometry):
         start_date (str):
         end_date (str):
         start_year (int):
@@ -294,6 +297,7 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
         scene_id_skip_list (list):
         path_keep_list (list): Landsat path numbers (as int)
         row_keep_list (list): Landsat row numbers (as int)
+        path_row_geom (ee.Geometry):
         adjust_method (str): Adjust Landsat red and NIR bands.
             Choices: 'etm_2_oli' or 'oli_2_etm'.
             This could probably be simplifed to a flag.
@@ -341,15 +345,28 @@ def get_landsat_collection(landsat, landsat_type='toa', fmask_type=None,
         sys.exit()
 
     if path_keep_list:
+        # path_keep_list = sorted(path_keep_list)
+        # landsat_coll = landsat_coll.filter(ee.Filter.rangeContains(
+        #     'WRS_ROW', path_keep_list[0], path_keep_list[-1]))
+        # fmask_coll = fmask_coll.filter(ee.Filter.rangeContains(
+        #     'wrs_row', path_keep_list[0], path_keep_list[-1]))
         landsat_coll = landsat_coll.filter(
             ee.Filter.inList('WRS_PATH', path_keep_list))
         fmask_coll = fmask_coll.filter(
             ee.Filter.inList('wrs_path', path_keep_list))
     if row_keep_list:
+        # row_keep_list = sorted(row_keep_list)
+        # landsat_coll = landsat_coll.filter(ee.Filter.rangeContains(
+        #     'WRS_ROW', row_keep_list[0], row_keep_list[-1]))
+        # fmask_coll = fmask_coll.filter(ee.Filter.rangeContains(
+        #     'wrs_row', row_keep_list[0], row_keep_list[-1]))
         landsat_coll = landsat_coll.filter(
             ee.Filter.inList('WRS_ROW', row_keep_list))
         fmask_coll = fmask_coll.filter(
             ee.Filter.inList('wrs_row', row_keep_list))
+    if path_row_geom:
+        landsat_coll = landsat_coll.filterBounds(path_row_geom)
+        fmask_coll = fmask_coll.filterBounds(path_row_geom)
 
     # Filter by date
     if start_date and end_date:

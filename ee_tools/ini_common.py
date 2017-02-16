@@ -2,7 +2,7 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-01-27
+# Created       2017-02-15
 # Python:       2.7
 #--------------------------------
 
@@ -32,18 +32,12 @@ def read(ini_path):
                       'ERROR: ini_path = {}\n'.format(ini_path))
         sys.exit()
 
-    # # Fow now, assume all values are in one INPUTS section
-    # if 'INPUTS' not in config.sections():
-    #     logging.error('\nERROR: Input file must have an "INPUTS" section'
-    #                   '  Insert the following as the first line: [INPUTS]')
-    #     sys.exit()
-
-    # ini = defaultdict(dict)
+    # Force conversion of unicode to strings
     ini = dict()
     for section in config.keys():
-        ini[section] = {}
+        ini[str(section)] = {}
         for k, v in config[section].items():
-            ini[section][k] = v
+            ini[str(section)][str(k)] = v
     return ini
 
 
@@ -68,7 +62,6 @@ def parse_section(ini, section):
         parse_tables(ini)
     elif section == 'FIGURES':
         parse_figures(ini)
-    # return ini
 
 
 def get_param(ini, section, input_name, output_name, get_type,
@@ -85,6 +78,7 @@ def get_param(ini, section, input_name, output_name, get_type,
             Defaults to "MANDATORY".
             "MANDATORY" will cause script to exit if key does not exist.
     """
+
     try:
         if get_type is bool:
             ini[section][output_name] = (
@@ -98,8 +92,7 @@ def get_param(ini, section, input_name, output_name, get_type,
         elif get_type is float:
             ini[section][output_name] = float(ini[section][input_name])
         elif get_type is list:
-            ini[section][output_name] = list(python_common.parse_int_set(
-                str(ini[section][input_name])))
+            ini[section][output_name] = str(ini[section][input_name])
         else:
             ini[section][output_name] = str(ini[section][input_name])
             # Convert 'None' (strings) to None
@@ -160,6 +153,7 @@ def parse_inputs(ini, section='INPUTS'):
         # Path/row filtering
         ['path_keep_list', 'path_keep_list', list, []],
         ['row_keep_list', 'row_keep_list', list, []],
+        ['path_row_list', 'path_row_list', list, []],
         # FID filtering
         ['fid_skip_list', 'fid_skip_list', list, []],
         ['fid_keep_list', 'fid_keep_list', list, []]
@@ -228,6 +222,24 @@ def parse_inputs(ini, section='INPUTS'):
     #     logging.error('\nERROR: End DOY must be >= start DOY')
     #     sys.exit()
 
+    if ini[section]['fid_keep_list']:
+        ini[section]['fid_keep_list'] = sorted(list(
+            python_common.parse_int_set(ini[section]['fid_keep_list'])))
+    if ini[section]['fid_skip_list']:
+        ini[section]['fid_skip_list'] = sorted(list(
+            python_common.parse_int_set(ini[section]['fid_skip_list'])))
+
+    # Convert path/row ranges to list
+    if ini[section]['path_keep_list']:
+        ini[section]['path_keep_list'] = sorted(list(
+            python_common.parse_int_set(ini[section]['path_keep_list'])))
+    if ini[section]['row_keep_list']:
+        ini[section]['row_keep_list'] = sorted(list(
+            python_common.parse_int_set(ini[section]['row_keep_list'])))
+    if ini[section]['path_row_list']:
+        ini[section]['path_row_list'] = sorted([
+            pr.strip() for pr in ini[section]['path_row_list'].split(',')])
+
     # Intentionally don't apply scene_id skip/keep lists
     # Compute zonal stats for all available images
     # Filter by scene_id when making summary tables
@@ -240,7 +252,7 @@ def parse_inputs(ini, section='INPUTS'):
     #     with open(config['scene_id_keep_path']) as input_f:
     #         scene_id_keep_list = input_f.readlines()
     #     ini[section]['scene_id_keep_list'] = [
-    #         x.strip()[:16] for x in scene_id_keep_list]
+    #         x.strip()[:16] for x in scene_id_keep_list.split(',')]
     # except IOError:
     #     logging.error('\nFileIO Error: {}'.format(
     #         config['scene_id_keep_path']))
@@ -253,7 +265,7 @@ def parse_inputs(ini, section='INPUTS'):
     #     with open(config['scene_id_skip_path']) as input_f:
     #         scene_id_skip_list = input_f.readlines()
     #     ini[section]['scene_id_skip_list'] = [
-    #         x.strip()[:16] for x in scene_id_skip_list]
+    #         x.strip()[:16] for x in scene_id_skip_list.split(',')]
     # except IOError:
     #     logging.error('\nFileIO Error: {}'.format(
     #         config['scene_id_skip_path']))

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-02-07
+# Created       2017-02-15
 # Python:       2.7
 #--------------------------------
 
@@ -23,6 +23,7 @@ import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
 import ee_tools.ini_common as ini_common
 import ee_tools.python_common as python_common
+import ee_tools.wrs2 as wrs2
 
 
 def ee_zonal_stats(ini_path=None, overwrite_flag=False):
@@ -121,9 +122,19 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         logging.debug('  Output Cellsize: {}'.format(
             ini['EXPORT']['cellsize']))
 
-
     # Initialize Earth Engine API key
     ee.Initialize()
+
+    # Get list of path/row strings to centroid coordinates
+    if ini['INPUTS']['path_row_list']:
+        ini['INPUTS']['path_row_geom'] = [
+            wrs2.path_row_centroids[pr]
+            for pr in ini['INPUTS']['path_row_list']
+            if pr in wrs2.path_row_centroids.keys()]
+        ini['INPUTS']['path_row_geom'] = ee.Geometry.MultiPoint(
+            ini['INPUTS']['path_row_geom'], 'EPSG:4326')
+    else:
+        ini['INPUTS']['path_row_geom'] = None
 
     # Get current running tasks
     logging.debug('\nRunning tasks')
@@ -305,6 +316,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         landsat_args['zone_geom'] = zone['geom']
         landsat_args['start_date'] = start_date
         landsat_args['end_date'] = end_date
+        if ini['INPUTS']['path_row_geom']:
+            landsat_args['path_row_geom'] = ini['INPUTS']['path_row_geom']
 
         landsat_coll = ee_common.get_landsat_images(
             ini['INPUTS']['landsat4_flag'], ini['INPUTS']['landsat5_flag'],
