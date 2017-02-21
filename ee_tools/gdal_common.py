@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-02-01
+# Updated:      2017-02-07
 # Python:       2.7
 #--------------------------------
 

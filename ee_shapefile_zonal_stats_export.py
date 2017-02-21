@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-02-15
+# Created       2017-02-16
 # Python:       2.7
 #--------------------------------
 
@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import os
+import re
 import sys
 from time import sleep
 
@@ -58,8 +59,8 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     # These may eventually be set in the INI file
     landsat_daily_fields = [
         'ZONE_FID', 'ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT',
-        'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
-        'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
+        'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY', 'CLOUD_SCORE',
+        'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
         # 'NDWI_GREEN_NIR_TOA', 'NDWI_GREEN_SWIR1_TOA', 'NDWI_NIR_SWIR1_TOA',
@@ -156,8 +157,8 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # Build EE geometry object for zonal stats
         zone['geom'] = ee.Geometry(
             geo_json=zone['json'], opt_proj=zone['proj'], opt_geodesic=False)
-        logging.debug('  Centroid: {}'.format(
-            zone['geom'].centroid(100).getInfo()['coordinates']))
+        # logging.debug('  Centroid: {}'.format(
+        #     zone['geom'].centroid(100).getInfo()['coordinates']))
 
         # Use feature geometry to build extent, transform, and shape
         zone['extent'] = gdc.Extent(
@@ -246,13 +247,20 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             year_str = '{}'.format(year)
         # logging.debug('  {}  {}'.format(start_year, end_year))
 
+        # Include EPSG code in export and output names
+        if 'EPSG' in ini['EXPORT']['crs']:
+            crs_str = '_' + ini['EXPORT']['crs'].replace(':', '').lower()
+        else:
+            crs_str = ''
+
         # Export Landsat zonal stats
-        export_id = '{}_{}_landsat_{}'.format(
-            ini['INPUTS']['zone_filename'], zone['name'].lower(), year_str)
+        export_id = '{}_{}_landsat{}_{}'.format(
+            ini['INPUTS']['zone_filename'], zone['name'].lower(),
+            crs_str, year_str)
         # export_id = '{}_{}_landsat_{}'.format(
         #     os.path.splitext(ini['INPUTS']['zone_filename'])[0],
         #     zone_name, year_str)
-        output_id = '{}_landsat_{}'.format(zone['name'].lower(), year_str)
+        output_id = '{}_landsat{}_{}'.format(zone['name'], crs_str, year_str)
         if ini['EXPORT']['mosaic_method']:
             export_id += '_' + ini['EXPORT']['mosaic_method'].lower()
             output_id += '_' + ini['EXPORT']['mosaic_method'].lower()
@@ -284,11 +292,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             logging.debug('  Export CSV already exists, moving')
             # Modify CSV while copying from Google Drive
             export_df = pd.read_csv(export_path)
-            if ('DATA_COUNT' not in export_df.columns.values and
-                    'PIXEL_COUNT' in export_df.columns.values and
-                    'FMASK_COUNT' in export_df.columns.values):
-                export_df['DATA_COUNT'] = (
-                    export_df['PIXEL_COUNT'] - export_df['FMASK_COUNT'])
             export_df = export_df[export_fields]
             export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
             export_df.to_csv(output_path, index=False, columns=export_fields)
@@ -354,35 +357,33 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     # 'ndwi_green_nir_toa', 'ndwi_green_swir1_toa', 'ndwi_nir_swir1_toa',
                     # 'ndwi_swir1_green_sur','ndwi_swir1_green_toa',
                     # 'ndwi_sur','ndwi_toa',
-                    'tc_bright', 'tc_green', 'tc_wet', 'ts'
+                    'row', 'tc_bright', 'tc_green', 'tc_wet', 'ts'
                 ]) \
                 .reduceRegion(
-                    ee.Reducer.mean(), geometry=zone['geom'],
+                    reducer=ee.Reducer.mean(),
+                    geometry=zone['geom'],
                     crs=ini['EXPORT']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=2,
                     maxPixels=zone['max_pixels'])
-            input_cnt = ee.Image(image) \
-                .select(['ts'], ['data_count']) \
+            # Use surface temperature to determine masked pixels
+            pixel_count = ee.Image(image) \
+                .select(['ts']).gt(0).unmask().select([0], ['pixel']) \
                 .reduceRegion(
-                    ee.Reducer.count(), geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=2,
-                    maxPixels=zone['max_pixels'])
-            total_cnt = ee.Image(image) \
-                .select(['fmask'], ['pixel_count']) \
-                .reduceRegion(
-                    ee.Reducer.count(), geometry=zone['geom'],
+                    reducer=ee.Reducer.sum().combine(
+                        ee.Reducer.count(), '', True),
+                    geometry=zone['geom'],
                     crs=ini['EXPORT']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=2,
                     maxPixels=zone['max_pixels'])
             # Fmask 0 is clear and 1 is water
-            fmask_cnt = ee.Image(image) \
-                .select(['fmask']).gt(1).select([0], ['fmask_count']) \
+            fmask_count = ee.Image(image) \
+                .select(['fmask']).gt(1).select([0], ['fmask']) \
                 .reduceRegion(
-                    ee.Reducer.sum(), geometry=zone['geom'],
+                    reducer=ee.Reducer.sum().combine(
+                        ee.Reducer.count(), '', True),
+                    geometry=zone['geom'],
                     crs=ini['EXPORT']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=2,
@@ -395,15 +396,17 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     'SCENE_ID': scene_id.slice(0, 16),
                     'LANDSAT': scene_id.slice(0, 3),
                     'PATH': ee.Number(scene_id.slice(3, 6)),
-                    'ROW': ee.Number(scene_id.slice(6, 9)),
+                    'ROW': ee.Number(input_mean.get('row')),
+                    # 'ROW': ee.Number(scene_id.slice(6, 9)),
                     'DATE': date.format('YYYY-MM-dd'),
                     'YEAR': date.get('year'),
                     'MONTH': date.get('month'),
                     'DAY': date.get('day'),
                     'DOY': doy,
-                    'PIXEL_COUNT': total_cnt.get('pixel_count'),
-                    'FMASK_COUNT': fmask_cnt.get('fmask_count'),
-                    'DATA_COUNT': input_cnt.get('data_count'),
+                    'PIXEL_COUNT': pixel_count.get('pixel_sum'),
+                    'PIXEL_TOTAL': pixel_count.get('pixel_count'),
+                    'FMASK_COUNT': fmask_count.get('fmask_sum'),
+                    'FMASK_TOTAL': fmask_count.get('fmask_count'),
                     'CLOUD_SCORE': input_mean.get('cloud_score'),
                     'ALBEDO_SUR': input_mean.get('albedo_sur'),
                     'EVI_SUR': input_mean.get('evi_sur'),
@@ -432,6 +435,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # for k, v in sorted(stats_info['properties'].items()):
         #     logging.info('{:24s}: {}'.format(k, v))
         # raw_input('ENTER')
+        # return False
 
         # # DEADBEEF - Print the stats info to the screen
         # stats_info = stats_coll.getInfo()
@@ -453,7 +457,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
         # Download the CSV to your Google Drive
         logging.debug('  Starting export task')
-        for i in range(1, 6):
+        for i in range(1, 10):
             try:
                 task = ee.batch.Export.table.toDrive(
                     collection=stats_coll,
@@ -495,22 +499,40 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if ini['EXPORT']['mosaic_method']:
             year_str += '_' + ini['EXPORT']['mosaic_method'].lower()
 
-        # logging.debug('    {}'.format(year))
-        input_path = os.path.join(
-            zone['tables_ws'],
-            '{}_landsat_{}.csv'.format(zone['name'], year_str))
-        try:
-            input_df = pd.read_csv(input_path)
-        except Exception as e:
-            logging.debug('    Error reading: {}'.format(
-                os.path.basename(input_path)))
-            # raw_input('ENTER')
-            continue
-        try:
-            output_df = output_df.append(input_df)
-        except:
-            output_df = input_df.copy()
-    # print(output_df)
+        # Include EPSG code in export and output names
+        if 'EPSG' in ini['EXPORT']['crs']:
+            crs_str = '_' + ini['EXPORT']['crs'].replace(':', '').lower()
+        else:
+            crs_str = ''
+
+        # There is a special case where the user may computes zonal stats in
+        #   separate WGS84 Zone XX projections to match up with the raw Landsat
+        #   imagery, but then they want a single output file of the results.
+        # Look for any files with the correct naming but a different 326XX
+        #   EPSG code.
+        for input_name in os.listdir(zone['tables_ws']):
+            if ini['EXPORT']['crs'].startswith('EPSG:326'):
+                input_re = re.compile('{}_landsat_epsg326\d{}_{}.csv'.format(
+                    zone['name'], '{2}', year_str))
+            else:
+                input_re = re.compile('{}_landsat{}_{}.csv'.format(
+                    zone['name'], crs_str, year_str))
+            if not input_re.match(input_name):
+                continue
+
+            logging.info('    {}'.format(input_name))
+            input_path = os.path.join(zone['tables_ws'], input_name)
+            try:
+                input_df = pd.read_csv(input_path)
+            except Exception as e:
+                logging.debug('    Error reading: {}'.format(
+                    os.path.basename(input_path)))
+                # raw_input('ENTER')
+                continue
+            try:
+                output_df = output_df.append(input_df)
+            except:
+                output_df = input_df.copy()
 
     if output_df is not None and not output_df.empty:
         output_path = os.path.join(
@@ -518,6 +540,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         logging.debug('  {}'.format(output_path))
         output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
         output_df.to_csv(output_path, index=False, columns=export_fields)
+    else:
+        logging.info('  Empty output dataframe, the CSV files may not be ready')
 
 
 def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
@@ -546,9 +570,8 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
     export_id = '{}_{}_gridmet_daily'.format(
         os.path.splitext(ini['INPUTS']['zone_filename'])[0],
-        zone['name'].lower().replace(' ', '_'))
-    output_id = '{}_gridmet_daily'.format(
-        zone['name'].lower().replace(' ', '_'))
+        zone['name'].replace(' ', '_').lower())
+    output_id = '{}_gridmet_daily'.format(zone['name'].replace(' ', '_'))
     export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.csv')
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('  Export: {}'.format(export_path))
@@ -615,7 +638,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
         logging.debug('  Starting export task')
-        for i in range(1, 6):
+        for i in range(1, 10):
             try:
                 task = ee.batch.Export.table.toDrive(
                     collection=stats_coll,
@@ -682,9 +705,9 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
 
     export_id = '{}_{}_gridmet_monthly'.format(
         os.path.splitext(ini['INPUTS']['zone_filename'])[0],
-        zone['name'].lower().replace(' ', '_'))
+        zone['name'].replace(' ', '_').lower())
     output_id = '{}_gridmet_monthly'.format(
-        zone['name'].lower().replace(' ', '_'))
+        zone['name'].replace(' ', '_'))
     export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.csv')
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('  Export: {}'.format(export_path))
@@ -748,7 +771,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
         stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
         logging.debug('  Starting export task')
-        for i in range(1, 6):
+        for i in range(1, 10):
             try:
                 task = ee.batch.Export.table.toDrive(
                     collection=stats_coll,
@@ -783,9 +806,9 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             '{}-01-01'.format(ini['INPUTS']['end_year'] + 1))
     export_id = '{}_{}_pdsi_dekad'.format(
         os.path.splitext(ini['INPUTS']['zone_filename'])[0],
-        zone['name'].lower().replace(' ', '_'))
+        zone['name'].replace(' ', '_').lower())
     output_id = '{}_pdsi_dekad'.format(
-        zone['name'].lower().replace(' ', '_'))
+        zone['name'].replace(' ', '_'))
     export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.csv')
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('  Export: {}'.format(export_path))
@@ -846,7 +869,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         stats_coll = pdsi_coll.map(pdsi_zonal_stats_func)
 
         logging.debug('  Starting export task')
-        for i in range(1, 6):
+        for i in range(1, 10):
             try:
                 task = ee.batch.Export.table.toDrive(
                     collection=stats_coll,

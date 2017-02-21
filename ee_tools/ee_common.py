@@ -2,7 +2,7 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-02-15
+# Created       2017-02-16
 # Python:       2.7
 #--------------------------------
 
@@ -499,6 +499,9 @@ def landsat8_adjust_func(refl_toa):
 def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
     """Calculate Landsat products
 
+    Send Landsat ROW number back as an image for determining "dominant"
+        row in zones that overlap multiple images.
+
     Args:
         refl_toa_orig (ee.ImageCollection): Landsat TOA reflectance collection
         landsat (str): Landsat type ('LT4', 'LT5', 'LE7', or 'LC8')
@@ -594,9 +597,10 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
             # ndwi_green_nir_toa, ndwi_green_swir1_toa, ndwi_nir_swir1_toa,
             ndwi_swir1_green_toa, ndwi_swir1_green_sur,
             tc_bright, tc_green, tc_wet,
-            refl_toa_orig.select('cloud_score'), refl_toa_orig.select('fmask')
+            refl_toa_orig.select('cloud_score'), refl_toa_orig.select('fmask'),
+            refl_toa_orig.metadata('WRS_ROW', 'row')
         ]).select(
-            range(27),
+            range(28),
             [
                 'toa_blue', 'toa_green', 'toa_red',
                 'toa_nir', 'toa_swir1', 'toa_swir2',
@@ -608,7 +612,7 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
                 'ndwi_swir1_green_toa', 'ndwi_swir1_green_sur',
                 # # 'ndwi_toa', 'ndwi_sur',
                 'tc_bright', 'tc_green', 'tc_wet',
-                'cloud_score', 'fmask'
+                'cloud_score', 'fmask', 'row'
             ]) \
         .copyProperties(refl_toa, system_properties + ['SCENE_ID'])
 
@@ -1460,4 +1464,3 @@ def mosaic_landsat_images(landsat_coll, mosaic_method):
     # print(mosaic_coll.getInfo())
 
     return mosaic_coll
-

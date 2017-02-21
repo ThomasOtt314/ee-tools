@@ -72,6 +72,14 @@ To initiate Earth Engine zonal statistics export tasks, execute the following:
 
 As the export tasks finish, the zonal stats CSV files will be written to your Google drive.  Once all of the exports have finished, rerun the script, and all of the CSV files will be copied to the output workspace set in the INI file.
 
+#### Output
+
+Output field desciptions:
+PIXEL_TOTAL - Number of pixels that could nominally be in the zone.
+PIXEL_COUNT - Number of pixels with data used in the computation of mean NDVI, Ts, etc.  PIXEL_COUNT should always be <= PIXEL_TOTAL.  PIXEL_COUNT will be lower than PIXEL_TOTAL for zones that are near the edge of the image or cross the scan-line corrector gaps in Landsat 7 images.  Zones that are fully contained within cloud free Landsat 5 and 8 images can have PIXEL_COUNTS equal to PIXEL_TOTAL.
+FMASK_TOTAL - Number of pixels with an FMASK value.  FMASK_TOTAL should be equal to PIXEL_COUNT, but may be slightly different for LE7 SCL-off images.
+FMASK_COUNT - Number of pixels with FMASK values of 2, 3, or 4 (shadow, snow, and cloud).  FMASK_COUNT should always be <= FMASK_TOTAL.  Cloudy scenes will have high FMASK_COUNTs relative to FMASK_TOTAL.
+
 ## Image Download
 To download Landsat images, execute the following:
 ```

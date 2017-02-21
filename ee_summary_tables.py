@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_tables.py
 # Purpose:      Generate summary tables
-# Created       2017-01-27
+# Created       2017-02-16
 # Python:       2.7
 #--------------------------------
 
@@ -38,8 +38,8 @@ def main(ini_path=None, overwrite_flag=True):
     ini_common.parse_section(ini, section='TABLES')
 
     landsat_annual_fields = [
-        'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT',
-        'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
+        'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT', 'CLOUD_SCORE',
+        'PIXEL_TOTAL', 'PIXEL_COUNT', 'FMASK_TOTAL', 'FMASK_COUNT',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
         # 'NDWI_GREEN_NIR_TOA', 'NDWI_GREEN_SWIR1_TOA', 'NDWI_NIR_SWIR1_TOA',
@@ -112,6 +112,10 @@ def main(ini_path=None, overwrite_flag=True):
             logging.error(
                 '  GRIDMET daily or monthly CSV does not exist, skipping zone')
             continue
+            # DEADBEEF - Eventually support generating only Landsat figures
+            # logging.error(
+            #     '  GRIDMET daily and/or monthly CSV files do not exist.\n'
+            #     '  ETo and PPT will not be processed.')
 
         logging.debug('  Reading Landsat CSV')
         landsat_df = pd.read_csv(landsat_daily_path)
@@ -119,11 +123,11 @@ def main(ini_path=None, overwrite_flag=True):
         logging.debug('  Filtering Landsat dataframe')
         landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
 
-        # This assumes that there are L5/L8 images in the dataframe
-        if not landsat_df.empty:
-            max_pixel_count = max(landsat_df['PIXEL_COUNT'])
-        else:
-            max_pixel_count = 0
+        # # This assumes that there are L5/L8 images in the dataframe
+        # if not landsat_df.empty:
+        #     max_pixel_count = max(landsat_df['PIXEL_COUNT'])
+        # else:
+        #     max_pixel_count = 0
 
         if year_list:
             landsat_df = landsat_df[landsat_df['YEAR'].isin(year_list)]
@@ -165,7 +169,7 @@ def main(ini_path=None, overwrite_flag=True):
         # Filter by Fmask percentage
         if ini['SUMMARY']['max_fmask_pct'] < 100 and not landsat_df.empty:
             landsat_df['FMASK_PCT'] = 100 * (
-                landsat_df['FMASK_COUNT'] / landsat_df['PIXEL_COUNT'])
+                landsat_df['FMASK_COUNT'] / landsat_df['FMASK_TOTAL'])
             logging.debug('    Max Fmask threshold: {}'.format(
                 ini['SUMMARY']['max_fmask_pct']))
             landsat_df = landsat_df[
@@ -175,13 +179,14 @@ def main(ini_path=None, overwrite_flag=True):
         if ini['SUMMARY']['min_slc_off_pct'] > 0 and not landsat_df.empty:
             logging.debug('    Mininum SLC-off threshold: {}%'.format(
                 ini['SUMMARY']['min_slc_off_pct']))
-            logging.debug('    Maximum pixel count: {}'.format(
-                max_pixel_count))
+            # logging.debug('    Maximum pixel count: {}'.format(
+            #     max_pixel_count))
             slc_off_mask = (
                 (landsat_df['LANDSAT'] == 'LE7') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
-            slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
+            slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
+            # slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
             landsat_df = landsat_df[
                 ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
                 (~slc_off_mask)]
@@ -199,8 +204,9 @@ def main(ini_path=None, overwrite_flag=True):
                 'PIXEL_COUNT': {
                     'PIXEL_COUNT': 'mean',
                     'SCENE_COUNT': 'count'},
+                'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
                 'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-                'DATA_COUNT': {'DATA_COUNT': 'mean'},
+                'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
                 'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
                 'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
                 'EVI_SUR': {'EVI_SUR': 'mean'},
@@ -224,10 +230,11 @@ def main(ini_path=None, overwrite_flag=True):
         landsat_df.columns = landsat_df.columns.droplevel(0)
         landsat_df.reset_index(inplace=True)
         landsat_df = landsat_df[landsat_annual_fields]
-        landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
         landsat_df['SCENE_COUNT'] = landsat_df['SCENE_COUNT'].astype(np.int)
+        landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
+        landsat_df['PIXEL_TOTAL'] = landsat_df['PIXEL_TOTAL'].astype(np.int)
         landsat_df['FMASK_COUNT'] = landsat_df['FMASK_COUNT'].astype(np.int)
-        landsat_df['DATA_COUNT'] = landsat_df['DATA_COUNT'].astype(np.int)
+        landsat_df['FMASK_TOTAL'] = landsat_df['FMASK_TOTAL'].astype(np.int)
         landsat_df.sort_values(by='YEAR', inplace=True)
 
         if os.path.isfile(gridmet_monthly_path):

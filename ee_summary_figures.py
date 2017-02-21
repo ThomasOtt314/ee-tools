@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_figures.py
 # Purpose:      Generate summary figures
-# Created       2017-01-27
+# Created       2017-02-16
 # Python:       2.7
 #--------------------------------
 
@@ -44,21 +44,22 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
     # Band options
     band_list = [
-        'albedo_sur', 'cloud_score', 'data_count', 'eto',
-        'evi_sur', 'fmask_count', 'ndvi_sur', 'ndvi_toa',
+        'albedo_sur', 'cloud_score', 'eto', 'evi_sur',
+        'fmask_count', 'fmask_total', 'ndvi_sur', 'ndvi_toa',
         'ndwi_green_nir_sur', 'ndwi_green_nir_toa',
         'ndwi_green_swir1_sur', 'ndwi_green_swir1_toa',
         'ndwi_nir_swir1_sur', 'ndwi_nir_swir1_toa',
         'ndwi_swir1_green_sur', 'ndwi_swir1_green_toa',
         # 'ndwi_sur', 'ndwi_toa',
-        'pixel_count', 'ppt', 'tc_bright', 'tc_green', 'tc_wet', 'ts']
+        'pixel_count', 'pixel_total', 'ppt',
+        'tc_bright', 'tc_green', 'tc_wet', 'ts']
     band_name = {
         'albedo_sur': 'Albedo',
         'cloud_score': 'Cloud Score',
-        'data_count': 'Data Count',
         'eto': 'ETo',
         'evi_sur': 'EVI',
         'fmask_count': 'Fmask Count',
+        'fmask_total': 'Fmask Total',
         'ndvi_sur': 'NDVI',
         'ndvi_toa': 'NDVI (TOA)',
         'ndwi_green_nir_sur': 'NDWI (Green, NIR)',
@@ -72,6 +73,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # 'ndwi_sur': 'NDWI (SWIR1, GREEN)',
         # 'ndwi_toa': 'NDWI (SWIR1, GREEN) (TOA)',
         'pixel_count': 'Pixel Count',
+        'pixel_total': 'Pixel Total',
         'ppt': 'PPT',
         'tc_bright': 'Brightness',
         'tc_green': 'Greeness',
@@ -81,10 +83,10 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     band_unit = {
         'albedo_sur': 'dimensionless',
         'cloud_score': 'dimensionless',
-        'data_count': 'dimensionless',
         'evi_sur': 'dimensionless',
         'eto': 'mm',
         'fmask_count': 'dimensionless',
+        'fmask_total': 'dimensionless',
         'ndvi_sur': 'dimensionless',
         'ndvi_toa': 'dimensionless',
         'ndwi_green_nir_sur': 'dimensionless',
@@ -98,6 +100,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # 'ndwi_sur': 'dimensionless',
         # 'ndwi_toa': 'dimensionless',
         'pixel_count': 'dimensionless',
+        'pixel_total': 'dimensionless',
         'ppt': 'mm',
         'tc_bright': 'dimensionless',
         'tc_green': 'dimensionless',
@@ -107,9 +110,9 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     band_color = {
         'albedo_sur': '#CF4457',
         'cloud_score': '0.5',
-        'data_count': '0.5',
         'eto': '#348ABD',
         'fmask_count': '0.5',
+        'fmask_total': '0.5',
         'evi_sur': '#FFA500',
         'ndvi_sur': '#A60628',
         'ndvi_toa': '#A60628',
@@ -124,6 +127,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # 'ndwi_sur': '#4eae4b',
         # 'ndwi_toa': '#4eae4b',
         'pixel_count': '0.5',
+        'pixel_total': '0.5',
         'ppt': '0.5',
         'tc_bright': '#E24A33',
         'tc_green': '#E24A33',
@@ -189,8 +193,8 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     # CSV parameters
     # Zone field will be inserted after it is read in from INI file
     landsat_annual_fields = [
-        'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT',
-        'PIXEL_COUNT', 'FMASK_COUNT', 'DATA_COUNT', 'CLOUD_SCORE',
+        'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT', 'CLOUD_SCORE',
+        'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
         'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
         'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
         # 'NDWI_GREEN_NIR_TOA', 'NDWI_GREEN_SWIR1_TOA', 'NDWI_NIR_SWIR1_TOA',
@@ -304,6 +308,10 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
             logging.error(
                 '  GRIDMET daily or monthly CSV does not exist, skipping zone')
             continue
+            # DEADBEEF - Eventually support generating only Landsat figures
+            # logging.error(
+            #     '  GRIDMET daily and/or monthly CSV files do not exist.\n'
+            #     '  ETo and PPT will not be processed.')
 
         logging.debug('  Reading Landsat CSV')
         landsat_df = pd.read_csv(landsat_daily_path)
@@ -311,11 +319,11 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         logging.debug('  Filtering Landsat dataframe')
         landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
 
-        # This assumes that there are L5/L8 images in the dataframe
-        if not landsat_df.empty:
-            max_pixel_count = max(landsat_df['PIXEL_COUNT'])
-        else:
-            max_pixel_count = 0
+        # # This assumes that there are L5/L8 images in the dataframe
+        # if not landsat_df.empty:
+        #     max_pixel_count = max(landsat_df['PIXEL_COUNT'])
+        # else:
+        #     max_pixel_count = 0
 
         if year_list:
             landsat_df = landsat_df[landsat_df['YEAR'].isin(year_list)]
@@ -357,7 +365,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # Filter by Fmask percentage
         if ini['SUMMARY']['max_fmask_pct'] < 100 and not landsat_df.empty:
             landsat_df['FMASK_PCT'] = 100 * (
-                landsat_df['FMASK_COUNT'] / landsat_df['PIXEL_COUNT'])
+                landsat_df['FMASK_COUNT'] / landsat_df['FMASK_TOTAL'])
             logging.debug('    Max Fmask threshold: {}'.format(
                 ini['SUMMARY']['max_fmask_pct']))
             landsat_df = landsat_df[
@@ -366,13 +374,14 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         if ini['SUMMARY']['min_slc_off_pct'] > 0 and not landsat_df.empty:
             logging.debug('    Mininum SLC-off threshold: {}%'.format(
                 ini['SUMMARY']['min_slc_off_pct']))
-            logging.debug('    Maximum pixel count: {}'.format(
-                max_pixel_count))
+            # logging.debug('    Maximum pixel count: {}'.format(
+            #     max_pixel_count))
             slc_off_mask = (
                 (landsat_df['LANDSAT'] == 'LE7') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
-            slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
+            slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
+            # slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
             landsat_df = landsat_df[
                 ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
                 (~slc_off_mask)]
@@ -389,8 +398,9 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                 'PIXEL_COUNT': {
                     'PIXEL_COUNT': 'mean',
                     'SCENE_COUNT': 'count'},
+                'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
                 'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-                'DATA_COUNT': {'DATA_COUNT': 'mean'},
+                'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
                 'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
                 'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
                 'EVI_SUR': {'EVI_SUR': 'mean'},
@@ -414,10 +424,11 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         landsat_df.columns = landsat_df.columns.droplevel(0)
         landsat_df.reset_index(inplace=True)
         landsat_df = landsat_df[landsat_annual_fields]
-        landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
         landsat_df['SCENE_COUNT'] = landsat_df['SCENE_COUNT'].astype(np.int)
+        landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
+        landsat_df['PIXEL_TOTAL'] = landsat_df['PIXEL_TOTAL'].astype(np.int)
         landsat_df['FMASK_COUNT'] = landsat_df['FMASK_COUNT'].astype(np.int)
-        landsat_df['DATA_COUNT'] = landsat_df['DATA_COUNT'].astype(np.int)
+        landsat_df['FMASK_TOTAL'] = landsat_df['FMASK_TOTAL'].astype(np.int)
         landsat_df.sort_values(by='YEAR', inplace=True)
 
         if os.path.isfile(gridmet_monthly_path):
