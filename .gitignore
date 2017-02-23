@@ -6,6 +6,7 @@ __pycache__/
 *.cache
 *.log
 *.lock
+schema.ini
 
 example/stats
 example/images

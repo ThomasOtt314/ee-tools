@@ -8,34 +8,44 @@ import ee
 
 
 def main():
-    """Generate custom WRS2 descending CONUS footprints"""
+    """Generate custom WRS2 descending CONUS footprints
+
+    To convert geojson to shapefile, use the following ogr2ogr command:
+    ogr2ogr wrs2_descending_conus_custom_l5.shp wrs2_descending_conus_custom_l5.geojson
+
+    """
     logging.info('\nGenerate custom WRS2 descending CONUS footprints')
 
     gdrive_workspace = 'C:\Users\mortonc\Google Drive'
     export_folder = 'EE_Exports'
-    output_name = 'pathrow_footprints'
+    output_name = 'wrs2_descending_conus_custom'
     wrs2_ft = 'ft:1yZ9Q0gJL9t9NULWgx7RrLC7mWomL-OzF-7IuyCiL'
+
+    scale = 240
+    crs = 'EPSG:4326'
+    min_count = 2
+    max_pixels = 1E10
+
+    # l5_skip_dates = [
+    #     '1986-06-27', '1987-05-13', '1987-07-16', '1987-07-31', '1987-11-05',
+    #     '1989-05-14', '1988-05-30', '1991-07-11', '1994-09-04', '1995-12-01',
+    #     '1996-02-03', '1997-10-01', '2003-03-21', '2008-11-07'
+    # ]
+    # l7_skip_date = []
+    # l8_skip_dates = [
+    #     '2013-04-19', '2013-05-18', '2013-05-19', '2013-05-21', '2013-05-30']
 
     export_ws = os.path.join(gdrive_workspace, export_folder)
     if not os.path.isdir(export_ws):
         os.mkdir(export_ws)
 
-    logging.info('  {}'.format(output_name + '.geojson'))
     logging.info('  {}'.format(export_ws))
-
-    # pr_list = ee.List([
-    #     [41, 34], [41, 35],
-    #     [42, 33], [42, 34], [42, 35],
-    #     [43, 31], [43, 32], [43, 33], [43, 34],
-    #     [44, 31], [44, 32], [44, 33],
-    #     [45, 31], [45, 32]
-    # ])
-    # pr_list = ee.List([[44, 31]])
-    # pr_list = ee.List([[41, 35]])
+    logging.info('  {}'.format(output_name + '.geojson'))
 
     ee.Initialize()
 
     pr_coll = ee.FeatureCollection(wrs2_ft)
+    #     .filterMetadata('PATH', 'equals', path)
     #     .filterMetadata('PATH_ROW', 'equals', 'p044r031')
     pr_geom = pr_coll.geometry()
 
@@ -49,10 +59,10 @@ def main():
             .filterBounds(pr_geom) \
             .filterMetadata('WRS_PATH', 'equals', path) \
             .filterMetadata('WRS_ROW', 'equals', row) \
-            .filter(ee.Filter.inList('DATE_ACQUIRED', ['2008-11-07']).Not()) \
             .select(
                 ['B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'B6'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'lst'])
+            # .filter(ee.Filter.inList('DATE_ACQUIRED', l5_skip_dates).Not()) \
         l7_coll = ee.ImageCollection('LANDSAT/LE7_L1T_TOA') \
             .filterBounds(pr_geom) \
             .filterMetadata('WRS_PATH', 'equals', path) \
@@ -60,38 +70,44 @@ def main():
             .select(
                 ['B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'B6_VCID_1'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'lst'])
+            # .filter(ee.Filter.inList('DATE_ACQUIRED', l7_skip_dates).Not()) \
         l8_coll = ee.ImageCollection('LANDSAT/LC8_L1T_TOA') \
             .filterBounds(pr_geom) \
+            .filterDate('2013-06-01', '2017-12-31') \
             .filterMetadata('WRS_PATH', 'equals', path) \
             .filterMetadata('WRS_ROW', 'equals', row) \
-            .filter(ee.Filter.inList('DATE_ACQUIRED', ['2013-05-18']).Not()) \
             .select(
                 ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'lst'])
+            # .filter(ee.Filter.inList('DATE_ACQUIRED', l8_skip_dates).Not()) \
 
         landsat_coll = ee.ImageCollection([])
         landsat_coll = ee.ImageCollection(landsat_coll.merge(l5_coll))
         landsat_coll = ee.ImageCollection(landsat_coll.merge(l7_coll))
         landsat_coll = ee.ImageCollection(landsat_coll.merge(l8_coll))
 
-        landsat_image = ee.Image(landsat_coll.mosaic())
+        def common_area(image):
+            return ee.Image(image).reduce(ee.Reducer.allNonZero())
+        count_image = landsat_coll.map(common_area).sum()
+        mask_image = ee.Image(count_image).gt(min_count)
+        mask_image = mask_image.updateMask(mask_image)
+
+        # landsat_image = ee.Image(landsat_coll.mosaic())
         # landsat_image = ee.ImageCollection([
         #   l5_coll.mosaic(), l7_coll.mosaic(), l8_coll.mosaic()]).mosaic();
+        # common_image = ee.Image(landsat_image).mask().reduce(ee.Reducer.And())
+        # mask_image = ee.Image(landsat_image).select([0]) \
+        #     .multiply(0).add(1).int() \
+        #     .updateMask(common_image)
 
-        common_image = ee.Image(landsat_image).mask().reduce(ee.Reducer.And())
-        mask_image = ee.Image(landsat_image).select([0]) \
-            .multiply(0).add(1).int() \
-            .updateMask(common_image)
-
-        mask_bounds = landsat_coll.geometry(1).bounds(1)
+        mask_bounds = landsat_coll.geometry(10).bounds(10).buffer(10000)
 
         mask_geom = mask_image \
             .reduceToVectors(
-                #reducer=ee.Reducer.countEvery(),
                 geometry=mask_bounds,
-                scale=240,
-                crs='EPSG:4326',
-                maxPixels=1E9) \
+                scale=scale,
+                crs=crs,
+                maxPixels=max_pixels) \
             .geometry() \
             .convexHull(10)
 
@@ -105,15 +121,15 @@ def main():
 
     footprint_coll = ee.FeatureCollection(pr_coll.map(pr_footprint_func))
 
-    logging.debug('\nBuilding export task')
+    logging.debug('  Building export task')
     task = ee.batch.Export.table.toDrive(
         collection=footprint_coll,
-        description='pathrow_footprints',
-        folder='EE_Exports',
+        description=output_name,
+        folder=export_folder,
         # fileNamePrefix='',
         fileFormat='GeoJSON'
     )
-    logging.info('Starting export task')
+    logging.debug('  Starting export task')
     try:
         task.start()
     except Exception as e:
