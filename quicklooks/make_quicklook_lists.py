@@ -1,10 +1,12 @@
 #--------------------------------
 # Name:         make_quicklook_lists.py
-# Created       2016-12-13
+# Created       2017-03-09
 # Python:       2.7
 #--------------------------------
 
 import argparse
+import calendar
+from collections import defaultdict
 import datetime as dt
 import logging
 import os
@@ -30,9 +32,11 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
 
     output_keep_name = 'clear_scenes.txt'
     output_skip_name = 'cloudy_scenes.txt'
+    summary_name = 'clear_scene_counts.txt'
 
     output_keep_path = os.path.join(output_folder, output_keep_name)
     output_skip_path = os.path.join(output_folder, output_skip_name)
+    summary_path = os.path.join(output_folder, summary_name)
 
     cloud_folder = 'cloudy'
 
@@ -158,6 +162,32 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
         with open(output_skip_path, 'w') as output_f:
             for year, doy, scene in sorted(output_skip_list):
                 output_f.write('{}\n'.format(scene))
+
+    if output_keep_list:
+        # This would be a lot easier with pandas
+        # def nested_dict():
+        #     return defaultdict(nested_dict)
+        # counts = nested_dict()
+        counts = defaultdict(dict)
+
+        for year, doy, scene in sorted(output_keep_list):
+            path_row = 'p{}r{}'.format(scene[4:6], scene[7:9])
+            output_dt = dt.datetime.strptime(
+                '{}_{}'.format(year, doy), '%Y_%j')
+            try:
+                counts[path_row][year][str(output_dt.month)] += 1
+            except:
+                counts[path_row][year] = {str(m): 0 for m in range(1, 13)}
+
+        with open(summary_path, 'w') as output_f:
+            output_f.write('{},{},{}\n'.format(
+                'PATH_ROW', 'YEAR', ','.join([
+                    calendar.month_abbr[m].upper() for m in range(1, 13)])))
+            for path_row, year_counts in sorted(counts.items()):
+                for year, month_counts in sorted(year_counts.items()):
+                    output_f.write('{},{},{}\n'.format(
+                        path_row, year, ','.join([
+                            str(c) for m, c in sorted(month_counts.items())])))
 
 
 def arg_parse():
