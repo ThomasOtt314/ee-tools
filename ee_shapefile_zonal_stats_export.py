@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-02-16
+# Created       2017-03-17
 # Python:       2.7
 #--------------------------------
 
@@ -146,6 +146,26 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             tasks[t['description']].append(t['id'])
             # tasks[t['id']] = t['description']
 
+    # Get end date of GRIDMET (if needed)
+    # This could be moved to inside the INI function
+    if ini['ZONAL_STATS']['gridmet_monthly_flag']:
+        for i in range(1, 10):
+            try:
+                gridmet_end_dt = ee.Date(ee.Image(
+                    ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
+                        .filterDate(
+                            '{}-01-01'.format(ini['INPUTS']['end_year'] - 1),
+                            '{}-01-01'.format(ini['INPUTS']['end_year'] + 1)) \
+                        .limit(1, 'system:time_start', False) \
+                        .first()).get('system:time_start')) \
+                        .format('YYYY-MM-dd').getInfo()
+            except Exception as e:
+                logging.error('  Exception: {}, retry {}'.format(e, i))
+                logging.debug('{}'.format(e))
+                sleep(i ** 2)
+        gridmet_end_dt = datetime.datetime.strptime(
+            gridmet_end_dt, '%Y-%m-%d')
+        logging.debug('    Last GRIDMET date: {}'.format(gridmet_end_dt))
 
     # Calculate zonal stats for each feature separately
     for zone_fid, zone_name, zone_json in zone_geom_list:
@@ -205,17 +225,23 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
                 gridmet_daily_fields, ini, zone, tasks, overwrite_flag)
         if ini['ZONAL_STATS']['gridmet_monthly_flag']:
             gridmet_monthly_func(
-                gridmet_monthly_fields, ini, zone, tasks, overwrite_flag)
+                gridmet_monthly_fields, ini, zone, tasks, gridmet_end_dt,
+                overwrite_flag)
         if ini['ZONAL_STATS']['pdsi_flag']:
             pdsi_func(pdsi_dekad_fields, ini, zone, tasks, overwrite_flag)
+        logging.info('  Done')
 
 
 def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     """
 
     Args:
+        export_fields ():
         ini (dict): Input file parameters
         zone (dict): Zone specific parameters
+        tasks ():
+        gridmet_end_dt (datetime):
+        overwrite_flag (bool): if True, overwrite existing files
     """
     logging.info('  Landsat')
 
@@ -291,13 +317,18 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if os.path.isfile(export_path):
             logging.debug('  Export CSV already exists, moving')
             # Modify CSV while copying from Google Drive
-            export_df = pd.read_csv(export_path)
-            export_df = export_df[export_fields]
-            export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-            export_df.to_csv(output_path, index=False, columns=export_fields)
-
-            # DEADBEEF - For now, also move to a temp Google Drive folder
-            # shutil.move(export_path, temp_path)
+            try:
+                export_df = pd.read_csv(export_path)
+                export_df = export_df[export_fields]
+                export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+                export_df.to_csv(output_path, index=False, columns=export_fields)
+            except pd.io.common.EmptyDataError:
+                # Save an empty dataframe to the output path
+                logging.warning('    Empty dataframe')
+                export_df = pd.DataFrame(columns=export_fields)
+                export_df.to_csv(output_path, index=False, columns=export_fields)
+                # logging.warning('    Empty dataframe, skipping')
+                # continue
             os.remove(export_path)
             continue
         elif os.path.isfile(output_path):
@@ -472,7 +503,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 logging.debug('{}'.format(e))
                 sleep(i ** 2)
         # logging.debug('  Status: {}'.format(task.status()))
-        logging.debug('  Active: {}'.format(task.active()))
+        # logging.debug('  Active: {}'.format(task.active()))
 
 
     # Combine/merge annual files into a single CSV
@@ -548,8 +579,12 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     """
 
     Args:
+        export_fields ():
         ini (dict): Input file parameters
         zone (dict): Zone specific parameters
+        tasks ():
+        gridmet_end_dt (datetime):
+        overwrite_flag (bool): if True, overwrite existing files
     """
 
     logging.info('  GRIDMET Daily ETo/PPT')
@@ -653,16 +688,20 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 logging.debug('{}'.format(e))
                 sleep(i ** 2)
         # logging.debug('  Status: {}'.format(task.status()))
-        logging.debug('  Active: {}'.format(task.active()))
+        # logging.debug('  Active: {}'.format(task.active()))
 
 
-def gridmet_monthly_func(export_fields, ini, zone, tasks,
+def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                          overwrite_flag=False):
     """
 
     Args:
+        export_fields ():
         ini (dict): Input file parameters
         zone (dict): Zone specific parameters
+        tasks ():
+        gridmet_end_dt (datetime):
+        overwrite_flag (bool): if True, overwrite existing files
     """
 
     logging.info('  GRIDMET Monthly ETo/PPT')
@@ -681,21 +720,31 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
             .select([0, 1], ['eto', 'ppt']) \
             .set('system:time_start', ee.Date(start_dt).millis())
 
-    # Get the last GRIDMET date from the collection
-    gridmet_end_dt = ee.Date(ee.Image(
-        ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
-            .filterDate(
-                '{}-01-01'.format(ini['INPUTS']['end_year'] - 1),
-                '{}-12-31'.format(ini['INPUTS']['end_year'])) \
-            .limit(1, 'system:time_start', False) \
-            .first()).get('system:time_start')) \
-            .format('YYYY-MM-dd').getInfo()
-    gridmet_end_dt = datetime.datetime.strptime(
-        gridmet_end_dt, '%Y-%m-%d')
-    logging.debug('    Last GRIDMET date: {}'.format(gridmet_end_dt))
+    # # DEADBEEF - It is really slow to make this call inside the zone loop
+    #   Moved the getInfo outside of the loop in the main function
+    # # Get the last GRIDMET date from the collection
+    # for i in range(1, 10):
+    #     try:
+    #         gridmet_end_dt = ee.Date(ee.Image(
+    #             ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
+    #                 .filterDate(
+    #                     '{}-01-01'.format(ini['INPUTS']['end_year'] - 1),
+    #                     '{}-01-01'.format(ini['INPUTS']['end_year'] + 1)) \
+    #                 .limit(1, 'system:time_start', False) \
+    #                 .first()).get('system:time_start')) \
+    #                 .format('YYYY-MM-dd').getInfo()
+    #     except Exception as e:
+    #         logging.error('  Exception: {}, retry {}'.format(e, i))
+    #         logging.debug('{}'.format(e))
+    #         sleep(i ** 2)
+    # gridmet_end_dt = datetime.datetime.strptime(
+    #     gridmet_end_dt, '%Y-%m-%d')
+    # logging.debug('    Last GRIDMET date: {}'.format(gridmet_end_dt))
 
     gridmet_ym_list = [
-        [y, m] for y in range(ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
+        [y, m]
+        for y in range(
+            ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
         for m in range(1, 13)
         if datetime.datetime(y, m, 1) <= gridmet_end_dt]
     gridmet_dt_list = ee.List([
@@ -786,15 +835,19 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks,
                 logging.debug('{}'.format(e))
                 sleep(i ** 2)
         # logging.debug('  Status: {}'.format(task.status()))
-        logging.debug('  Active: {}'.format(task.active()))
+        # logging.debug('  Active: {}'.format(task.active()))
 
 
 def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     """
 
     Args:
+        export_fields ():
         ini (dict): Input file parameters
         zone (dict): Zone specific parameters
+        tasks ():
+        gridmet_end_dt (datetime):
+        overwrite_flag (bool): if True, overwrite existing files
     """
 
     logging.info('  GRIDMET PDSI')
@@ -884,7 +937,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 logging.debug('{}'.format(e))
                 sleep(i ** 2)
         # logging.debug('  Status: {}'.format(task.status()))
-        logging.debug('  Active: {}'.format(task.active()))
+        # logging.debug('  Active: {}'.format(task.active()))
 
     # # Get current running tasks
     # logging.debug('\nRunning tasks')
