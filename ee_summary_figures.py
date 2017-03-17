@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_figures.py
 # Purpose:      Generate summary figures
-# Created       2017-02-16
+# Created       2017-03-17
 # Python:       2.7
 #--------------------------------
 
@@ -345,7 +345,8 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         if ini['INPUTS']['path_keep_list']:
             landsat_df = landsat_df[
                 landsat_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
-        if ini['INPUTS']['row_keep_list']:
+        if (ini['INPUTS']['row_keep_list'] and
+                ini['INPUTS']['row_keep_list'] != ['XXX']):
             landsat_df = landsat_df[
                 landsat_df['ROW'].isin(ini['INPUTS']['row_keep_list'])]
 
