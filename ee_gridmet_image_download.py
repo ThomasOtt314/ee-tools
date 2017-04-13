@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-02-07
+# Created       2017-04-13
 # Python:       2.7
 #--------------------------------
 
@@ -163,7 +163,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # zone_extent.ymin, zone_extent.xmax = zone_extent.xmax, zone_extent.ymin
 
         # Adjust extent to match raster
-        zone_extent.adjust_to_snap(
+        zone_extent = zone_extent.adjust_to_snap(
             'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
             ini['EXPORT']['cellsize'])
         zone_geo = zone_extent.geo(ini['EXPORT']['cellsize'])

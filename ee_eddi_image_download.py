@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
-# Created       2017-02-07
+# Created       2017-04-13
 # Python:       2.7
 #--------------------------------
 
@@ -155,7 +155,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # zone_extent.ymin, zone_extent.xmax = zone_extent.xmax, zone_extent.ymin
 
         # Adjust extent to match raster
-        zone_extent.adjust_to_snap(
+        zone_extent = zone_extent.adjust_to_snap(
             'EXPAND', ini['output_x'], ini['output_y'], ini['EXPORT']['cellsize'])
         zone_geo = zone_extent.geo(ini['EXPORT']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)

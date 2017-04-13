@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-03-17
+# Created       2017-04-13
 # Python:       2.7
 #--------------------------------
 
@@ -185,7 +185,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             ogr.CreateGeometryFromJson(json.dumps(zone['json'])).GetEnvelope())
         # zone['extent'] = gdc.Extent(zone['geom'].GetEnvelope())
         zone['extent'] = zone['extent'].ogrenv_swap()
-        zone['extent'].adjust_to_snap(
+        zone['extent'] = zone['extent'].adjust_to_snap(
             'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
             ini['EXPORT']['cellsize'])
         zone['geo'] = zone['extent'].geo(ini['EXPORT']['cellsize'])
@@ -934,7 +934,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 break
             except Exception as e:
                 logging.error('  Exception: {}, retry {}'.format(e, i))
-                logging.debug('{}'.format(e))
+                # logging.debug('{}'.format(e))
                 sleep(i ** 2)
         # logging.debug('  Status: {}'.format(task.status()))
         # logging.debug('  Active: {}'.format(task.active()))
