@@ -23,7 +23,7 @@ def main():
 
     scale = 240
     crs = 'EPSG:4326'
-    min_count = 2
+    min_count = 4
     max_pixels = 1E10
 
     # l5_skip_dates = [

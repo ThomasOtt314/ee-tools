@@ -31,8 +31,9 @@ class Extent:
     def __iter__(self):
         return iter((self.xmin, self.ymin, self.xmax, self.ymax))
 
-    def __init__(self, (xmin, ymin, xmax, ymax), ndigits=10):
+    def __init__(self, extent, ndigits=10):
         """Round values to avoid Float32 rounding errors"""
+        (xmin, ymin, xmax, ymax) = extent
         self.xmin = round(xmin, ndigits)
         self.ymin = round(ymin, ndigits)
         self.xmax = round(xmax, ndigits)
@@ -54,6 +55,7 @@ class Extent:
             ymin = math.ceil((self.ymin - snap_y) / cs) * cs + snap_y
             xmax = math.floor((self.xmax - snap_x) / cs) * cs + snap_x
             ymax = math.floor((self.ymax - snap_y) / cs) * cs + snap_y
+
         return Extent((xmin, ymin, xmax, ymax))
 
         # if method.upper() == 'ROUND':

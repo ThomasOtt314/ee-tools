@@ -110,6 +110,7 @@ The following modules must be present to run all of the EE-Tools:
 * [gdal](http://gdal.org/)
 * [relativedelta](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
+* [openpyxl](https://openpyxl.readthedocs.io/en/default/) (for building summary excel table)
 * [pytest](http://doc.pytest.org/en/latest/) (only used for testing)
 
 #### Anaconda

@@ -555,7 +555,7 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
     ndwi_green_swir1_toa = refl_toa.normalizedDifference(['green', 'swir1'])
     ndwi_green_swir1_sur = refl_sur.normalizedDifference(['green', 'swir1'])
 
-    # NDWI Gao doi: 10.1016/S0034-4257(96)00067-3
+    # NDWI - Gao 1996 doi: 10.1016/S0034-4257(96)00067-3
     # Inverse of NDSI (Soil) in Rogers & Keraney 2004
     ndwi_nir_swir1_toa = refl_toa.normalizedDifference(['nir', 'swir1'])
     ndwi_nir_swir1_sur = refl_sur.normalizedDifference(['nir', 'swir1'])
