@@ -1,6 +1,6 @@
 #--------------------------------
 # Name:         make_quicklook_lists.py
-# Created       2017-03-09
+# Created       2017-04-17
 # Python:       2.7
 #--------------------------------
 
@@ -14,15 +14,12 @@ import re
 import sys
 
 
-def main(quicklook_folder, output_folder, landsat_folder=None,
-         skip_list_path=None):
+def main(quicklook_folder, output_folder, skip_list_path=None):
     """
 
     Args:
         quicklook_folder: folder path
         output_folder: folder path to save skip list
-        landsat_folder: folder path of Landsat tar.gz files
-            If set, only skip scenes that are in Landsat folder
         skip_list_path (str): file path of Landsat skip list
 
     Returns:
@@ -40,7 +37,7 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
 
     cloud_folder = 'cloudy'
 
-    year_list = list(xrange(1984, dt.datetime.now().year + 1))
+    year_list = list(range(1984, dt.datetime.now().year + 1))
     # year_list = [2015]
 
     path_row_list = []
@@ -65,10 +62,6 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
     except:
         year_list = []
 
-    # scene_re = re.compile('^(LT4|LT5|LE7|LC8)(\d{3})(\d{3})(\d{4})(\d{3})')
-    targz_re = re.compile(
-        '^(LT4|LT5|LE7|LC8)(\d{3})(\d{3})(\d{4})(\d{3})\w{5}.tar.gz')
-
     # Error checking
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder)
@@ -90,10 +83,10 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
         # DEADBEEF: Need better cross platform solution
         if os.name == 'nt':
             pr_match = re.search(
-                'p(\d{2})r(\d{2})\\\(\d{4})(\\\%s)?' % cloud_folder, root)
+                'p(\d{3})r(\d{3})\\\(\d{4})(\\\%s)?' % cloud_folder, root)
         elif os.name == 'posix':
             pr_match = re.search(
-                'p(\d{2})r(\d{2})/(\d{4})(/%s)?' % cloud_folder, root)
+                'p(\d{3})r(\d{3})/(\d{4})(/%s)?' % cloud_folder, root)
         if not pr_match:
             continue
 
@@ -116,19 +109,6 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
         else:
             logging.info('{}'.format(root))
 
-        # If Landsat folder is set, only include scenes in skip list
-        #   that have a .tar.gz already downloaded
-        scene_list = []
-        if landsat_folder:
-            scene_folder = os.path.join(landsat_folder, path, row, year)
-            if not os.path.isdir(scene_folder):
-                logging.debug('  {0} - skip list, skipping'.format(
-                    scene_folder))
-                continue
-            scene_list = [
-                item[:16] for item in os.listdir(scene_folder)
-                if targz_re.match(item)]
-
         for name in files:
             # if name == 'Thumbs.db':
             #     continue
@@ -140,10 +120,6 @@ def main(quicklook_folder, output_folder, landsat_folder=None,
                 l, path, row, int(y), int(d))
             if input_skip_list and scene_id in input_skip_list:
                 logging.debug('  {} - skip list, skipping'.format(
-                    scene_id))
-                continue
-            if scene_list and scene_id in scene_list:
-                logging.debug('  {} - no tar.gz, skipping'.format(
                     scene_id))
                 continue
 
@@ -203,11 +179,9 @@ def arg_parse():
     parser.add_argument(
         '--output', default=os.getcwd(), help='Output folder')
     parser.add_argument(
-        '--landsat', default=None, help='Landsat tar.gz folder')
-    parser.add_argument(
         '--skiplist', default=None, help='Skips files in skip list')
     parser.add_argument(
-        '--debug', default=logging.INFO, const=logging.DEBUG,
+        '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
         help='Debug level logging', action="store_const", dest="loglevel")
     args = parser.parse_args()
 
@@ -215,8 +189,6 @@ def arg_parse():
         args.quicklook = os.path.abspath(args.quicklook)
     if args.output and os.path.isdir(os.path.abspath(args.output)):
         args.output = os.path.abspath(args.output)
-    if args.landsat and os.path.isdir(os.path.abspath(args.landsat)):
-        args.landsat = os.path.abspath(args.landsat)
     return args
 
 
@@ -232,4 +204,4 @@ if __name__ == '__main__':
         'Script:', os.path.basename(sys.argv[0])))
 
     main(quicklook_folder=args.quicklook, output_folder=args.output,
-         landsat_folder=args.landsat, skip_list_path=args.skiplist)
+         skip_list_path=args.skiplist)

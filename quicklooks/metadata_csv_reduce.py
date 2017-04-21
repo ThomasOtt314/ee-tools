@@ -1,5 +1,4 @@
 import argparse
-import datetime as dt
 import logging
 import os
 
@@ -10,10 +9,15 @@ def main(csv_ws=os.getcwd()):
     """"""
     logging.info('\nFilter/reducing Landsat Metdata CSV files')
 
+    filter_conus = True
     csv_list = [
-        'LANDSAT_8.csv', 'LANDSAT_ETM.csv', 'LANDSAT_ETM_SLC_OFF.csv',
-        'LANDSAT_TM-1980-1989.csv', 'LANDSAT_TM-1990-1999.csv',
-        'LANDSAT_TM-2000-2009.csv', 'LANDSAT_TM-2010-2012.csv']
+        'LANDSAT_8.csv',
+        'LANDSAT_ETM.csv',
+        'LANDSAT_ETM_SLC_OFF.csv',
+        'LANDSAT_TM-1980-1989.csv',
+        'LANDSAT_TM-1990-1999.csv',
+        'LANDSAT_TM-2000-2009.csv',
+        'LANDSAT_TM-2010-2012.csv']
 
     # Input fields
     browse_col = 'browseAvailable'
@@ -55,6 +59,13 @@ def main(csv_ws=os.getcwd()):
         input_df = input_df[input_df[row_col] < 100]
         input_df = input_df[input_df[row_col] > 9]
         logging.debug('  Scene count: {}'.format(len(input_df)))
+
+        # Remove non-CONUS path/rows
+        if filter_conus:
+            input_df = input_df[input_df[path_col] >= 10]
+            input_df = input_df[input_df[path_col] <= 48]
+            input_df = input_df[input_df[row_col] >= 25]
+            input_df = input_df[input_df[row_col] <= 43]
 
         input_df = input_df[input_df['sunElevation'] > 0]
         logging.debug('  Scene count: {}'.format(len(input_df)))
