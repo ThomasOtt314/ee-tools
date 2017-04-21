@@ -2,12 +2,12 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-02-15
+# Created       2017-04-13
 # Python:       2.7
 #--------------------------------
 
 # import ConfigParser
-from collections import defaultdict
+# from collections import defaultdict
 import datetime
 import logging
 import os
@@ -285,7 +285,8 @@ def parse_export(ini, section='EXPORT'):
         ['output_proj', 'crs', str],
         # Google Drive
         ['gdrive_workspace', 'gdrive_ws', str],
-        ['export_folder', 'export_folder', str],
+        # DEADBEEF - Moved to optional for now
+        # ['export_folder', 'export_folder', str],
     ]
     for input_name, output_name, get_type in param_list:
         get_param(ini, section, input_name, output_name, get_type)
@@ -293,6 +294,8 @@ def parse_export(ini, section='EXPORT'):
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
     param_list = [
+        # DEADBEEF - Moved to optional for now
+        ['export_folder', 'export_folder', str, ''],
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
@@ -303,6 +306,14 @@ def parse_export(ini, section='EXPORT'):
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
+
+    # DEADBEEF
+    if ini[section]['export_folder']:
+        logging.info(
+            '\n  There are currently issues writing to Google Drive folders'
+            '  Setting "export_folder" = ""\n')
+        ini[section]['export_folder'] = ''
+        raw_input('ENTER')
 
     # Build and check file paths
     ini[section]['export_ws'] = os.path.join(
@@ -364,7 +375,7 @@ def parse_export(ini, section='EXPORT'):
     if ini[section]['adjust_method']:
         ini[section]['adjust_method'] = ini[section]['adjust_method'].upper()
         adjust_method_list = ['OLI_2_ETM', 'ETM_2_OLI']
-        if ini[section]['adjust_method'] not in mosaic_method_list:
+        if ini[section]['adjust_method'] not in adjust_method_list:
             logging.error(
                 '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
                     ini[section]['adjust_method'],
@@ -379,7 +390,8 @@ def parse_images(ini, section='IMAGES'):
         ['images_workspace', 'output_ws', str, os.getcwd()],
         ['download_bands', 'download_bands', str, ''],
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
-        ['clip_landsat_flag', 'clip_landsat_flag', bool, True]
+        ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
+        ['image_buffer', 'image_buffer', int, 0]
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
