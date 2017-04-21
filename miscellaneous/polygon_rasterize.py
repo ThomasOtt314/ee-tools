@@ -56,6 +56,8 @@ def main(input_path, output_path, output_epsg=None,
     for input_ftr in input_lyr:
         input_geom = input_ftr.GetGeometryRef()
         input_geom.Transform(output_tx)
+        input_geom = input_geom.SimplifyPreserveTopology(cellsize / 100.0)
+        # input_geom = input_geom.Simplify(cellsize / 100.0)
         input_ftr.SetGeometry(input_geom)
         input_lyr.SetFeature(input_ftr)
     input_lyr.ResetReading()
@@ -156,13 +158,19 @@ def extent_geo(extent, cellsize):
     return (extent[0], cellsize, 0., extent[3], 0., -cellsize)
 
 
+def shp_type(param):
+    if os.path.splitext(param)[1].lower() not in ['.shp']:
+        raise argparse.ArgumentTypeError('File must have a ".shp" extension')
+    return param
+
+
 def arg_parse():
     """"""
     parser = argparse.ArgumentParser(
         description='Rasterize Polygon Geometry',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        'src', help='Input file path')
+        'src', type=shp_type, help='Input file path')
     parser.add_argument(
         'dst', help='Output file path')
     parser.add_argument(
