@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-04-13
+# Created       2017-04-28
 # Python:       2.7
 #--------------------------------
 
@@ -70,6 +70,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # ini = ini_common.ini_parse(ini_path, section='IMAGE')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
+    ini_common.parse_section(ini, section='SPATIAL')
     ini_common.parse_section(ini, section='EXPORT')
     ini_common.parse_section(ini, section='IMAGES')
 
@@ -78,16 +79,16 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # Manually set output spatial reference
     logging.info('\nHardcoding GRIDMET snap, cellsize and spatial reference')
     ini['output_x'], ini['output_y'] = -124.79299639209513, 49.41685579737572
-    ini['EXPORT']['cellsize'] = 0.041666001963701
-    # ini['EXPORT']['cellsize'] = [0.041666001963701, 0.041666001489718]
+    ini['SPATIAL']['cellsize'] = 0.041666001963701
+    # ini['SPATIAL']['cellsize'] = [0.041666001963701, 0.041666001489718]
     # ini['output_x'], ini['output_y'] = -124.79166666666666666667, 25.04166666666666666667
-    # ini['EXPORT']['cellsize'] = 1. / 24
-    ini['EXPORT']['osr'] = gdc.epsg_osr(4326)
-    # ini['EXPORT']['osr'] = gdc.epsg_osr(4269)
-    ini['EXPORT']['crs'] = 'EPSG:4326'
+    # ini['SPATIAL']['cellsize'] = 1. / 24
+    ini['SPATIAL']['osr'] = gdc.epsg_osr(4326)
+    # ini['SPATIAL']['osr'] = gdc.epsg_osr(4269)
+    ini['SPATIAL']['crs'] = 'EPSG:4326'
     logging.debug('  Snap: {} {}'.format(ini['output_x'], ini['output_y']))
-    logging.debug('  Cellsize: {}'.format(ini['EXPORT']['cellsize']))
-    logging.debug('  OSR: {}'.format(ini['EXPORT']['osr']))
+    logging.debug('  Cellsize: {}'.format(ini['SPATIAL']['cellsize']))
+    logging.debug('  OSR: {}'.format(ini['SPATIAL']['osr']))
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
@@ -149,7 +150,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Project the zone_geom to the GRIDMET projection
         # if zone_proj != output_proj:
-        zone_geom = zone_geom.transform(ini['EXPORT']['crs'], 0.0001)
+        zone_geom = zone_geom.transform(ini['SPATIAL']['crs'], 0.0001)
 
         # Get the extent from the Earth Engine geometry object?
         zone_extent = zone_geom.bounds().getInfo()['coordinates'][0]
@@ -164,11 +165,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Adjust extent to match raster
         zone_extent = zone_extent.adjust_to_snap(
-            'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
-            ini['EXPORT']['cellsize'])
-        zone_geo = zone_extent.geo(ini['EXPORT']['cellsize'])
+            'EXPAND', ini['SPATIAL']['snap_x'], ini['SPATIAL']['snap_y'],
+            ini['SPATIAL']['cellsize'])
+        zone_geo = zone_extent.geo(ini['SPATIAL']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
-        zone_shape = zone_extent.shape(ini['EXPORT']['cellsize'])
+        zone_shape = zone_extent.shape(ini['SPATIAL']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
@@ -176,7 +177,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         output_transform = '[' + ','.join(map(str, zone_transform)) + ']'
         output_shape = '[{1}x{0}]'.format(*zone_shape)
-        logging.debug('  Output Projection: {}'.format(ini['EXPORT']['crs']))
+        logging.debug('  Output Projection: {}'.format(ini['SPATIAL']['crs']))
         logging.debug('  Output Transform: {}'.format(output_transform))
         logging.debug('  Output Shape: {}'.format(output_shape))
 
@@ -291,7 +292,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=output_transform)
                 try:
                     task.start()
@@ -397,7 +398,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=output_transform)
                 try:
                     task.start()

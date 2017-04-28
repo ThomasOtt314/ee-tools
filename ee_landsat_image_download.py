@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-04-13
+# Created       2017-04-28
 # Python:       2.7
 #--------------------------------
 
@@ -51,6 +51,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # ini = ini_common.ini_parse(ini_path, section='IMAGE')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
+    ini_common.parse_section(ini, section='SPATIAL')
     ini_common.parse_section(ini, section='EXPORT')
     ini_common.parse_section(ini, section='IMAGES')
 
@@ -106,13 +107,13 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # logging.debug('  Zone Projection: {}'.format(zone_proj))
 
     # Check that shapefile has matching spatial reference
-    if not gdc.matching_spatref(zone_osr, ini['EXPORT']['osr']):
+    if not gdc.matching_spatref(zone_osr, ini['SPATIAL']['osr']):
         logging.warning('  Zone OSR:\n{}\n'.format(zone_osr))
         logging.warning('  Output OSR:\n{}\n'.format(
-            ini['EXPORT']['osr']))
+            ini['SPATIAL']['osr']))
         logging.warning('  Zone Proj4:   {}'.format(zone_osr.ExportToProj4()))
         logging.warning('  Output Proj4: {}'.format(
-            ini['EXPORT']['osr'].ExportToProj4()))
+            ini['SPATIAL']['osr'].ExportToProj4()))
         logging.warning(
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
@@ -122,9 +123,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         logging.debug('  Zone Projection:\n{}\n'.format(
             zone_osr.ExportToWkt()))
         logging.debug('  Output Projection:\n{}\n'.format(
-            ini['EXPORT']['osr'].ExportToWkt()))
+            ini['SPATIAL']['osr'].ExportToWkt()))
         logging.debug('  Output Cellsize: {}'.format(
-            ini['EXPORT']['cellsize']))
+            ini['SPATIAL']['cellsize']))
 
 
     # Initialize Earth Engine API key
@@ -157,11 +158,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # zone_extent = gdc.Extent(zone_geom.GetEnvelope())
         zone_extent.ymin, zone_extent.xmax = zone_extent.xmax, zone_extent.ymin
         zone_extent = zone_extent.adjust_to_snap(
-            'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
-            ini['EXPORT']['cellsize'])
-        zone_geo = zone_extent.geo(ini['EXPORT']['cellsize'])
+            'EXPAND', ini['SPATIAL']['snap_x'], ini['SPATIAL']['snap_y'],
+            ini['SPATIAL']['cellsize'])
+        zone_geo = zone_extent.geo(ini['SPATIAL']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
-        zone_shape = zone_extent.shape(ini['EXPORT']['cellsize'])
+        zone_shape = zone_extent.shape(ini['SPATIAL']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
@@ -266,7 +267,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 landsat_image = landsat_image.clip(zone_geom)
             else:
                 landsat_image = landsat_image.clip(ee.Geometry.Rectangle(
-                    list(zone_extent), ini['EXPORT']['crs'], False))
+                    list(zone_extent), ini['SPATIAL']['crs'], False))
 
             # DEADBEEF - Display a single image
             # ee_common.show_thumbnail(landsat_image.visualize(
@@ -379,7 +380,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=output_transform)
                 try:
                     task.start()

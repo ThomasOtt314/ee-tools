@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-04-13
+# Created       2017-04-28
 # Python:       2.7
 #--------------------------------
 
@@ -50,6 +50,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     # ini = ini_common.ini_parse(ini_path, section='ZONAL_STATS')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
+    ini_common.parse_section(ini, section='SPATIAL')
     ini_common.parse_section(ini, section='EXPORT')
     ini_common.parse_section(ini, section='ZONAL_STATS')
 
@@ -102,14 +103,14 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     # logging.debug('  Zone Projection: {}'.format(zone['proj']))
 
     # Check that shapefile has matching spatial reference
-    if not gdc.matching_spatref(zone['osr'], ini['EXPORT']['osr']):
+    if not gdc.matching_spatref(zone['osr'], ini['SPATIAL']['osr']):
         logging.warning('  Zone OSR:\n{}\n'.format(zone['osr']))
         logging.warning('  Output OSR:\n{}\n'.format(
-            ini['EXPORT']['osr'].ExportToWkt()))
+            ini['SPATIAL']['osr'].ExportToWkt()))
         logging.warning('  Zone Proj4:   {}'.format(
             zone['osr'].ExportToProj4()))
         logging.warning('  Output Proj4: {}'.format(
-            ini['EXPORT']['osr'].ExportToProj4()))
+            ini['SPATIAL']['osr'].ExportToProj4()))
         logging.warning(
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
@@ -119,9 +120,9 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         logging.debug('  Zone Projection:\n{}\n'.format(
             zone['osr'].ExportToWkt()))
         logging.debug('  Output Projection:\n{}\n'.format(
-            ini['EXPORT']['osr'].ExportToWkt()))
+            ini['SPATIAL']['osr'].ExportToWkt()))
         logging.debug('  Output Cellsize: {}'.format(
-            ini['EXPORT']['cellsize']))
+            ini['SPATIAL']['cellsize']))
 
     # Initialize Earth Engine API key
     ee.Initialize()
@@ -186,11 +187,11 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # zone['extent'] = gdc.Extent(zone['geom'].GetEnvelope())
         zone['extent'] = zone['extent'].ogrenv_swap()
         zone['extent'] = zone['extent'].adjust_to_snap(
-            'EXPAND', ini['EXPORT']['snap_x'], ini['EXPORT']['snap_y'],
-            ini['EXPORT']['cellsize'])
-        zone['geo'] = zone['extent'].geo(ini['EXPORT']['cellsize'])
+            'EXPAND', ini['SPATIAL']['snap_x'], ini['SPATIAL']['snap_y'],
+            ini['SPATIAL']['cellsize'])
+        zone['geo'] = zone['extent'].geo(ini['SPATIAL']['cellsize'])
         zone['transform'] = gdc.geo_2_ee_transform(zone['geo'])
-        zone['shape'] = zone['extent'].shape(ini['EXPORT']['cellsize'])
+        zone['shape'] = zone['extent'].shape(ini['SPATIAL']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone['shape']))
         logging.debug('  Zone Transform: {}'.format(zone['transform']))
         logging.debug('  Zone Extent: {}'.format(zone['extent']))
@@ -204,7 +205,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # Eventually allow user to manually set these
         # output_crs = zone['proj']
         ini['EXPORT']['transform'] = zone['transform']
-        logging.debug('  Output Projection: {}'.format(ini['EXPORT']['crs']))
+        logging.debug('  Output Projection: {}'.format(ini['SPATIAL']['crs']))
         logging.debug('  Output Transform: {}'.format(
             ini['EXPORT']['transform']))
 
@@ -274,8 +275,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # logging.debug('  {}  {}'.format(start_year, end_year))
 
         # Include EPSG code in export and output names
-        if 'EPSG' in ini['EXPORT']['crs']:
-            crs_str = '_' + ini['EXPORT']['crs'].replace(':', '').lower()
+        if 'EPSG' in ini['SPATIAL']['crs']:
+            crs_str = '_' + ini['SPATIAL']['crs'].replace(':', '').lower()
         else:
             crs_str = ''
 
@@ -393,7 +394,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 .reduceRegion(
                     reducer=ee.Reducer.mean(),
                     geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=2,
                     maxPixels=zone['max_pixels'])
@@ -404,7 +405,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     reducer=ee.Reducer.sum().combine(
                         ee.Reducer.count(), '', True),
                     geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=2,
                     maxPixels=zone['max_pixels'])
@@ -415,7 +416,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     reducer=ee.Reducer.sum().combine(
                         ee.Reducer.count(), '', True),
                     geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=2,
                     maxPixels=zone['max_pixels'])
@@ -531,8 +532,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             year_str += '_' + ini['EXPORT']['mosaic_method'].lower()
 
         # Include EPSG code in export and output names
-        if 'EPSG' in ini['EXPORT']['crs']:
-            crs_str = '_' + ini['EXPORT']['crs'].replace(':', '').lower()
+        if 'EPSG' in ini['SPATIAL']['crs']:
+            crs_str = '_' + ini['SPATIAL']['crs'].replace(':', '').lower()
         else:
             crs_str = ''
 
@@ -542,7 +543,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # Look for any files with the correct naming but a different 326XX
         #   EPSG code.
         for input_name in os.listdir(zone['tables_ws']):
-            if ini['EXPORT']['crs'].startswith('EPSG:326'):
+            if ini['SPATIAL']['crs'].startswith('EPSG:326'):
                 input_re = re.compile('{}_landsat_epsg326\d{}_{}.csv'.format(
                     zone['name'], '{2}', year_str))
             else:
@@ -652,7 +653,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             input_mean = ee.Image(image) \
                 .reduceRegion(
                     ee.Reducer.mean(), geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=1,
                     maxPixels=zone['max_pixels'])
@@ -801,7 +802,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             input_mean = ee.Image(image) \
                 .reduceRegion(
                     ee.Reducer.mean(), geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=1,
                     maxPixels=zone['max_pixels'])
@@ -903,7 +904,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             input_mean = ee.Image(image) \
                 .reduceRegion(
                     ee.Reducer.mean(), geometry=zone['geom'],
-                    crs=ini['EXPORT']['crs'],
+                    crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
                     bestEffort=False, tileScale=1,
                     maxPixels=zone['max_pixels'])

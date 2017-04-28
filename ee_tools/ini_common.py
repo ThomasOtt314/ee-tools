@@ -2,7 +2,7 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-04-13
+# Created       2017-04-28
 # Python:       2.7
 #--------------------------------
 
@@ -50,6 +50,8 @@ def parse_section(ini, section):
 
     if section == 'INPUTS':
         parse_inputs(ini)
+    elif section == 'SPATIAL':
+        parse_spatial_reference(ini)
     elif section == 'EXPORT':
         parse_export(ini)
     elif section == 'IMAGES':
@@ -273,8 +275,8 @@ def parse_inputs(ini, section='INPUTS'):
     # except:
     #     ini[section]['scene_id_skip_list'] = []
 
-
-def parse_export(ini, section='EXPORT'):
+    
+def parse_spatial_reference(ini, section='SPATIAL'):
     """"""
     # MANDATORY PARAMETERS
     # section, input_name, output_name, description, get_type
@@ -282,7 +284,42 @@ def parse_export(ini, section='EXPORT'):
         # Output spatial reference
         ['output_snap', 'snap', str],
         ['output_cs', 'cellsize', float],
-        ['output_proj', 'crs', str],
+        ['output_proj', 'crs', str]
+    ]
+    for input_name, output_name, get_type in param_list:
+        get_param(ini, section, input_name, output_name, get_type)
+
+    # Convert snap points to list
+    ini[section]['snap'] = [
+        int(i) for i in ini[section]['snap'].split(',')
+        if i.strip().isdigit()][:2]
+    # Compute snap points separately
+    ini[section]['snap_x'], ini[section]['snap_y'] = ini[section]['snap']
+
+    # Compute OSR from EGSG code
+    try:
+        ini[section]['osr'] = gdc.epsg_osr(
+            int(ini[section]['crs'].split(':')[1]))
+    except:
+        logging.error(
+            '\nERROR: The output projection could not be converted to a '
+            'spatial reference object\n  {}'.format(
+                ini[section]['crs']))
+        sys.exit()
+
+    logging.debug('  Snap: {} {}'.format(
+        ini[section]['snap_x'], ini[section]['snap_y']))
+    logging.debug('  Cellsize: {}'.format(ini[section]['cellsize']))
+    logging.debug('  CRS: {}'.format(ini[section]['crs']))
+    # logging.debug('  OSR: {}\n'.format(
+    #     ini[section]['osr'].ExportToWkt())
+
+    
+def parse_export(ini, section='EXPORT'):
+    """"""
+    # MANDATORY PARAMETERS
+    # section, input_name, output_name, description, get_type
+    param_list = [
         # Google Drive
         ['gdrive_workspace', 'gdrive_ws', str],
         # DEADBEEF - Moved to optional for now
@@ -320,31 +357,6 @@ def parse_export(ini, section='EXPORT'):
         ini[section]['gdrive_ws'], ini[section]['export_folder'])
     if not os.path.isdir(ini[section]['export_ws']):
         os.makedirs(ini[section]['export_ws'])
-
-    # Convert snap points to list
-    ini[section]['snap'] = [
-        int(i) for i in ini[section]['snap'].split(',')
-        if i.strip().isdigit()][:2]
-    # Compute snap points separately
-    ini[section]['snap_x'], ini[section]['snap_y'] = ini[section]['snap']
-
-    # Compute OSR from EGSG code
-    try:
-        ini[section]['osr'] = gdc.epsg_osr(
-            int(ini[section]['crs'].split(':')[1]))
-    except:
-        logging.error(
-            '\nERROR: The output projection could not be converted to a '
-            'spatial reference object\n  {}'.format(
-                ini[section]['crs']))
-        sys.exit()
-
-    logging.debug('  Snap: {} {}'.format(
-        ini[section]['snap_x'], ini[section]['snap_y']))
-    logging.debug('  Cellsize: {}'.format(ini[section]['cellsize']))
-    logging.debug('  CRS: {}'.format(ini[section]['crs']))
-    # logging.debug('  OSR: {}\n'.format(
-    #     ini[section]['osr'].ExportToWkt())
 
     # Fmask source type
     if ini[section]['fmask_flag'] and not ini[section]['fmask_type']:
