@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_qaqc.py
 # Purpose:      Generate summary tables
-# Created       2017-04-26
+# Created       2017-04-28
 # Python:       2.7
 #--------------------------------
 
@@ -12,6 +12,7 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
 from scipy import optimize
@@ -25,6 +26,14 @@ import ee_tools.python_common as python_common
 def main(ini_path=None, overwrite_flag=True):
     """Generate summary QA/QC
 
+    Proposed QA values
+    0 - Clear Scene
+    1 -
+    2 -
+    3 -
+    4 - CLOUD_SCORE == 100 or TS < 260 or SCENE_ID in skip list
+    # 5 - Scene in skip list (should this be merged with 4?)
+
     Args:
         ini_path (str):
         overwrite_flag (bool): if True, overwrite existing tables
@@ -33,7 +42,6 @@ def main(ini_path=None, overwrite_flag=True):
     logging.info('\nGenerate summary QA/QC')
 
     # Read config file
-    # ini = ini_common.ini_parse(ini_path, section='TABLES')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
     ini_common.parse_section(ini, section='SUMMARY')
@@ -49,6 +57,7 @@ def main(ini_path=None, overwrite_flag=True):
         # 'NDWI_SWIR1_GREEN_TOA', 'NDWI_SWIR1_GREEN_SUR',
         # 'NDWI_TOA', 'NDWI_SUR',
         'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
+    output_fields = landsat_daily_fields + ['FMASK_PCT', 'OUTLIER_SCORE', 'QA']
 
     # year_list = range(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
     # month_list = list(python_common.wrapped_range(
@@ -74,30 +83,6 @@ def main(ini_path=None, overwrite_flag=True):
             zone_obj for zone_obj in zone_geom_list
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
-    # Assume variables follow some sort of solar cycle
-    cos_fit_func = lambda x, a, b, c: (
-        a * np.cos((2 * np.pi / 365) * (x - 1) + b) + c)
-
-
-    def summary_plots(landsat_df, plot_name, color_field='QA'):
-        # Plot all QA 0 points
-        fig, ax = plt.subplots(4, sharex=True, figsize=(8, 12))
-        qa_mask = (landsat_df['QA'].values == 0)
-        landsat_df[qa_mask].plot.scatter(
-            x='DOY', y='NDVI_TOA', c=color_field, cmap='viridis_r',
-            ax=ax[0], s=3, xlim=(1, 366))
-        landsat_df[qa_mask].plot.scatter(
-            x='DOY', y='NDWI_GREEN_SWIR1_SUR', c=color_field, cmap='viridis_r',
-            ax=ax[1], s=3)
-        landsat_df[qa_mask].plot.scatter(
-            x='DOY', y='ALBEDO_SUR', c=color_field, cmap='viridis_r',
-            ax=ax[2], s=3)
-        landsat_df[qa_mask].plot.scatter(
-            x='DOY', y='TS', c=color_field, cmap='viridis_r',
-            ax=ax[3], s=3)
-        fig.savefig(output_figure_fmt.format(plot_name))
-
-
     logging.info('\nProcessing zones')
     # output_df = None
     zone_list = []
@@ -118,340 +103,343 @@ def main(ini_path=None, overwrite_flag=True):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
 
-        qaqc_ws = os.path.join(zone_stats_ws, 'qaqc')
+        qaqc_ws = os.path.join(ini['SUMMARY']['output_ws'], 'qaqc')
+        # qaqc_ws = os.path.join(zone_stats_ws, 'qaqc')
         if not os.path.isdir(qaqc_ws):
             os.makedirs(qaqc_ws)
 
-        output_table_path = landsat_daily_path.replace('.csv', '_qaqc.csv')
         output_figure_fmt = os.path.join(
             qaqc_ws, '{}_{}.png'.format(zone_name, '{}'))
 
         logging.debug('  Reading Landsat CSV')
         landsat_df = pd.read_csv(landsat_daily_path)
+        # landsat_df = pd.read_csv(
+        #     landsat_daily_path, parse_dates=['DATE'], index_col='DATE')
 
-        # logging.debug('  Filtering Landsat dataframe')
-        # landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
+        logging.debug('  Filtering Landsat dataframe')
+        landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
 
-        # Set initial QA band
+        # Compute FMask percent
+        landsat_df['FMASK_PCT'] = (
+            landsat_df['FMASK_COUNT'].astype(np.float) /
+            landsat_df['FMASK_TOTAL'])
+        # Scale cloud score for plotting
+        # landsat_df['CLOUD_SCORE'] = landsat_df['CLOUD_SCORE'] / 100.0
+
+        # Add QA/QC bands if necessary
+        # if 'QA' not in list(landsat_df.columns.values):
         landsat_df['QA'] = 0
-        landsat_df['OUTLIER_SCORE'] = np.nan
+        if 'OUTLIER_SCORE' not in list(landsat_df.columns.values):
+            landsat_df['OUTLIER_SCORE'] = np.nan
 
-        summary_plots(landsat_df, 'original', color_field='QA')
+        # Set QA flag for scenes in skip list
+        if ini['INPUTS']['scene_id_skip_list']:
+            # Use primary ROW value for checking skip list SCENE_ID
+            scene_id_df = pd.Series([
+                s.replace('XXX', '{:03d}'.format(int(r)))
+                for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+            skip_mask = scene_id_df.isin(
+                ini['INPUTS']['scene_id_skip_list']).values
+            landsat_df.loc[skip_mask, 'QA'] = 3
+            # Reset QA if scenes is not in skip list and flag is set
+            # landsat_df.loc[(landsat_df['QA'] != 3) & (~skip_mask), 'QA'] = 0
+            landsat_df.loc[~skip_mask, 'QA'] = 0
+            del scene_id_df, skip_mask
 
+        # Set initial QA band values
+        landsat_df.loc[landsat_df['CLOUD_SCORE'] >= 95, 'QA'] = 3
+        landsat_df.loc[landsat_df['TS'] < 260, 'QA'] = 3
+        # landsat_df.loc[landsat_df['PIXEL_COUNT'] == 0, 'QA'] = 3
+        # landsat_df.loc[pd.isnull(landsat_df['CLOUD_SCORE']), 'QA'] = 3
 
+        # Build initial plots
+        # summary_doy_plots(
+        #     landsat_df, output_figure_fmt.format('a_original'),
+        #     color_field='QA')
 
+        # Initially filter by looking for outliers by DOY
+        # Remove extreme albedo and Ts values
+        max_threshold(landsat_df, field='ALBEDO_SUR', delta=0.20, qa_value=2)
+        min_threshold(landsat_df, field='TS', delta=20, qa_value=2)
+        # We might want to do two rounds of this
+        # max_threshold(landsat_df, field='ALBEDO_SUR', delta=0.10, qa_value=2)
+        # min_threshold(landsat_df, field='TS', delta=15, qa_value=2)
+        # summary_doy_plots(
+        #     landsat_df, output_figure_fmt.format('b_threshold'),
+        #     color_field='QA')
 
+        # # Detrend the data and remove values > 3 sigma
+        # sigma_filtering(
+        #     landsat_df, sigma_value=3, qa_value=2,
+        #     fields=['ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR'])
+        # summary_doy_plots(
+        #     landsat_df, output_figure_fmt.format('c_sigma'),
+        #     color_field='QA')
 
+        # Identify outliers using scikit-learn EllipticEnvelope
+        # Higher contamination value will remove more points
+        outlier_filtering(
+            landsat_df, qa_value=1, contamination=0.05,
+            fields=['NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR'])
+        # outlier_filtering(
+        #     landsat_df, qa_value=1, contamination=0.05,
+        #     fields=['ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR'])
 
-        # Albedo threshold
-        logging.debug('  Albedo Threshold Filtering')
-        threshold_qa = 3
-        threshold_max = 0.20
-        x, y, qa = landsat_df[['DOY', 'ALBEDO_SUR', 'QA']].values.transpose()
-        popt, pcov = optimize.curve_fit(
-            cos_fit_func, x[qa < threshold_qa], y[qa < threshold_qa])
-
-        # Set the QA flag for any value with a lower level QA
-        threshold_mask = (
-            (qa < threshold_qa) &
-            (y > (cos_fit_func(x, *popt) + threshold_max)))
-        landsat_df.loc[threshold_mask, 'QA'] = threshold_qa
-
-
-
-
-        # Ts threshold
-        logging.debug('  Ts Threshold Filtering')
-        threshold_qa = 3
-        threshold_min = 20
-        x, y, qa = landsat_df[['DOY', 'TS', 'QA']].values.transpose()
-        popt, pcov = optimize.curve_fit(
-            cos_fit_func, x[qa < threshold_qa], y[qa < threshold_qa])
-
-        # Set the QA flag for any value with a lower level QA
-        threshold_mask = (
-            (qa < threshold_qa) &
-            (y < (cos_fit_func(x, *popt) - threshold_min)))
-        landsat_df.loc[threshold_mask, 'QA'] = threshold_qa
-
-        summary_plots(landsat_df, 'threshold', color_field='QA')
-
-
-
-
-        # Sigma threshold filtering
-        logging.debug('  Sigma Filtering')
-        sigma = 3.0
-        sigma_qa = 2
-
-        # plot_vars = ['NDWI_GREEN_SWIR1_SUR', ]
-        plot_vars = ['NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR', ]
-        for plot_var in plot_vars:
-
-            # For now, start with the raw data
-            x, y, qa = landsat_df[['DOY', plot_var, 'QA']].values.transpose()
-            qa_mask = (qa < sigma_qa)
-
-            # Fit a function to the data
-            popt, pcov = optimize.curve_fit(
-                cos_fit_func, x[qa_mask], y[qa_mask])
-
-            # Detrend the data and compute the variance
-            # ybar = np.mean(y[qa_mask] - cos_fit_func(x[qa_mask], *popt))
-            yhat = np.std(y[qa_mask] - cos_fit_func(x[qa_mask], *popt))
-
-            # Mask out the data
-            landsat_df.loc[
-                qa_mask & (y > (cos_fit_func(x, *popt) + sigma * yhat)), ['QA']] = sigma_qa
-            landsat_df.loc[
-                qa_mask & (y < (cos_fit_func(x, *popt) - sigma * yhat)), ['QA']] = sigma_qa
-
-            # Compute a new best fit line
-            x, y, qa = landsat_df[['DOY', plot_var, 'QA']].values.transpose()
-            qa_mask = (qa < sigma_qa)
-            popt, pcov = optimize.curve_fit(cos_fit_func, x[qa_mask], y[qa_mask])
-
-        summary_plots(landsat_df, 'sigma', color_field='QA')
+        # # Plot all QA 0 points
+        summary_doy_plots(
+            landsat_df[landsat_df['QA'] <= 2],
+            output_figure_fmt.format('d_outlier'),
+            color_field='QA')
+        # summary_doy_plots(
+        #     landsat_df[landsat_df['QA'] == 0],
+        #     output_figure_fmt.format('e_final'), color_field='QA')
+        # # summary_doy_plots(
+        # #     landsat_df, output_figure_fmt.format('d_outlier_values'),
+        # #     color_field='OUTLIER')
 
 
 
 
-        # Cluster Filtering
-        logging.debug('  Cluster Filtering')
-        cluster_qa = 1
-        plot_vars = ['NDVI_TOA', 'NDWI_GREEN_SWIR1_SUR', 'ALBEDO_SUR', 'TS']
-        # plot_vars = ['NDVI_TOA', 'NDWI_GREEN_SWIR1_SUR', 'ALBEDO_SUR', 'TS', 'DOY']
-        X = landsat_df[plot_vars].values
-        doy = landsat_df['DOY'].values
-        qa = landsat_df['QA'].values
-        qa_mask = qa < cluster_qa
+        # # Generate annual plots
+        # plot_var = 'NDVI_TOA'
+        # # plot_vars = ['NDVI_TOA', 'NDWI_GREEN_SWIR1_SUR', 'ALBEDO_SUR', 'TS']
+        # year_list = sorted(list(set(landsat_df['YEAR'].values)))
+        # # print(year_list)
 
-        # Manually normalize the data
-        X[:, plot_vars.index('TS')] = (X[:, plot_vars.index('TS')] - 270.0) / (330.0 - 270.0)
-        # X[:, plot_vars.index('DOY')] = -np.cos(2 * np.pi * (X[:, plot_vars.index('DOY')] - 1) / 365)
+        # plot_df = landsat_df.loc[landsat_df['QA']==0, ['DOY', plot_var]]
+        # x, y = plot_df.values.transpose()
+        # x_new = np.arange(1, 367)
 
-        # Detrend the data assuming a cosine function before computing outliers
-        for plot_var in plot_vars:
-            x = doy[qa_mask]
-            y = X[:, plot_vars.index(plot_var)][qa_mask]
-            popt, pcov = optimize.curve_fit(cos_fit_func, x, y)
-            X[:, plot_vars.index(plot_var)][qa_mask] = y - cos_fit_func(x, *popt)
+        # fit_func = lambda x, a, b, c: a * np.cos((2 * np.pi / 365) * (x - 1) + b) + c # Target function
+        # popt, pcov = optimize.curve_fit(fit_func, x, y)
 
-        # Y = sklearn.cluster.AgglomerativeClustering(
-        #     n_clusters=4, linkage='average').fit_predict(X)
-        clf = EllipticEnvelope(contamination=0.15)
-        clf.fit(X[qa_mask])
-        S = clf.decision_function(X[qa_mask])
-        Y = clf.predict(X[qa_mask])
-        # print(sorted(list(set(Y))))
+        # fig, ax = plt.subplots(figsize=(12, 8))
+        # ax.set_xlim([1, 366])
 
-        # Set QA to 1 if QA is 0 and the value is identified as an outlier
-        landsat_df.loc[qa_mask, 'QA'][Y != 1] = cluster_qa
-        landsat_df.loc[qa_mask, 'OUTLIER'] = S
+        # popt_list = []
+        # for year in year_list:
+        #     plot_df = landsat_df.loc[
+        #         (landsat_df['QA']==0) & (landsat_df['YEAR']==year),
+        #         ['DOY', plot_var]]
+        #     x, y = plot_df.values.transpose()
+        #     x_new = np.arange(1, 367)
 
+        #     year_popt, pcov = optimize.curve_fit(fit_func, x, y)
+        #     popt_list.append(year_popt)
+        #     # print(popt)
 
+        #     ax.plot(x, y, marker='o', c='0.5', ms=1.5, lw=0, label=None)
+        #     ax.plot(x_new, cos_fit_func(x_new, *year_popt), c='0.5', lw=1.0, label=None)
+        #     # break
 
-
-        # Plot all QA 0 points
-        summary_plots(landsat_df, 'cluster', color_field='OUTLIER')
+        # ax.plot(x_new, cos_fit_func(x_new, *popt), lw=3, color='black', label='Original')
+        # # ax.plot(x_new, cos_fit_func(x_new, *np.median(np.array(popt_list), axis=0)), lw=3, color='red', label='Median')
+        # plt.legend()
+        # plt.show()
 
 
 
 
         # Save the QA/QC'd data
-        landsat_df.to_csv(output_table_path, index=False, columns=landsat_daily_fields)
-
-        break
+        landsat_df.to_csv(landsat_daily_path, index=False, columns=output_fields)
 
 
+        # backup_path = landsat_daily_path.replace('.csv', '.csv.bak')
+        # shutil.copy(landsat_daily_path, backup_path)
+        # try:
+        #     landsat_df.to_csv(
+        #         landsat_daily_path, index=False, columns=landsat_daily_fields)
+        #     os.remove(backup_path)
+        # except:
+        #     shutil.move(backup_path, landsat_daily_path)
 
 
 
-        # # This assumes that there are L5/L8 images in the dataframe
-        # if not landsat_df.empty:
-        #     max_pixel_count = max(landsat_df['PIXEL_COUNT'])
-        # else:
-        #     max_pixel_count = 0
 
-    #     if year_list:
-    #         landsat_df = landsat_df[landsat_df['YEAR'].isin(year_list)]
-    #     if month_list:
-    #         landsat_df = landsat_df[landsat_df['MONTH'].isin(month_list)]
-    #     if doy_list:
-    #         landsat_df = landsat_df[landsat_df['DOY'].isin(doy_list)]
+        # # First filter by average cloud score
+        # if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
+        #     logging.debug('    Maximum cloud score: {0}'.format(
+        #         ini['SUMMARY']['max_cloud_score']))
+        #     landsat_df = landsat_df[
+        #         landsat_df['CLOUD_SCORE'] <= ini['SUMMARY']['max_cloud_score']]
 
-    #     if ini['INPUTS']['path_keep_list']:
-    #         landsat_df = landsat_df[
-    #             landsat_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
-    #     if (ini['INPUTS']['row_keep_list'] and
-    #             ini['INPUTS']['row_keep_list'] != ['XXX']):
-    #         landsat_df = landsat_df[
-    #             landsat_df['ROW'].isin(ini['INPUTS']['row_keep_list'])]
+        # # Filter by Fmask percentage
+        # if ini['SUMMARY']['max_fmask_pct'] < 100 and not landsat_df.empty:
+        #     landsat_df['FMASK_PCT'] = 100 * (
+        #         landsat_df['FMASK_COUNT'] / landsat_df['FMASK_TOTAL'])
+        #     logging.debug('    Max Fmask threshold: {}'.format(
+        #         ini['SUMMARY']['max_fmask_pct']))
+        #     landsat_df = landsat_df[
+        #         landsat_df['FMASK_PCT'] <= ini['SUMMARY']['max_fmask_pct']]
 
-    #     # Assume the default is for these to be True and only filter if False
-    #     if not ini['INPUTS']['landsat4_flag']:
-    #         landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT4']
-    #     if not ini['INPUTS']['landsat5_flag']:
-    #         landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT5']
-    #     if not ini['INPUTS']['landsat7_flag']:
-    #         landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LE7']
-    #     if not ini['INPUTS']['landsat8_flag']:
-    #         landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LC8']
-    #     if ini['INPUTS']['scene_id_keep_list']:
-    #         landsat_df = landsat_df[landsat_df['SCENE_ID'].isin(
-    #             ini['INPUTS']['scene_id_keep_list'])]
-    #     if ini['INPUTS']['scene_id_skip_list']:
-    #         landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
-    #             ini['INPUTS']['scene_id_skip_list']))]
+        # # Filter low count SLC-off images
+        # if ini['SUMMARY']['min_slc_off_pct'] > 0 and not landsat_df.empty:
+        #     logging.debug('    Mininum SLC-off threshold: {}%'.format(
+        #         ini['SUMMARY']['min_slc_off_pct']))
+        #     # logging.debug('    Maximum pixel count: {}'.format(
+        #     #     max_pixel_count))
+        #     slc_off_mask = (
+        #         (landsat_df['LANDSAT'] == 'LE7') &
+        #         ((landsat_df['YEAR'] >= 2004) |
+        #          ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
+        #     slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
+        #     # slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
+        #     landsat_df = landsat_df[
+        #         ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
+        #         (~slc_off_mask)]
 
-    #     # First filter by average cloud score
-    #     if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
-    #         logging.debug('    Maximum cloud score: {0}'.format(
-    #             ini['SUMMARY']['max_cloud_score']))
-    #         landsat_df = landsat_df[
-    #             landsat_df['CLOUD_SCORE'] <= ini['SUMMARY']['max_cloud_score']]
+        del landsat_df
 
-    #     # Filter by Fmask percentage
-    #     if ini['SUMMARY']['max_fmask_pct'] < 100 and not landsat_df.empty:
-    #         landsat_df['FMASK_PCT'] = 100 * (
-    #             landsat_df['FMASK_COUNT'] / landsat_df['FMASK_TOTAL'])
-    #         logging.debug('    Max Fmask threshold: {}'.format(
-    #             ini['SUMMARY']['max_fmask_pct']))
-    #         landsat_df = landsat_df[
-    #             landsat_df['FMASK_PCT'] <= ini['SUMMARY']['max_fmask_pct']]
 
-    #     # Filter low count SLC-off images
-    #     if ini['SUMMARY']['min_slc_off_pct'] > 0 and not landsat_df.empty:
-    #         logging.debug('    Mininum SLC-off threshold: {}%'.format(
-    #             ini['SUMMARY']['min_slc_off_pct']))
-    #         # logging.debug('    Maximum pixel count: {}'.format(
-    #         #     max_pixel_count))
-    #         slc_off_mask = (
-    #             (landsat_df['LANDSAT'] == 'LE7') &
-    #             ((landsat_df['YEAR'] >= 2004) |
-    #              ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
-    #         slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
-    #         # slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / max_pixel_count)
-    #         landsat_df = landsat_df[
-    #             ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
-    #             (~slc_off_mask)]
 
-    #     if landsat_df.empty:
-    #         logging.error(
-    #             '  Empty Landsat dataframe after filtering, skipping zone')
-    #         zone_list.remove(zone_name)
-    #         # raw_input('ENTER')
-    #         continue
+def cos_fit_func(x, a, b, c):
+    """Assume variables follow some sort of solar cycle
 
-    #     logging.debug('  Computing Landsat annual summaries')
-    #     landsat_df = landsat_df\
-    #         .groupby(['ZONE_FID', 'ZONE_NAME', 'YEAR'])\
-    #         .agg({
-    #             'PIXEL_COUNT': {
-    #                 'PIXEL_COUNT': 'mean',
-    #                 'SCENE_COUNT': 'count'},
-    #             'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
-    #             'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-    #             'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
-    #             'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
-    #             'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
-    #             'EVI_SUR': {'EVI_SUR': 'mean'},
-    #             'NDVI_SUR': {'NDVI_SUR': 'mean'},
-    #             'NDVI_TOA': {'NDVI_TOA': 'mean'},
-    #             'NDWI_GREEN_NIR_SUR': {'NDWI_GREEN_NIR_SUR': 'mean'},
-    #             'NDWI_GREEN_SWIR1_SUR': {'NDWI_GREEN_SWIR1_SUR': 'mean'},
-    #             'NDWI_NIR_SWIR1_SUR': {'NDWI_NIR_SWIR1_SUR': 'mean'},
-    #             # 'NDWI_GREEN_NIR_TOA': {'NDWI_GREEN_NIR_TOA': 'mean'},
-    #             # 'NDWI_GREEN_SWIR1_TOA': {'NDWI_GREEN_SWIR1_TOA': 'mean'},
-    #             # 'NDWI_NIR_SWIR1_TOA': {'NDWI_NIR_SWIR1_TOA': 'mean'},
-    #             # 'NDWI_SWIR1_GREEN_SUR': {'NDWI_SWIR1_GREEN_SUR': 'mean'},
-    #             # 'NDWI_SWIR1_GREEN_TOA': {'NDWI_SWIR1_GREEN_TOA': 'mean'},
-    #             # 'NDWI_SUR': {'NDWI_SUR': 'mean'},
-    #             # 'NDWI_TOA': {'NDWI_TOA': 'mean'},
-    #             'TC_BRIGHT': {'TC_BRIGHT': 'mean'},
-    #             'TC_GREEN': {'TC_GREEN': 'mean'},
-    #             'TC_WET': {'TC_WET': 'mean'},
-    #             'TS': {'TS': 'mean'}
-    #         })
-    #     landsat_df.columns = landsat_df.columns.droplevel(0)
-    #     landsat_df.reset_index(inplace=True)
-    #     landsat_df = landsat_df[landsat_annual_fields]
-    #     landsat_df['SCENE_COUNT'] = landsat_df['SCENE_COUNT'].astype(np.int)
-    #     landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
-    #     landsat_df['PIXEL_TOTAL'] = landsat_df['PIXEL_TOTAL'].astype(np.int)
-    #     landsat_df['FMASK_COUNT'] = landsat_df['FMASK_COUNT'].astype(np.int)
-    #     landsat_df['FMASK_TOTAL'] = landsat_df['FMASK_TOTAL'].astype(np.int)
-    #     landsat_df.sort_values(by='YEAR', inplace=True)
+    Normalize DOY (1-366) to the range [0,2*pi)
+    """
+    return a * np.cos((2 * np.pi * (x - 1.0) / 366) + b) + c
+    # cos_fit_func = lambda x, a, b, c: (
+    #     a * np.cos((2 * np.pi / 365) * (x - 1) + b) + c)
 
-    #     if os.path.isfile(gridmet_monthly_path):
-    #         logging.debug('  Reading montly GRIDMET CSV')
-    #         gridmet_df = pd.read_csv(gridmet_monthly_path)
-    #     elif os.path.isfile(gridmet_daily_path):
-    #         logging.debug('  Reading daily GRIDMET CSV')
-    #         gridmet_df = pd.read_csv(gridmet_daily_path)
 
-    #     logging.debug('  Computing GRIDMET summaries')
-    #     # Summarize GRIDMET for target months year
-    #     if (gridmet_start_month in [10, 11, 12] and
-    #             gridmet_end_month in [10, 11, 12]):
-    #         month_mask = (
-    #             (gridmet_df['MONTH'] >= gridmet_start_month) &
-    #             (gridmet_df['MONTH'] <= gridmet_end_month))
-    #         gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR'] + 1
-    #     elif (gridmet_start_month in [10, 11, 12] and
-    #           gridmet_end_month not in [10, 11, 12]):
-    #         month_mask = gridmet_df['MONTH'] >= gridmet_start_month
-    #         gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR'] + 1
-    #         month_mask = gridmet_df['MONTH'] <= gridmet_end_month
-    #         gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR']
-    #     else:
-    #         month_mask = (
-    #             (gridmet_df['MONTH'] >= gridmet_start_month) &
-    #             (gridmet_df['MONTH'] <= gridmet_end_month))
-    #         gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR']
-    #     gridmet_df['GROUP_YEAR'] = gridmet_df['GROUP_YEAR'].astype(int)
+def summary_doy_plots(landsat_df, output_path, color_field=None,
+                      plot_vars=[
+                        'NDVI_TOA', 'ALBEDO_SUR', 'TS',
+                        'NDWI_GREEN_SWIR1_SUR', 'CLOUD_SCORE',
+                        'FMASK_PCT']):
+    """Generate summary plots by DOY"""
+    kargs = {'s': 4, 'figsize': (8, 12), 'xlim': (1, 366)}
+    if color_field:
+        # Make the figure wider to leave space for a legend
+        kargs.update({'c': color_field, 'figsize': (9, 12)})
+        if color_field.upper() == 'QA':
+            kargs.update({
+                'cmap': 'viridis', 'vmin': 0,
+                'vmax': max(landsat_df['QA'])})
+        elif color_field.upper() == 'OUTLIER':
+            kargs.update({
+                'cmap': 'viridis_r', 'vmin': -2, 'vmax': 2})
 
-    #     if year_list:
-    #         gridmet_df = gridmet_df[gridmet_df['GROUP_YEAR'].isin(year_list)]
-    #         if gridmet_df.empty:
-    #             logging.error(
-    #                 '    Empty GRIDMET dataframe after filtering by year')
-    #             continue
+    # Plot all QA 0 points
+    fig, ax = plt.subplots(len(plot_vars), sharex=True)
+    ax[0].xaxis.set_minor_locator(MultipleLocator(10))
+    ax[0].set_xticklabels(map(str, range(0, 365, 10)))
+    # qa_mask = (landsat_df['QA'].values == 0)
+    for plot_i, plot_var in enumerate(plot_vars):
+        ax[plot_i].patch.set_facecolor('0.96')
+        landsat_df.plot.scatter(
+            x='DOY', y=plot_var, ax=ax[plot_i], **kargs)
 
-    #     # Group GRIDMET data by user specified range (default is water year)
-    #     gridmet_df = gridmet_df\
-    #         .groupby(['ZONE_FID', 'ZONE_NAME', 'GROUP_YEAR'])\
-    #         .agg({'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
-    #     gridmet_df.columns = gridmet_df.columns.droplevel(0)
-    #     gridmet_df.reset_index(inplace=True)
-    #     gridmet_df.rename(columns={'GROUP_YEAR': 'YEAR'}, inplace=True)
-    #     gridmet_df.sort_values(by='YEAR', inplace=True)
+    # Trying to write the DOY values to the x axis ticks
+    # ax[-1].set_xticks(range(0, 365, 50))
+    # ax[-1].set_xticks(range(0, 365, 10), minor=True)
+    # ax[-1].set_xticklabels(map(str, range(0, 365, 10)))
+    # ax[-1].set_xlabel('DOY')
 
-    #     # Merge Landsat and GRIDMET collections
-    #     zone_df = landsat_df.merge(
-    #         gridmet_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
-    #     # zone_df = landsat_df.merge(gridmet_df, on=['ZONE_FID', 'YEAR'])
+    fig.tight_layout()
+    fig.savefig(output_path, fig_dpi=150)
+    fig.clf()
+    plt.close(fig)
 
-    #     if output_df is None:
-    #         output_df = zone_df.copy()
-    #     else:
-    #         output_df = output_df.append(zone_df)
 
-    #     del landsat_df, gridmet_df, zone_df
+def max_threshold(landsat_df, field, delta, qa_value):
+    logging.debug('  Maximum {} Filtering'.format(field))
+    x, y, qa = landsat_df[['DOY', field, 'QA']].values.transpose()
+    if not np.any(qa < qa_value):
+        return False
+    popt, pcov = optimize.curve_fit(
+        cos_fit_func, x[qa < qa_value], y[qa < qa_value])
 
-    # if output_df is not None and not output_df.empty:
-    #     logging.info('\nWriting summary tables to Excel')
-    #     excel_f = ExcelWriter(output_path)
-    #     logging.debug('  {}'.format(output_path))
-    #     for zone_name in zone_list:
-    #         logging.debug('  {}'.format(zone_name))
-    #         zone_df = output_df[output_df['ZONE_NAME'] == zone_name]
-    #         zone_df.to_excel(
-    #             excel_f, sheet_name=zone_name, index=False, float_format='%.4f')
-    #         del zone_df
-    #     excel_f.save()
-    # else:
-    #     logging.info('  Empty output dataframe, not writing summary tables')
+    # Set the QA flag for any value with a lower level QA
+    threshold_mask = (
+        (qa < qa_value) &
+        (y > (cos_fit_func(x, *popt) + delta)))
+    if np.any(threshold_mask):
+        landsat_df.loc[threshold_mask, 'QA'] = qa_value
+
+
+def min_threshold(landsat_df, field, delta, qa_value):
+    logging.debug('  Minimum {} Filtering'.format(field))
+    x, y, qa = landsat_df[['DOY', field, 'QA']].values.transpose()
+    if not np.any(qa < qa_value):
+        return False
+    popt, pcov = optimize.curve_fit(
+        cos_fit_func, x[qa < qa_value], y[qa < qa_value])
+
+    # Set the QA flag for any value with a lower level QA
+    threshold_mask = (
+        (qa < qa_value) &
+        (y < (cos_fit_func(x, *popt) - delta)))
+    if np.any(threshold_mask):
+        landsat_df.loc[threshold_mask, 'QA'] = qa_value
+
+
+def sigma_filtering(landsat_df, sigma_value, qa_value, fields):
+    logging.debug('  Sigma Filtering')
+
+    for filter_field in fields:
+        # For now, start with the raw data
+        x, y, qa = landsat_df[['DOY', filter_field, 'QA']].values.transpose()
+        qa_mask = (qa < qa_value)
+
+        # Fit a function to the data
+        popt, pcov = optimize.curve_fit(
+            cos_fit_func, x[qa_mask], y[qa_mask])
+
+        # Detrend the data and compute the variance
+        # ybar = np.mean(y[qa_mask] - cos_fit_func(x[qa_mask], *popt))
+        yhat = np.std(y[qa_mask] - cos_fit_func(x[qa_mask], *popt))
+
+        # Mask out the data
+        mask = qa_mask & (y > (cos_fit_func(x, *popt) + sigma_value * yhat))
+        landsat_df.loc[mask, ['QA']] = qa_value
+        mask = qa_mask & (y > (cos_fit_func(x, *popt) + sigma_value * yhat))
+        landsat_df.loc[mask, ['QA']] = qa_value
+
+
+def outlier_filtering(landsat_df, qa_value, fields, contamination=0.15):
+    logging.debug('  Cluster Filtering')
+    X = np.copy(landsat_df[fields].values)
+    doy = landsat_df['DOY'].values
+    qa = landsat_df['QA'].values
+
+    # Manually normalize the data
+    X[:, fields.index('TS')] = (X[:, fields.index('TS')] - 270.0) / (330.0 - 270.0)
+    # X[:, plot_vars.index('DOY')] = -np.cos(2 * np.pi * (X[:, fields.index('DOY')] - 1) / 365)
+
+    # # Detrend each variable assuming a cosine function before computing outliers
+    # # This is done to try to have the data be normally distributed
+    # # The documentation suggested this would help EllipticEnvelope
+    # cos_fields = ['TS', 'ALBEDO_SUR', 'NDWI_GREEN_SWIR1_SUR']
+    # for filter_field in list(set(fields) & set(cos_fields)):
+    #     logging.debug('    Detrending: {}'.format(filter_field))
+    #     # Should QA=1 be included to develop the best fit line?
+    #     # Let's assume no, incase outliers have already been identified
+    #     popt, pcov = optimize.curve_fit(
+    #         cos_fit_func, doy[qa < qa_value],
+    #         X[:, fields.index(filter_field)][qa < qa_value])
+
+    #     # Apply the correction to all values for now
+    #     # X will be masked/sliced below
+    #     X[:, fields.index(filter_field)] -= cos_fit_func(doy, *popt)
+
+    clf = EllipticEnvelope(contamination=contamination)
+    qa_mask = qa < qa_value
+    clf.fit(X[qa_mask])
+    S = clf.decision_function(X[qa_mask])
+    Y = clf.predict(X[qa_mask])
+    # Y = sklearn.cluster.AgglomerativeClustering(
+    #     n_clusters=4, linkage='average').fit_predict(X)
+    logging.debug('    Filtered: {}'.format(sum(Y != 1)))
+    logging.debug('    Y values: {}'.format(sorted(list(set(Y)))))
+
+    # Set QA to 1 if QA is 0 and the value is identified as an outlier
+    qa_series = landsat_df.loc[qa_mask, 'QA'].copy(deep=True)
+    qa_series[Y != 1] = qa_value
+    landsat_df.loc[qa_mask, 'QA'] = qa_series
+    # This isn't working for some reason
+    # landsat_df.loc[qa_mask, 'QA'][Y != 1] = qa_value
+    landsat_df.loc[qa_mask, 'OUTLIER'] = S
 
 
 def arg_parse():
