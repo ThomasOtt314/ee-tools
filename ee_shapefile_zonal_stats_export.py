@@ -47,7 +47,6 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    # ini = ini_common.ini_parse(ini_path, section='ZONAL_STATS')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
     ini_common.parse_section(ini, section='SPATIAL')
@@ -94,6 +93,14 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         zone_geom_list = [
             zone_obj for zone_obj in zone_geom_list
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
+
+    # Intentionally don't apply scene_id skip/keep lists
+    # Compute zonal stats for all available images
+    logging.info('  Not applying scene_id keep or skip lists')
+    if ini['INPUTS']['scene_id_keep_list']:
+        ini['INPUTS']['scene_id_keep_list'] = []
+    if ini['INPUTS']['scene_id_keep_list']:
+        ini['INPUTS']['scene_id_skip_list'] = []
 
     # Need zone_path projection to build EE geometries
     zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
@@ -561,6 +568,11 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     os.path.basename(input_path)))
                 # raw_input('ENTER')
                 continue
+
+            # Remove 0 pixel count rows
+            if 'PIXEL_COUNT' in list(input_df.columns.values):
+                input_df = input_df[input_df['PIXEL_COUNT'] > 0]
+
             try:
                 output_df = output_df.append(input_df)
             except:

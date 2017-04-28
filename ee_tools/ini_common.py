@@ -242,40 +242,37 @@ def parse_inputs(ini, section='INPUTS'):
         ini[section]['path_row_list'] = sorted([
             pr.strip() for pr in ini[section]['path_row_list'].split(',')])
 
-    # Intentionally don't apply scene_id skip/keep lists
-    # Compute zonal stats for all available images
-    # Filter by scene_id when making summary tables
-    logging.info('  Not applying scene_id keep or skip lists')
+    # Only process specific Landsat scenes
     ini[section]['scene_id_keep_list'] = []
+    if ini[section]['scene_id_keep_path']:
+        try:
+            with open(ini[section]['scene_id_keep_path']) as input_f:
+                scene_id_keep_list = input_f.readlines()
+            ini[section]['scene_id_keep_list'] = [
+                x.strip()[:16] for x in scene_id_keep_list]
+        except IOError:
+            logging.error('\nFileIO Error: {}'.format(
+                ini[section]['scene_id_keep_path']))
+            sys.exit()
+        except Exception as e:
+            logging.error('\nUnhanded Exception: {}'.format(e))
+
+    # Skip specific landsat scenes
     ini[section]['scene_id_skip_list'] = []
+    if ini[section]['scene_id_skip_path']:
+        try:
+            with open(ini[section]['scene_id_skip_path']) as input_f:
+                scene_id_skip_list = input_f.readlines()
+            ini[section]['scene_id_skip_list'] = [
+                x.strip()[:16] for x in scene_id_skip_list]
+        except IOError:
+            logging.error('\nFileIO Error: {}'.format(
+                ini[section]['scene_id_skip_path']))
+            sys.exit()
+        except Exception as e:
+            logging.error('\nUnhanded Exception: {}'.format(e))
 
-    # # Only process specific Landsat scenes
-    # try:
-    #     with open(config['scene_id_keep_path']) as input_f:
-    #         scene_id_keep_list = input_f.readlines()
-    #     ini[section]['scene_id_keep_list'] = [
-    #         x.strip()[:16] for x in scene_id_keep_list.split(',')]
-    # except IOError:
-    #     logging.error('\nFileIO Error: {}'.format(
-    #         config['scene_id_keep_path']))
-    #     sys.exit()
-    # except:
-    #     ini[section]['scene_id_keep_list'] = []
 
-    # # Skip specific landsat scenes
-    # try:
-    #     with open(config['scene_id_skip_path']) as input_f:
-    #         scene_id_skip_list = input_f.readlines()
-    #     ini[section]['scene_id_skip_list'] = [
-    #         x.strip()[:16] for x in scene_id_skip_list.split(',')]
-    # except IOError:
-    #     logging.error('\nFileIO Error: {}'.format(
-    #         config['scene_id_skip_path']))
-    #     sys.exit()
-    # except:
-    #     ini[section]['scene_id_skip_list'] = []
-
-    
 def parse_spatial_reference(ini, section='SPATIAL'):
     """"""
     # MANDATORY PARAMETERS
@@ -314,7 +311,7 @@ def parse_spatial_reference(ini, section='SPATIAL'):
     # logging.debug('  OSR: {}\n'.format(
     #     ini[section]['osr'].ExportToWkt())
 
-    
+
 def parse_export(ini, section='EXPORT'):
     """"""
     # MANDATORY PARAMETERS

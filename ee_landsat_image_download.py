@@ -48,7 +48,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    # ini = ini_common.ini_parse(ini_path, section='IMAGE')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
     ini_common.parse_section(ini, section='SPATIAL')
@@ -157,6 +156,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             ogr.CreateGeometryFromJson(json.dumps(zone_json)).GetEnvelope())
         # zone_extent = gdc.Extent(zone_geom.GetEnvelope())
         zone_extent.ymin, zone_extent.xmax = zone_extent.xmax, zone_extent.ymin
+        zone_extent = zone_extent.buffer(ini['IMAGES']['image_buffer'])
         zone_extent = zone_extent.adjust_to_snap(
             'EXPAND', ini['SPATIAL']['snap_x'], ini['SPATIAL']['snap_y'],
             ini['SPATIAL']['cellsize'])
@@ -170,6 +170,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         output_transform = '[' + ','.join(map(str, zone_transform)) + ']'
         output_shape = '{1}x{0}'.format(*zone_shape)
+        # logging.debug('  Image Transform: {}'.format(output_transform))
+        # logging.debug('  Image Shape: {}'.format(output_shape))
 
         zone_images_ws = os.path.join(
             ini['IMAGES']['output_ws'], zone_name, images_folder)
@@ -377,7 +379,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     band_image,
                     description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
+                    #folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['SPATIAL']['crs'],
@@ -389,7 +391,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         '  Unhandled error starting task, skipping\n'
                         '  {}'.format(str(e)))
                     continue
-                # logging.debug(task.status())
+                logging.debug(task.status())
 
     # # Get current running tasks
     # logging.debug('\nRunning tasks')

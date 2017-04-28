@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_figures.py
 # Purpose:      Generate summary figures
-# Created       2017-03-17
+# Created       2017-04-28
 # Python:       2.7
 #--------------------------------
 
@@ -36,7 +36,6 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     logging.info('\nGenerate summary figures')
 
     # Read config file
-    # ini = ini_common.ini_parse(ini_path, section='FIGURES')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
     ini_common.parse_section(ini, section='SUMMARY')
@@ -351,11 +350,25 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                 landsat_df['ROW'].isin(ini['INPUTS']['row_keep_list'])]
 
         if ini['INPUTS']['scene_id_keep_list']:
-            landsat_df = landsat_df[landsat_df['SCENE_ID'].isin(
-                ini['INPUTS']['scene_id_keep_list'])]
+            # Replace XXX with primary ROW value for checking skip list SCENE_ID
+            scene_id_df = pd.Series([
+                s.replace('XXX', '{:03d}'.format(int(r)))
+                for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+            landsat_df = landsat_df[scene_id_df.isin(
+                ini['INPUTS']['scene_id_keep_list']).values]
+            # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+            # landsat_df = landsat_df[landsat_df['SCENE_ID'].isin(
+            #     ini['INPUTS']['scene_id_keep_list'])]
         if ini['INPUTS']['scene_id_skip_list']:
-            landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
-                ini['INPUTS']['scene_id_skip_list']))]
+            # Replace XXX with primary ROW value for checking skip list SCENE_ID
+            scene_id_df = pd.Series([
+                s.replace('XXX', '{:03d}'.format(int(r)))
+                for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+            landsat_df = landsat_df[np.logical_not(scene_id_df.isin(
+                ini['INPUTS']['scene_id_skip_list']).values)]
+            # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+            # landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
+            #     ini['INPUTS']['scene_id_skip_list']))]
 
         # First filter by average cloud score
         if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:

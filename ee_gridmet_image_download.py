@@ -67,7 +67,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         pdsi_folder = 'pdsi'
 
     # Read config file
-    # ini = ini_common.ini_parse(ini_path, section='IMAGE')
     ini = ini_common.read(ini_path)
     ini_common.parse_section(ini, section='INPUTS')
     ini_common.parse_section(ini, section='SPATIAL')
@@ -289,7 +288,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     gridmet_image,
                     description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
+                    # folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['SPATIAL']['crs'],
@@ -395,7 +394,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 task = ee.batch.Export.image.toDrive(
                     pdsi_image,
                     description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
+                    #folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['SPATIAL']['crs'],
