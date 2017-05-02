@@ -462,7 +462,7 @@ def parse_images(ini, section='IMAGES'):
     """"""
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['images_workspace', 'output_ws', str, os.getcwd()],
+        ['output_workspace', 'output_ws', str, os.getcwd()],
         ['download_bands', 'download_bands', str, ''],
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
         ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
@@ -489,7 +489,7 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # OPTIONAL PARAMETERS
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['stats_workspace', 'output_ws', str, os.getcwd()],
+        ['output_workspace', 'output_ws', str, os.getcwd()],
         ['landsat_flag', 'landsat_flag', bool, True],
         ['gridmet_daily_flag', 'gridmet_daily_flag', bool, False],
         ['gridmet_monthly_flag', 'gridmet_monthly_flag', bool, False],
@@ -513,7 +513,7 @@ def parse_summary(ini, section='SUMMARY'):
     # OPTIONAL PARAMETERS
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['stats_workspace', 'output_ws', str, os.getcwd()],
+        ['output_workspace', 'output_ws', str, os.getcwd()],
         ['max_qa', 'max_qa', float, 0],
         # Modified defaults to be consistent with example INI file and README
         ['max_cloud_score', 'max_cloud_score', float, 100],
