@@ -105,13 +105,11 @@ def main(ini_path=None, overwrite_flag=False):
     }
 
     logging.info('\nProcessing zones')
-    zone_list = []
     for zone_fid, zone_name, zone_json in zone_geom_list:
         zone['fid'] = zone_fid
         zone['name'] = zone_name.replace(' ', '_')
         zone['json'] = zone_json
         logging.info('ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
-        zone_list.append(zone_name)
 
         # Build EE geometry object for zonal stats
         zone['geom'] = ee.Geometry(
@@ -142,10 +140,10 @@ def main(ini_path=None, overwrite_flag=False):
 
         if 'SUMMARY' in ini.keys():
             zone_output_ws = os.path.join(
-                ini['SUMMARY']['output_ws'], zone_name)
+                ini['SUMMARY']['output_ws'], zone['name'])
         elif 'EXPORT' in ini.keys():
             zone_output_ws = os.path.join(
-                ini['EXPORT']['output_ws'], zone_name)
+                ini['EXPORT']['output_ws'], zone['name'])
         else:
             logging.error(
                 'INI file does not contain a SUMMARY or EXPORT section')
@@ -233,6 +231,18 @@ def main(ini_path=None, overwrite_flag=False):
                 ini['SUMMARY']['max_qa']))
             landsat_df = landsat_df[landsat_df['QA'] <= ini['SUMMARY']['max_qa']]
 
+        # # Apply additional basic QA/QC filtering
+        # if ('QA' in list(landsat_df.columns.values) and
+        #         set(landsat_df['QA']) != set([0])):
+        #     logging.debug('  Filtering using QA flag (QA==0)')
+        #     landsat_df = landsat_df[landsat_df['QA'] == 0]
+        # else:
+        #     # If QA flag was not set, apply some basic filtering
+        #     logging.debug('  Not filtering by QA flag')
+        #     landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
+        #     landsat_df = landsat_df[landsat_df['CLOUD_SCORE'] < 100]
+        #     landsat_df = landsat_df[landsat_df['TS'] > 260]
+
         # Filter by average cloud score
         if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
             logging.debug('    Maximum cloud score: {0}'.format(
@@ -265,22 +275,9 @@ def main(ini_path=None, overwrite_flag=False):
                 ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
                 (~slc_off_mask)]
 
-        # Apply additional basic QA/QC filtering
-        if ('QA' in list(landsat_df.columns.values) and
-                set(landsat_df['QA']) != set([0])):
-            logging.debug('  Filtering using QA flag (QA==0)')
-            landsat_df = landsat_df[landsat_df['QA'] == 0]
-        else:
-            # If QA flag was not set, apply some basic filtering
-            logging.debug('  Not filtering by QA flag')
-            landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
-            landsat_df = landsat_df[landsat_df['CLOUD_SCORE'] < 100]
-            landsat_df = landsat_df[landsat_df['TS'] > 260]
-
         if landsat_df.empty:
             logging.error(
                 '  Empty Landsat dataframe after filtering, skipping zone')
-            # zone_list.remove(zone_name)
             # raw_input('ENTER')
             continue
 
@@ -352,6 +349,7 @@ def main(ini_path=None, overwrite_flag=False):
                     logging.error('  Exception: {}, retry {}'.format(e, i))
                     logging.debug('{}'.format(e))
                     sleep(i ** 2)
+
 
 def arg_parse():
     """"""
