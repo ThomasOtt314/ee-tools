@@ -112,6 +112,19 @@ To generate summary tables and figures, execute the following:
 > python summary_figures.py -i example\example_summary.ini
 ```
 
+## Interactive Timeseries Figures
+```
+> python summary_timeseries.py -i example\example_summary.ini
+```
+
+## Landsat Thumbnail Download
+To download Landsat thumbnail images for each zone, execute the following:
+```
+> python ee_landsat_thumbnail_download.py -i example\example_summary.ini
+```
+
+Currently you must use the "summary" or "zonal stats" INI file to set the output workspace.
+
 ## Dependencies
 The EE-Tools have only been tested using Python 2.7 but they may work with Python 3.x.
 
@@ -149,7 +162,7 @@ The external modules can then be installed one by one:
 
 or all together:
 ```
-> conda install gdal numpy pandas configparser relativedelta
+> conda install bokeh configparser gdal numpy pandas openypxl relativedelta
 ```
 
 #### EarthEngine-API / PIP
