@@ -124,6 +124,7 @@ To download Landsat thumbnail images for each zone, execute the following:
 ```
 
 Currently you must use the "summary" or "zonal stats" INI file to set the output workspace.
+The Landsat thumbnail script must also be run after zonal statistics have been computed.
 
 ## Dependencies
 The EE-Tools have only been tested using Python 2.7 but they may work with Python 3.x.

@@ -280,7 +280,6 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
     for zone_fid, zone_name, zone_json in zone_geom_list:
         zone_name = zone_name.replace(' ', '_')
         logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
-        # zone_list.append(zone_name)
 
         # CSV files are read from zone
         zone_stats_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_name)
