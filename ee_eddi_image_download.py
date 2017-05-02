@@ -14,7 +14,7 @@ import os
 import shutil
 import sys
 
-import arcpy
+# import arcpy
 import ee
 from osgeo import ogr
 
@@ -142,7 +142,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Project the zone_geom to the GRIDMET projection
         # if zone_proj != output_proj:
-        zone_geom = zone_geom.transform(ini['SPATIAL']['crs'], 0.0001)
+        zone_geom = zone_geom.transform(ini['SPATIAL']['crs'], 0.001)
 
         # Get the extent from the Earth Engine geometry object?
         zone_extent = zone_geom.bounds().getInfo()['coordinates'][0]
@@ -232,7 +232,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     logging.debug('  Export image already exists, moving')
                     shutil.move(export_path, output_path)
                     gdc.raster_path_set_nodata(output_path, nodata_value)
-                    arcpy.CalculateStatistics_management(output_path)
+                    # arcpy.CalculateStatistics_management(output_path)
                     # gdc.raster_statistics(output_path)
                     continue
                 elif os.path.isfile(output_path):
