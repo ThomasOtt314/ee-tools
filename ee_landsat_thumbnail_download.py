@@ -140,20 +140,29 @@ def main(ini_path=None, overwrite_flag=False):
         extent_geom = ee.Geometry.Rectangle(
             coords=list(zone['extent']), proj=zone['proj'], geodesic=False)
 
-        zone_stats_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_name)
-        if not os.path.isdir(zone_stats_ws):
+        if 'SUMMARY' in ini.keys():
+            zone_output_ws = os.path.join(
+                ini['SUMMARY']['output_ws'], zone_name)
+        elif 'EXPORT' in ini.keys():
+            zone_output_ws = os.path.join(
+                ini['EXPORT']['output_ws'], zone_name)
+        else:
+            logging.error(
+                'INI file does not contain a SUMMARY or EXPORT section')
+            sys.exit()
+        if not os.path.isdir(zone_output_ws):
             logging.debug('Folder {} does not exist, skipping'.format(
-                zone_stats_ws))
+                zone_output_ws))
             continue
 
         landsat_daily_path = os.path.join(
-            zone_stats_ws, '{}_landsat_daily.csv'.format(zone['name']))
+            zone_output_ws, '{}_landsat_daily.csv'.format(zone['name']))
         if not os.path.isfile(landsat_daily_path):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
 
-        output_doy_ws = os.path.join(zone_stats_ws, 'thumbnails_doy')
-        output_date_ws = os.path.join(zone_stats_ws, 'thumbnails_date')
+        output_doy_ws = os.path.join(zone_output_ws, 'thumbnails_doy')
+        output_date_ws = os.path.join(zone_output_ws, 'thumbnails_date')
         if overwrite_flag and os.path.isdir(output_doy_ws):
             for file_name in os.listdir(output_doy_ws):
                 os.remove(os.path.join(output_doy_ws, file_name))
