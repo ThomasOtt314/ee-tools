@@ -174,6 +174,12 @@ def main(ini_path=None, overwrite_flag=True):
             # landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
             #     ini['INPUTS']['scene_id_skip_list']))]
 
+        # Filter by QA/QC value
+        if ini['SUMMARY']['max_qa'] >= 0 and not landsat_df.empty:
+            logging.debug('    Maximum QA: {0}'.format(
+                ini['SUMMARY']['max_qa']))
+            landsat_df = landsat_df[landsat_df['QA'] <= ini['SUMMARY']['max_qa']]
+
         # First filter by average cloud score
         if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
             logging.debug('    Maximum cloud score: {0}'.format(

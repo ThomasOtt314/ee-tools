@@ -23,6 +23,7 @@ Each of the scripts reads a different combination of INI sections.  There are se
 + INPUTS - Used by all of the ee-tools
 + EXPORT - Export specific parameters and is read by the zonal statistics and image download scripts.
 + ZONAL_STATS - Zonal stats specific parameters.
++ SPATIAL - Spatial reference (projection, snap point, cellsize) parameters.
 + IMAGES - Image download specific parameters.
 + SUMMARY - Summary specific parameters and is read by the summary figures and summary tables scripts.
 + FIGURES - Summary figure specific parameters.
@@ -49,7 +50,7 @@ optional arguments:
 #### Input file
 To set the input file, use the "-i" or "--ini" argument.  The INI file path can be absolute or relative to the current working directory.
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\ee_zs.ini
+> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
 ```
 
 #### Overwrite
@@ -67,28 +68,39 @@ Currently, the output spatial reference set in the INI file ([EXPORT] parameter 
 ## Zonal Stats
 To initiate Earth Engine zonal statistics export tasks, execute the following:
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\ee_zs.ini
+> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
 ```
 
-As the export tasks finish, the zonal stats CSV files will be written to your Google drive.  Once all of the exports have finished, rerun the script, and all of the CSV files will be copied to the output workspace set in the INI file.
+As the export tasks finish, the zonal stats CSV files will be written to your Google drive.  Once all of the exports have finished, rerun the script, and the CSV files will be copied to the output workspace set in the INI file.
 
 #### Output
 
-Output field desciptions:
+EE Output field desciptions:
 PIXEL_TOTAL - Number of pixels that could nominally be in the zone.
 PIXEL_COUNT - Number of pixels with data used in the computation of mean NDVI, Ts, etc.  PIXEL_COUNT should always be <= PIXEL_TOTAL.  PIXEL_COUNT will be lower than PIXEL_TOTAL for zones that are near the edge of the image or cross the scan-line corrector gaps in Landsat 7 images.  Zones that are fully contained within cloud free Landsat 5 and 8 images can have PIXEL_COUNTS equal to PIXEL_TOTAL.
 FMASK_TOTAL - Number of pixels with an FMASK value.  FMASK_TOTAL should be equal to PIXEL_COUNT, but may be slightly different for LE7 SCL-off images.
 FMASK_COUNT - Number of pixels with FMASK values of 2, 3, or 4 (shadow, snow, and cloud).  FMASK_COUNT should always be <= FMASK_TOTAL.  Cloudy scenes will have high FMASK_COUNTs relative to FMASK_TOTAL.
 
+## QA/QC
+The QA/QC script will add the following fields to the daily Landsat CSV file:
+FMASK_PCT - Percentage of available pixels that are cloudy (FMASK_COUNT / FMASK_TOTAL)
+QA - QA/QC value (higher values are more likely to be cloudy or bad data)
+OUTLIER_SCORE - Experimental - Value is relative to distribution of data
+
+To compute QA/QC values, execute the following:
+```
+> python ee_summary_qaqc.py -i example\example_summary.ini
+```
+
 ## Image Download
 To download Landsat images, execute the following:
 ```
-> python ee_landsat_image_download.py -i example\ee_images.ini
+> python ee_landsat_image_download.py -i example\example_images.ini
 ```
 
 To download GRIDMET ETo/PPT images, execute the following:
 ```
-> python ee_gridmet_image_download.py -i example\ee_images.ini
+> python ee_gridmet_image_download.py -i example\example_images.ini
 ```
 
 The download scripts must be run twice (like the zonal stats script) in order to first export the TIF files to your Google drive and then copy them to the output workspace.
@@ -96,8 +108,8 @@ The download scripts must be run twice (like the zonal stats script) in order to
 ## Summary Figures/Tables
 To generate summary tables and figures, execute the following:
 ```
-> python ee_summary_tables.py -i example\ee_summary.ini
-> python ee_summary_figures.py -i example\ee_summary.ini
+> python ee_summary_tables.py -i example\example_summary.ini
+> python ee_summary_figures.py -i example\example_summary.ini
 ```
 
 ## Dependencies

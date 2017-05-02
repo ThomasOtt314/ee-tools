@@ -478,7 +478,7 @@ def parse_images(ini, section='IMAGES'):
     # Image download bands
     ini[section]['download_bands'] = map(
         lambda x: x.strip().lower(), ini[section]['download_bands'].split(','))
-    logging.info('\n  Output Bands:')
+    logging.debug('  Output Bands:')
     for band in ini[section]['download_bands']:
         logging.info('    {}'.format(band))
 
@@ -514,9 +514,15 @@ def parse_summary(ini, section='SUMMARY'):
     # param_section, input_name, output_name, get_type, default
     param_list = [
         ['stats_workspace', 'output_ws', str, os.getcwd()],
-        ['max_cloud_score', 'max_cloud_score', float, 70],
+        ['max_qa', 'max_qa', float, 0],
+        # Modified defaults to be consistent with example INI file and README
+        ['max_cloud_score', 'max_cloud_score', float, 100],
         ['max_fmask_pct', 'max_fmask_pct', float, 100],
-        ['min_slc_off_pct', 'min_slc_off_pct', float, 50],
+        ['min_slc_off_pct', 'min_slc_off_pct', float, 0],
+        # Original default values
+        # ['max_cloud_score', 'max_cloud_score', float, 70],
+        # ['max_fmask_pct', 'max_fmask_pct', float, 100],
+        # ['min_slc_off_pct', 'min_slc_off_pct', float, 50],
         ['gridmet_start_month', 'gridmet_start_month', int, 10],
         ['gridmet_end_month', 'gridmet_end_month', int, 9]
     ]

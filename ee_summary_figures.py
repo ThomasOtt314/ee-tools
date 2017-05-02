@@ -370,12 +370,19 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
             # landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
             #     ini['INPUTS']['scene_id_skip_list']))]
 
-        # First filter by average cloud score
+        # Filter by QA/QC value
+        if ini['SUMMARY']['max_qa'] >= 0 and not landsat_df.empty:
+            logging.debug('    Maximum QA: {0}'.format(
+                ini['SUMMARY']['max_qa']))
+            landsat_df = landsat_df[landsat_df['QA'] <= ini['SUMMARY']['max_qa']]
+
+        # Filter by average cloud score
         if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
             logging.debug('    Maximum cloud score: {0}'.format(
                 ini['SUMMARY']['max_cloud_score']))
             landsat_df = landsat_df[
                 landsat_df['CLOUD_SCORE'] <= ini['SUMMARY']['max_cloud_score']]
+
         # Filter by Fmask percentage
         if ini['SUMMARY']['max_fmask_pct'] < 100 and not landsat_df.empty:
             landsat_df['FMASK_PCT'] = 100 * (
@@ -384,6 +391,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                 ini['SUMMARY']['max_fmask_pct']))
             landsat_df = landsat_df[
                 landsat_df['FMASK_PCT'] <= ini['SUMMARY']['max_fmask_pct']]
+
         # Filter low count SLC-off images
         if ini['SUMMARY']['min_slc_off_pct'] > 0 and not landsat_df.empty:
             logging.debug('    Mininum SLC-off threshold: {}%'.format(
