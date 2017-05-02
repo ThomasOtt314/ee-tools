@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-04-28
+# Created       2017-05-02
 # Python:       2.7
 #--------------------------------
 
@@ -264,7 +264,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             float(iter_end_year) / iter_years) * iter_years)
 
     # Process date range by year
-    for year in xrange(iter_start_year, iter_end_year, iter_years):
+    for year in range(iter_start_year, iter_end_year, iter_years):
         start_dt = datetime.datetime(year, 1, 1)
         end_dt = (
             datetime.datetime(year + iter_years, 1, 1) -
@@ -315,12 +315,21 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 for task in tasks[export_id]:
                     ee.data.cancelTask(task)
                 del tasks[export_id]
-            if os.path.isfile(export_path):
-                logging.debug('  Export CSV already exists, removing')
-                os.remove(export_path)
-            if os.path.isfile(output_path):
-                logging.debug('  Output CSV already exists, removing')
-                os.remove(output_path)
+
+            if ini['EXPORT']['export_dest'] == 'GDRIVE':
+                if os.path.isfile(export_path):
+                    logging.debug('  Export CSV already exists, removing')
+                    os.remove(export_path)
+                if os.path.isfile(output_path):
+                    logging.debug('  Output CSV already exists, removing')
+                    os.remove(output_path)
+            elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+                    export_path in ini['EXPORT']['file_list']):
+                logging.debug('    Export image already exists')
+                # Files in cloud storage are easily overwritten
+                #   so it is unneccesary to manually remove them
+                # # This would remove an existing file
+                # p = subprocess.call(['gsutil', 'rm', export_path])
 
         if os.path.isfile(export_path):
             logging.debug('  Export CSV already exists, moving')
@@ -329,12 +338,14 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 export_df = pd.read_csv(export_path)
                 export_df = export_df[export_fields]
                 export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-                export_df.to_csv(output_path, index=False, columns=export_fields)
+                export_df.to_csv(
+                    output_path, index=False, columns=export_fields)
             except pd.io.common.EmptyDataError:
                 # Save an empty dataframe to the output path
                 logging.warning('    Empty dataframe')
                 export_df = pd.DataFrame(columns=export_fields)
-                export_df.to_csv(output_path, index=False, columns=export_fields)
+                export_df.to_csv(
+                    output_path, index=False, columns=export_fields)
                 # logging.warning('    Empty dataframe, skipping')
                 # continue
             os.remove(export_path)
@@ -494,16 +505,28 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # task.start()
         # return False
 
+        #
+        logging.debug('  Building export task')
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            task = ee.batch.Export.table.toDrive(
+                collection=stats_coll,
+                description=export_id,
+                folder=ini['EXPORT']['export_folder'],
+                fileNamePrefix=export_id,
+                fileFormat='CSV')
+        elif ini['EXPORT']['export_dest'] == 'CLOUD':
+            task = ee.batch.Export.table.toCloudStorage(
+                collection=stats_coll,
+                description=export_id,
+                bucket=ini['EXPORT']['bucket_name'],
+                fileNamePrefix='{}'.format(export_id.replace('-', '')),
+                # fileNamePrefix=export_id,
+                fileFormat='CSV')
+
         # Download the CSV to your Google Drive
         logging.debug('  Starting export task')
         for i in range(1, 10):
             try:
-                task = ee.batch.Export.table.toDrive(
-                    collection=stats_coll,
-                    description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
-                    fileNamePrefix=export_id,
-                    fileFormat='CSV')
                 task.start()
                 break
             except Exception as e:
@@ -513,14 +536,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # logging.debug('  Status: {}'.format(task.status()))
         # logging.debug('  Active: {}'.format(task.active()))
 
-
     # Combine/merge annual files into a single CSV
     # This code shouldn't be run until the tables have exported
     # Because that is difficult to know, the script will "silently"
     #   skip past any file that doesn't exist.
     logging.debug('\n  Merging annual Landsat CSV files')
     output_df = None
-    for year in xrange(iter_start_year, iter_end_year, iter_years):
+    for year in range(iter_start_year, iter_end_year, iter_years):
         start_dt = datetime.datetime(year, 1, 1)
         end_dt = (
             datetime.datetime(year + iter_years, 1, 1) -
@@ -631,12 +653,13 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             for task in tasks[export_id]:
                 ee.data.cancelTask(task)
             del tasks[export_id]
-        if os.path.isfile(export_path):
-            logging.debug('  Export CSV already exists, removing')
-            os.remove(export_path)
-        if os.path.isfile(output_path):
-            logging.debug('  Output CSV already exists, removing')
-            os.remove(output_path)
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            if os.path.isfile(export_path):
+                logging.debug('  Export CSV already exists, removing')
+                os.remove(export_path)
+            if os.path.isfile(output_path):
+                logging.debug('  Output CSV already exists, removing')
+                os.remove(output_path)
 
     if os.path.isfile(export_path):
         logging.debug('  Export CSV already exists, moving')
@@ -685,15 +708,26 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 })
         stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
+        logging.debug('  Building export task')
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            task = ee.batch.Export.table.toDrive(
+                collection=stats_coll,
+                description=export_id,
+                folder=ini['EXPORT']['export_folder'],
+                fileNamePrefix=export_id,
+                fileFormat='CSV')
+        elif ini['EXPORT']['export_dest'] == 'CLOUD':
+            task = ee.batch.Export.table.toCloudStorage(
+                collection=stats_coll,
+                description=export_id,
+                bucket=ini['EXPORT']['bucket_name'],
+                fileNamePrefix='{}'.format(export_id.replace('-', '')),
+                # fileNamePrefix=export_id,
+                fileFormat='CSV')
+
         logging.debug('  Starting export task')
         for i in range(1, 10):
             try:
-                task = ee.batch.Export.table.toDrive(
-                    collection=stats_coll,
-                    description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
-                    fileNamePrefix=export_id,
-                    fileFormat='CSV')
                 task.start()
                 break
             except Exception as e:
@@ -781,12 +815,13 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             for task in tasks[export_id]:
                 ee.data.cancelTask(task)
             del tasks[export_id]
-        if os.path.isfile(export_path):
-            logging.debug('  Export CSV already exists, removing')
-            os.remove(export_path)
-        if os.path.isfile(output_path):
-            logging.debug('  Output CSV already exists, removing')
-            os.remove(output_path)
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            if os.path.isfile(export_path):
+                logging.debug('  Export CSV already exists, removing')
+                os.remove(export_path)
+            if os.path.isfile(output_path):
+                logging.debug('  Output CSV already exists, removing')
+                os.remove(output_path)
 
     if os.path.isfile(export_path):
         logging.debug('  Export CSV already exists, moving')
@@ -832,15 +867,26 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 })
         stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
+        logging.debug('  Building export task')
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            task = ee.batch.Export.table.toDrive(
+                collection=stats_coll,
+                description=export_id,
+                folder=ini['EXPORT']['export_folder'],
+                fileNamePrefix=export_id,
+                fileFormat='CSV')
+        elif ini['EXPORT']['export_dest'] == 'CLOUD':
+            task = ee.batch.Export.table.toCloudStorage(
+                collection=stats_coll,
+                description=export_id,
+                bucket=ini['EXPORT']['bucket_name'],
+                fileNamePrefix='{}'.format(export_id.replace('-', '')),
+                # fileNamePrefix=export_id,
+                fileFormat='CSV')
+
         logging.debug('  Starting export task')
         for i in range(1, 10):
             try:
-                task = ee.batch.Export.table.toDrive(
-                    collection=stats_coll,
-                    description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
-                    fileNamePrefix=export_id,
-                    fileFormat='CSV')
                 task.start()
                 break
             except Exception as e:
@@ -886,12 +932,13 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             for task in tasks[export_id]:
                 ee.data.cancelTask(task)
             del tasks[export_id]
-        if os.path.isfile(export_path):
-            logging.debug('  Export CSV already exists, removing')
-            os.remove(export_path)
-        if os.path.isfile(output_path):
-            logging.debug('  Output CSV already exists, removing')
-            os.remove(output_path)
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            if os.path.isfile(export_path):
+                logging.debug('  Export CSV already exists, removing')
+                os.remove(export_path)
+            if os.path.isfile(output_path):
+                logging.debug('  Output CSV already exists, removing')
+                os.remove(output_path)
 
     if os.path.isfile(export_path):
         logging.debug('  Export CSV already exists, moving')
@@ -934,15 +981,26 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 })
         stats_coll = pdsi_coll.map(pdsi_zonal_stats_func)
 
+        logging.debug('  Building export task')
+        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+            task = ee.batch.Export.table.toDrive(
+                collection=stats_coll,
+                description=export_id,
+                folder=ini['EXPORT']['export_folder'],
+                fileNamePrefix=export_id,
+                fileFormat='CSV')
+        elif ini['EXPORT']['export_dest'] == 'CLOUD':
+            task = ee.batch.Export.table.toCloudStorage(
+                collection=stats_coll,
+                description=export_id,
+                bucket=ini['EXPORT']['bucket_name'],
+                fileNamePrefix='{}'.format(export_id.replace('-', '')),
+                # fileNamePrefix=export_id,
+                fileFormat='CSV')
+
         logging.debug('  Starting export task')
         for i in range(1, 10):
             try:
-                task = ee.batch.Export.table.toDrive(
-                    collection=stats_coll,
-                    description=export_id,
-                    folder=ini['EXPORT']['export_folder'],
-                    fileNamePrefix=export_id,
-                    fileFormat='CSV')
                 task.start()
                 break
             except Exception as e:

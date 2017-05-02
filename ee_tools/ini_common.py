@@ -2,7 +2,7 @@
 # Name:         ini_common.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-04-28
+# Created       2017-05-02
 # Python:       2.7
 #--------------------------------
 
@@ -42,7 +42,7 @@ def read(ini_path):
 
 
 def parse_section(ini, section):
-    logging.debug('  Checking {} section'.format(section))
+    logging.debug('Checking {} section'.format(section))
     if section not in ini.keys():
         logging.error(
             '\nERROR: Input file does not have an {} section'.format(section))
@@ -127,8 +127,7 @@ def parse_inputs(ini, section='INPUTS'):
     # MANDATORY PARAMETERS
     # section, input_name, output_name, description, get_type
     param_list = [
-        ['zone_workspace', 'zone_input_ws', str],
-        ['zone_filename', 'zone_filename', str],
+        ['zone_shp_path', 'zone_shp_path', str],
         ['zone_field', 'zone_field', str]
     ]
     for input_name, output_name, get_type in param_list:
@@ -163,21 +162,21 @@ def parse_inputs(ini, section='INPUTS'):
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
-    # Build and check file paths
-    ini[section]['zone_path'] = os.path.join(
-        ini[section]['zone_input_ws'], ini[section]['zone_filename'])
-    # Strip off file extension from filename after building path
+    # Strip off file extension from filename
     ini[section]['zone_filename'] = os.path.splitext(
-        ini[section]['zone_filename'])[0]
-    if not os.path.isdir(ini[section]['zone_input_ws']):
+        os.path.basename(ini[section]['zone_shp_path']))[0]
+
+    # Zone shapefile
+    # Eventually this may not be a mandatory parameter
+    if not os.path.isdir(os.path.dirname(ini[section]['zone_shp_path'])):
         logging.error(
-            '\nERROR: The zone workspace does not exist, '
-            'exiting\n  {}'.format(ini[section]['zone_input_ws']))
+            '\nERROR: The zone workspace does not exist, exiting\n'
+            '  {}'.format(os.path.dirname(ini[section]['zone_shp_ws'])))
         sys.exit()
-    elif not os.path.isfile(ini[section]['zone_path']):
+    elif not os.path.isfile(ini[section]['zone_shp_path']):
         logging.error(
             '\nERROR: The zone shapefile does not exist, '
-            'exiting\n  {}'.format(ini[section]['zone_path']))
+            'exiting\n  {}'.format(ini[section]['zone_shp_path']))
         sys.exit()
 
     # Start/end year
@@ -288,7 +287,7 @@ def parse_spatial_reference(ini, section='SPATIAL'):
 
     # Convert snap points to list
     ini[section]['snap'] = [
-        int(i) for i in ini[section]['snap'].split(',')
+        float(i) for i in ini[section]['snap'].split(',')
         if i.strip().isdigit()][:2]
     # Compute snap points separately
     ini[section]['snap_x'], ini[section]['snap_y'] = ini[section]['snap']
@@ -316,20 +315,101 @@ def parse_export(ini, section='EXPORT'):
     """"""
     # MANDATORY PARAMETERS
     # section, input_name, output_name, description, get_type
+    # param_list = [
+    #     ['export_dest', 'export_dest', str]
+    # ]
+    # for input_name, output_name, get_type in param_list:
+    #     get_param(ini, section, input_name, output_name, get_type)
+
+    # DEADBEEF - Eventually switch this back to being a mandatory parameter
     param_list = [
-        # Google Drive
-        ['gdrive_workspace', 'gdrive_ws', str],
-        # DEADBEEF - Moved to optional for now
-        # ['export_folder', 'export_folder', str],
+        ['export_dest', 'export_dest', str, 'GDRIVE']
     ]
-    for input_name, output_name, get_type in param_list:
-        get_param(ini, section, input_name, output_name, get_type)
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    # DEADBEEF - CLOUD export options are not fully supported yet
+    export_dest_list = ['GDRIVE']
+    # export_dest_list = ['GDRIVE', 'CLOUD']
+    if ini[section]['export_dest'].upper() not in export_dest_list:
+        logging.error(
+            '\nERROR: Invalid Export Destination: {}\n  Must be {}'.format(
+                ini[section]['export_dest'], ', '.join(export_dest_list)))
+        sys.exit()
+
+    # DEADBEEF - This might be better in an export module or separate function
+    # Export destination specific options
+    if ini[section]['export_dest'] == 'GDRIVE':
+        logging.info('  Google Drive Export')
+        get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
+        get_param(ini, section, 'export_folder', 'export_folder', str, '')
+        # get_param(ini, section, 'export_path', 'output_ws', str, 'ssebop')
+
+        # DEADBEEF
+        if ini[section]['export_folder']:
+            logging.info(
+                '\nThere are currently issues writing to Google Drive folders'
+                '\n  Setting "export_folder" = ""\n')
+            ini[section]['export_folder'] = ''
+            raw_input('ENTER')
+
+        # Build and check file paths
+        ini[section]['export_ws'] = os.path.join(
+            ini[section]['gdrive_ws'], ini[section]['export_folder'])
+        if not os.path.isdir(ini[section]['export_ws']):
+            os.makedirs(ini[section]['export_ws'])
+        logging.debug('  {:16s} {}'.format(
+            'GDrive Workspace:', ini['EXPORT']['export_ws']))
+
+    elif ini[section]['export_dest'] == 'CLOUD':
+        logging.info('  Cloud Storage')
+        get_param(ini, section, 'project_name', 'project_name', str, 'ssebop')
+        get_param(ini, section, 'bucket_name', 'bucket_name', str, None)
+
+        if not ini[section]['project_name']:
+            logging.error('\nERROR: {} must be set in INI, exiting\n'.format(
+                ini[section]['project_name']))
+        elif ini[section]['project_name'] != 'ssebop':
+            logging.error(
+                '\nERROR: When exporting to Cloud Storage, the ' +
+                'project_name parameter sets the project name.' +
+                '  This parameter must be set to "ssebop" for now')
+            sys.exit()
+        if not ini[section]['bucket_name']:
+            logging.error('\nERROR: {} must be set in INI, exiting\n'.format(
+                ini[section]['bucket_name']))
+            sys.exit()
+        ini[section]['export_ws'] = 'gs://{}'.format(
+            ini[section]['bucket_name'])
+        # logging.debug('  {:16s} {}'.format(
+        #     'Project:', ini[section]['project_name']))
+        logging.debug('  {:16s} {}'.format(
+            'Bucket:', ini[section]['bucket_name']))
+        logging.debug('  {:16s} {}'.format(
+            'Output Workspace:', ini[section]['export_ws']))
+
+        bucket_list = utils.get_buckets(ini[section]['project_name'])
+        if ini[section]['bucket_name'] not in bucket_list:
+            logging.error(
+                '\nERROR: The bucket "{}" does not exist, exiting'.format(
+                    ini[section]['bucket_name']))
+            return False
+            # Try creating the storage bucket if it doesn't exist using gsutil
+            # For now, I think it is better to make the user go do this
+            # p = subprocess.Popen([
+            #     'gsutil', 'mb', '-p', ini[section]['project_name'],
+            #     'gs://{}-{}'.format(
+            #         ini[section]['project_name'],
+            #         ini[section]['bucket_name'])])
+
 
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
     param_list = [
-        # DEADBEEF - Moved to optional for now
-        ['export_folder', 'export_folder', str, ''],
+        # # Google Drive
+        # ['gdrive_workspace', 'gdrive_ws', str, ''],
+        # ['export_folder', 'export_folder', str, ''],
+
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
@@ -340,20 +420,6 @@ def parse_export(ini, section='EXPORT'):
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
-
-    # DEADBEEF
-    if ini[section]['export_folder']:
-        logging.info(
-            '\n  There are currently issues writing to Google Drive folders'
-            '  Setting "export_folder" = ""\n')
-        ini[section]['export_folder'] = ''
-        raw_input('ENTER')
-
-    # Build and check file paths
-    ini[section]['export_ws'] = os.path.join(
-        ini[section]['gdrive_ws'], ini[section]['export_folder'])
-    if not os.path.isdir(ini[section]['export_ws']):
-        os.makedirs(ini[section]['export_ws'])
 
     # Fmask source type
     if ini[section]['fmask_flag'] and not ini[section]['fmask_type']:
