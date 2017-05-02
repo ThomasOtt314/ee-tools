@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-04-28
+# Created       2017-05-02
 # Python:       2.7
 #--------------------------------
 
@@ -73,7 +73,7 @@ def main(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
         reverse_flag=False)
 
     # Filter features by FID before merging geometries
@@ -86,9 +86,9 @@ def main(ini_path=None, overwrite_flag=False):
             zone_obj for zone_obj in zone_geom_list
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
-    # Need zone_path projection to build EE geometries
+    # Need zone_shp_path projection to build EE geometries
     zone = {}
-    zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
+    zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
     zone['proj'] = gdc.osr_wkt(zone['osr'])
     # zone['proj'] = ee.Projection(zone['proj']).wkt().getInfo()
     # zone['proj'] = zone['proj'].replace('\n', '').replace(' ', '')

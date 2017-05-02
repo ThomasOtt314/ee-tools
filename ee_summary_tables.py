@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_tables.py
 # Purpose:      Generate summary tables
-# Created       2017-04-28
+# Created       2017-05-02
 # Python:       2.7
 #--------------------------------
 
@@ -69,7 +69,7 @@ def main(ini_path=None, overwrite_flag=True):
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
         reverse_flag=False)
 
     # Filter features by FID before merging geometries

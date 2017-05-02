@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-04-28
+# Created       2017-05-02
 # Python:       2.7
 #--------------------------------
 
@@ -91,7 +91,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
         reverse_flag=False)
 
     # Filter features by FID before merging geometries
@@ -118,8 +118,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             json.loads(merge_geom.ExportToJson())]]
         ini['INPUTS']['zone_field'] = ''
 
-    # Need zone_path projection to build EE geometries
-    zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
+    # Need zone_shp_path projection to build EE geometries
+    zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
     zone_proj = gdc.osr_wkt(zone_osr)
     # zone_proj = ee.Projection(zone_proj).wkt().getInfo()
     # zone_proj = zone_proj.replace('\n', '').replace(' ', '')

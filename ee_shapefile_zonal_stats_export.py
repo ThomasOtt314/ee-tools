@@ -79,7 +79,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['INPUTS']['zone_path'], zone_field=ini['INPUTS']['zone_field'],
+        ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
         reverse_flag=False)
     # zone_count = len(zone_geom_list)
     # output_fmt = '_{0:0%sd}.csv' % str(int(math.log10(zone_count)) + 1)
@@ -102,8 +102,8 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     if ini['INPUTS']['scene_id_keep_list']:
         ini['INPUTS']['scene_id_skip_list'] = []
 
-    # Need zone_path projection to build EE geometries
-    zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_path'])
+    # Need zone_shp_path projection to build EE geometries
+    zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
     zone['proj'] = gdc.osr_wkt(zone['osr'])
     # zone['proj'] = ee.Projection(zone['proj']).wkt().getInfo()
     # zone['proj'] = zone['proj'].replace('\n', '').replace(' ', '')
