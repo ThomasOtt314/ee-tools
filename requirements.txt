@@ -1,3 +1,4 @@
+bokeh
 configparser=3.5.0
 earthengine-api>=0.1.110
 gdal>=2.1.0

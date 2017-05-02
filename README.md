@@ -89,7 +89,7 @@ OUTLIER_SCORE - Experimental - Value is relative to distribution of data
 
 To compute QA/QC values, execute the following:
 ```
-> python ee_summary_qaqc.py -i example\example_summary.ini
+> python summary_qaqc.py -i example\example_summary.ini
 ```
 
 ## Image Download
@@ -108,8 +108,8 @@ The download scripts must be run twice (like the zonal stats script) in order to
 ## Summary Figures/Tables
 To generate summary tables and figures, execute the following:
 ```
-> python ee_summary_tables.py -i example\example_summary.ini
-> python ee_summary_figures.py -i example\example_summary.ini
+> python summary_tables.py -i example\example_summary.ini
+> python summary_figures.py -i example\example_summary.ini
 ```
 
 ## Dependencies
@@ -122,6 +122,7 @@ The following modules must be present to run all of the EE-Tools:
 * [gdal](http://gdal.org/)
 * [relativedelta](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
+* [bokeh](http://bokeh.pydata.org/) (for making interactive plots)
 * [openpyxl](https://openpyxl.readthedocs.io/en/default/) (for building summary excel table)
 * [pytest](http://doc.pytest.org/en/latest/) (only used for testing)
 
