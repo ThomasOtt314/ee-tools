@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
-# Created       2017-05-02
+# Created       2017-05-03
 # Python:       2.7
 #--------------------------------
 
@@ -18,7 +18,7 @@ from bokeh.models.glyphs import Circle
 from bokeh.plotting import figure
 import matplotlib as mpl
 import matplotlib.cm as cm
-# import numpy as np
+import numpy as np
 import pandas as pd
 
 import ee_tools.gdal_common as gdc
@@ -49,7 +49,12 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
     ini_common.parse_section(ini, section='INPUTS')
     ini_common.parse_section(ini, section='SUMMARY')
 
-    plot_var_list = ['NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR']
+    # Eventually read from INI
+    plot_var_list = [
+        'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR']
+    # plot_var_list = [
+    #     'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR',
+    #     'CLOUD_SCORE', 'FMASK_PCT']
 
     year_list = range(
         ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
@@ -89,9 +94,9 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
 
         # Output file paths
         output_doy_path = os.path.join(
-            zone_stats_ws, '{}_timeseries_doy.html'.format(zone_name))
+            zone_stats_ws, 'figures', '{}_timeseries_doy.html'.format(zone_name))
         output_date_path = os.path.join(
-            zone_stats_ws, '{}_timeseries_date.html'.format(zone_name))
+            zone_stats_ws, 'figures', '{}_timeseries_date.html'.format(zone_name))
 
         landsat_daily_path = os.path.join(
             zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
@@ -247,9 +252,9 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
 
         # Selection
         selected_circle = Circle(
-            fill_alpha=1, fill_color='COLOR', line_color='COLOR')
+            fill_color='COLOR', line_color='COLOR')
         nonselected_circle = Circle(
-            fill_alpha=0.8, fill_color='#aaaaaa', line_color='#aaaaaa')
+            fill_color='#aaaaaa', line_color='#aaaaaa')
 
 
         # Plot the data by DOY
@@ -263,7 +268,8 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
             tools="xwheel_zoom,xpan,xbox_zoom,reset,box_select",
             # tools="xwheel_zoom,xpan,xbox_zoom,reset,tap",
             active_scroll="xwheel_zoom")
-        plot_args = dict(size=4, alpha=0.9, color='COLOR')
+        plot_args = dict(
+            size=4, alpha=0.9, color='COLOR')
         if ini['SUMMARY']['max_qa'] > 0:
             plot_args['legend'] = 'QA'
 
@@ -281,10 +287,10 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
                 r = f.circle('DOY', plot_var, source=source, **plot_args)
                 r.selection_glyph = selected_circle
                 r.nonselection_glyph = nonselected_circle
+                r.muted_glyph = nonselected_circle
                 # DEADBEEF - This will display high QA points as muted
                 # if qa > ini['SUMMARY']['max_qa']:
                 #     r.muted = True
-                #     r.muted_glyph = nonselected_circle
                 #     # r.visible = False
 
             f.add_tools(
@@ -292,13 +298,16 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
 
             # if ini['SUMMARY']['max_qa'] > 0:
             f.legend.location = "top_left"
-            # f.legend.click_policy = "hide"
-            f.legend.click_policy = "mute"
+            f.legend.click_policy = "hide"
+            # f.legend.click_policy = "mute"
             f.legend.orientation = "horizontal"
 
             figures.append(f)
 
-        p = gridplot(figures, ncols=1, sizing_mode='stretch_both')
+        # Try to not allow more than 4 plots in a column
+        p = gridplot(
+            figures, ncols=len(plot_var_list) // 3,
+            sizing_mode='stretch_both')
 
         if show_flag:
             show(p)
@@ -317,7 +326,8 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
             # tools="xwheel_zoom,xpan,xbox_zoom,reset,tap",
             active_scroll="xwheel_zoom",
             x_axis_type="datetime",)
-        plot_args = dict(size=4, alpha=0.9, color='COLOR')
+        plot_args = dict(
+            size=4, alpha=0.9, color='COLOR')
         if ini['SUMMARY']['max_qa'] > 0:
             plot_args['legend'] = 'QA'
 
@@ -338,29 +348,35 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
                 r = f.circle('DATE', plot_var, source=source, **plot_args)
                 r.selection_glyph = selected_circle
                 r.nonselection_glyph = nonselected_circle
+                r.muted_glyph = nonselected_circle
                 # DEADBEEF - This will display high QA points as muted
                 # if qa > ini['SUMMARY']['max_qa']:
                 #     r.muted = True
-                #     r.muted_glyph = nonselected_circle
                 #     # r.visible = False
             f.add_tools(
                 HoverTool(tooltips=[("DATE", "@TIME"), ("DOY", "@DOY")]))
 
             # if ini['SUMMARY']['max_qa'] > 0:
             f.legend.location = "top_left"
-            # f.legend.click_policy = "hide"
-            f.legend.click_policy = "mute"
+            f.legend.click_policy = "hide"
+            # f.legend.click_policy = "mute"
             f.legend.orientation = "horizontal"
 
             figures.append(f)
 
-        p = gridplot(figures, ncols=1, sizing_mode='stretch_both')
+        # Try to not allow more than 4 plots in a column
+        p = gridplot(
+            figures, ncols=len(plot_var_list) // 3,
+            sizing_mode='stretch_both')
 
         if show_flag:
             show(p)
         save(p)
 
-        break
+        # Don't automatically build all plots if show is True
+        if show_flag:
+            raw_input('Press ENTER to continue')
+        # break
 
 
 def arg_parse():
