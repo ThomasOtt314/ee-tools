@@ -591,9 +591,9 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 # raw_input('ENTER')
                 continue
 
-            # Remove 0 pixel count rows
-            if 'PIXEL_COUNT' in list(input_df.columns.values):
-                input_df = input_df[input_df['PIXEL_COUNT'] > 0]
+            # # Remove 0 pixel count rows
+            # if 'PIXEL_COUNT' in list(input_df.columns.values):
+            #     input_df = input_df[input_df['PIXEL_COUNT'] > 0]
 
             try:
                 output_df = output_df.append(input_df)

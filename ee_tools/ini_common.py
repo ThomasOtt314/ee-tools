@@ -514,7 +514,8 @@ def parse_summary(ini, section='SUMMARY'):
     # param_section, input_name, output_name, get_type, default
     param_list = [
         ['output_workspace', 'output_ws', str, os.getcwd()],
-        ['max_qa', 'max_qa', float, 0],
+        # DEADBEEF - What should the default max_qa value be?
+        ['max_qa', 'max_qa', float, 5],
         # Modified defaults to be consistent with example INI file and README
         ['max_cloud_score', 'max_cloud_score', float, 100],
         ['max_fmask_pct', 'max_fmask_pct', float, 100],

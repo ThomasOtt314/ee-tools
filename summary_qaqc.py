@@ -23,7 +23,7 @@ import ee_tools.ini_common as ini_common
 import ee_tools.python_common as python_common
 
 
-def main(ini_path=None, overwrite_flag=True):
+def main(ini_path=None, plot_flag=False, overwrite_flag=True):
     """Generate summary QA/QC
 
     Proposed QA values
@@ -36,6 +36,7 @@ def main(ini_path=None, overwrite_flag=True):
 
     Args:
         ini_path (str):
+        plot_flag (bool): if True, generate QA/QC plots
         overwrite_flag (bool): if True, overwrite existing tables
     """
 
@@ -129,22 +130,22 @@ def main(ini_path=None, overwrite_flag=True):
         # Add QA/QC bands if necessary
         # if 'QA' not in list(landsat_df.columns.values):
         landsat_df['QA'] = 0
-        if 'OUTLIER_SCORE' not in list(landsat_df.columns.values):
-            landsat_df['OUTLIER_SCORE'] = np.nan
+        # if 'OUTLIER_SCORE' not in list(landsat_df.columns.values):
+        landsat_df['OUTLIER_SCORE'] = np.nan
 
-        # Set QA flag for scenes in skip list
-        if ini['INPUTS']['scene_id_skip_list']:
-            # Use primary ROW value for checking skip list SCENE_ID
-            scene_id_df = pd.Series([
-                s.replace('XXX', '{:03d}'.format(int(r)))
-                for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
-            skip_mask = scene_id_df.isin(
-                ini['INPUTS']['scene_id_skip_list']).values
-            landsat_df.loc[skip_mask, 'QA'] = 3
-            # Reset QA if scenes is not in skip list and flag is set
-            # landsat_df.loc[(landsat_df['QA'] != 3) & (~skip_mask), 'QA'] = 0
-            landsat_df.loc[~skip_mask, 'QA'] = 0
-            del scene_id_df, skip_mask
+        # # Set QA flag for scenes in skip list
+        # if ini['INPUTS']['scene_id_skip_list']:
+        #     # Use primary ROW value for checking skip list SCENE_ID
+        #     scene_id_df = pd.Series([
+        #         s.replace('XXX', '{:03d}'.format(int(r)))
+        #         for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+        #     skip_mask = scene_id_df.isin(
+        #         ini['INPUTS']['scene_id_skip_list']).values
+        #     landsat_df.loc[skip_mask, 'QA'] = 3
+        #     # Reset QA if scenes is not in skip list and flag is set
+        #     # landsat_df.loc[(landsat_df['QA'] != 3) & (~skip_mask), 'QA'] = 0
+        #     landsat_df.loc[~skip_mask, 'QA'] = 0
+        #     del scene_id_df, skip_mask
 
         # Set initial QA band values
         landsat_df.loc[landsat_df['CLOUD_SCORE'] >= 95, 'QA'] = 3
@@ -185,17 +186,18 @@ def main(ini_path=None, overwrite_flag=True):
         #     landsat_df, qa_value=1, contamination=0.05,
         #     fields=['ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR'])
 
-        # # Plot all QA 0 points
-        summary_doy_plots(
-            landsat_df[landsat_df['QA'] <= 2],
-            output_figure_fmt.format('d_outlier'),
-            color_field='QA')
-        # summary_doy_plots(
-        #     landsat_df[landsat_df['QA'] == 0],
-        #     output_figure_fmt.format('e_final'), color_field='QA')
-        # # summary_doy_plots(
-        # #     landsat_df, output_figure_fmt.format('d_outlier_values'),
-        # #     color_field='OUTLIER')
+        # Plot all QA 0 points
+        if plot_flag:
+            summary_doy_plots(
+                landsat_df[landsat_df['QA'] <= 2],
+                output_figure_fmt.format('d_outlier'),
+                color_field='QA')
+            # summary_doy_plots(
+            #     landsat_df[landsat_df['QA'] == 0],
+            #     output_figure_fmt.format('e_final'), color_field='QA')
+            # # summary_doy_plots(
+            # #     landsat_df, output_figure_fmt.format('d_outlier_values'),
+            # #     color_field='OUTLIER_SCORE')
 
 
 
@@ -291,7 +293,6 @@ def main(ini_path=None, overwrite_flag=True):
         del landsat_df
 
 
-
 def cos_fit_func(x, a, b, c):
     """Assume variables follow some sort of solar cycle
 
@@ -316,7 +317,7 @@ def summary_doy_plots(landsat_df, output_path, color_field=None,
             kargs.update({
                 'cmap': 'viridis', 'vmin': 0,
                 'vmax': max(landsat_df['QA'])})
-        elif color_field.upper() == 'OUTLIER':
+        elif color_field.upper() == 'OUTLIER_SCORE':
             kargs.update({
                 'cmap': 'viridis_r', 'vmin': -2, 'vmax': 2})
 
@@ -439,7 +440,7 @@ def outlier_filtering(landsat_df, qa_value, fields, contamination=0.15):
     landsat_df.loc[qa_mask, 'QA'] = qa_series
     # This isn't working for some reason
     # landsat_df.loc[qa_mask, 'QA'][Y != 1] = qa_value
-    landsat_df.loc[qa_mask, 'OUTLIER'] = S
+    landsat_df.loc[qa_mask, 'OUTLIER_SCORE'] = S
 
 
 def arg_parse():
@@ -450,6 +451,9 @@ def arg_parse():
     parser.add_argument(
         '-i', '--ini', type=lambda x: python_common.valid_file(x),
         help='Input file', metavar='FILE')
+    parser.add_argument(
+        '--plots', default=False, action='store_true',
+        help='Generate QA/QC plots')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
         help='Debug level logging', action='store_const', dest='loglevel')
@@ -476,5 +480,6 @@ if __name__ == '__main__':
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
 
-    main(ini_path=args.ini)
-    # main(ini_path=args.ini, overwrite_flag=args.overwrite)
+    main(ini_path=args.ini, plot_flag=args.plots)
+    # main(ini_path=args.ini, plot_flag=args.plots,
+    #      overwrite_flag=args.overwrite)
