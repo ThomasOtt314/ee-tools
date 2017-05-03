@@ -54,7 +54,7 @@ def main(input_path, output_path, output_epsg=None,
         output_osr.ImportFromEPSG(int(output_epsg))
         output_srs = 'EPSG:{}'.format(output_epsg)
 
-    # Use GDAL utilities to project the shapefile
+    # Use OGR utilities to project the shapefile
     subprocess.call([
         'ogr2ogr', '-overwrite', '-t_srs', output_srs,
         output_path, input_path])

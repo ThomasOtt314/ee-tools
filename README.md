@@ -57,13 +57,21 @@ To set the input file, use the "-i" or "--ini" argument.  The INI file path can 
 
 
 ## Study Area Zones
-The user must provide a shapefile of the zones they wish to analyze.  Zonal statistics for each feature in the shapefile will be computed.  Images can be downloaded separately for each zone separately (set [IMAGES] parameter merge_geometries=False) or as a single image that includes all zones (merge_geometries=True).
+The user must provide a shapefile of the zones they wish to analyze.  Zonal statistics for each feature in the shapefile will be computed.  Images can be downloaded separately for each zone separately (set IMAGES parameter merge_geometries=False) or as a single image that includes all zones (merge_geometries=True).
+
+The user is strongly encouraged to "rasterize" the study area zones to the UTM Zones of the interecting Landsat path/rows using the provided tool (miscellaneous/polygon_rasterize.py).  This script will adjust the zone geometries to follow the Landsat pixels.  For example, a field in Mason Valley, NV is in the overlap of two Landsat path/rows with different UTM Zones (42/33 - WGS84 Zone 11N / EPSG:32611 and 43/44 - Zone 10N / EPSG:32610), so separate rasterized shapefiles should be generated for each UTM zone.
+
+To rasterize the example shapefile to EPSG 32610 and EPSG 32611, execute the following:
+```
+> python ..\miscellaneous\polygon_rasterize.py example.shp example_wgs84z10.shp --epsg 32610 -o
+> python ..\miscellaneous\polygon_rasterize.py example.shp example_wgs84z11.shp --epsg 32611 -o
+```
 
 #### Zone Field
 The user must indicate which field in the shapefile to use for setting the "Zone ID".  The field must be an integer or string type and the values must be unique for each feature/zone.  A good default is use the "FID" field since this is guaranteed to be unique and makes it easy to join the output tables to the shapefile.
 
 #### Spatial Reference / Projection
-Currently, the output spatial reference set in the INI file ([EXPORT] parameter "output_proj") must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference.  Eventually the code will be able to project the zones geometries to the output projection automatically.
+Currently, the output spatial reference set in the INI file (EXPORT parameter "output_proj") must match exactly with the spatial reference of the zones shapefile.  The code should prompt you if they do not match, in which case you should reproject the zones shapefile to the output spatial reference (see [Study Area Zones](#study-area-zones)).  Eventually the code will be able to project the zones geometries to the output projection automatically.
 
 ## Zonal Stats
 To initiate Earth Engine zonal statistics export tasks, execute the following:
@@ -85,7 +93,7 @@ FMASK_COUNT - Number of pixels with FMASK values of 2, 3, or 4 (shadow, snow, an
 The QA/QC script will add the following fields to the daily Landsat CSV file:
 FMASK_PCT - Percentage of available pixels that are cloudy (FMASK_COUNT / FMASK_TOTAL)
 QA - QA/QC value (higher values are more likely to be cloudy or bad data)
-OUTLIER_SCORE - Experimental - Value is relative to distribution of data
+OUTLIER_SCORE - Experimental - Values will be relative to distribution of data
 
 To compute QA/QC values, execute the following:
 ```
@@ -113,6 +121,7 @@ To generate summary tables and figures, execute the following:
 ```
 
 ## Interactive Timeseries Figures
+To generate interactive timeseries figures (using Bokeh), execute the following:
 ```
 > python summary_timeseries.py -i example\example_summary.ini
 ```
@@ -124,7 +133,7 @@ To download Landsat thumbnail images for each zone, execute the following:
 ```
 
 Currently you must use the "summary" or "zonal stats" INI file to set the output workspace.
-The Landsat thumbnail script must also be run after zonal statistics have been computed.
+The Landsat thumbnail script must also be run after zonal statistics have been computed, since it reads the landsat_daily.csv to determine which images to download.
 
 ## Dependencies
 The EE-Tools have only been tested using Python 2.7 but they may work with Python 3.x.
@@ -148,13 +157,12 @@ It is important to double check that you are calling the Anaconda version, espec
 + Windows: "where python"
 + Linux/Mac: "which python"
 
-After installing Anaconda, add the conda-forge channel by entering the following in the command prompt or terminal:
-
+(Note, this step not be necessary any more) After installing Anaconda, add the conda-forge channel by entering the following in the command prompt or terminal:
 ```
 > conda config --add channels conda-forge
 ```
 
-The external modules can then be installed one by one:
+The external modules can then be installed with conda one at a time:
 ```
 > conda install numpy
 > conda install gdal
