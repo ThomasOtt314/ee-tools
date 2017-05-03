@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-05-02
+# Created       2017-05-03
 # Python:       2.7
 #--------------------------------
 
@@ -83,6 +83,15 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         reverse_flag=False)
     # zone_count = len(zone_geom_list)
     # output_fmt = '_{0:0%sd}.csv' % str(int(math.log10(zone_count)) + 1)
+
+    # Check if the zone_names are unique
+    # Eventually support merging common zone_names
+    if len(set([z[1] for z in zone_geom_list])) != len(zone_geom_list):
+        logging.error(
+            '\nERROR: There appear to be duplicate zone ID/name values.'
+            '\n  Currently, the values in "{}" must be unique.'
+            '\n  Exiting.'.format(ini['INPUTS']['zone_field']))
+        return False
 
     # Filter features by FID
     if ini['INPUTS']['fid_keep_list']:
