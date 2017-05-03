@@ -2,6 +2,7 @@ import argparse
 import logging
 import math
 import os
+import subprocess
 
 from osgeo import gdal, ogr, osr
 
@@ -20,78 +21,83 @@ def main(input_path, output_path, output_epsg=None,
         overwrite_flag (bool): if True, overwrite existing files
     """
     logging.info('Rasterizing Polygon Geometry')
+    logging.debug('  Input:  {}'.format(input_path))
+    logging.debug('  Output: {}'.format(output_path))
 
     shp_driver = ogr.GetDriverByName('ESRI Shapefile')
     gdal_mem_driver = gdal.GetDriverByName('MEM')
+    gdal_tif_driver = gdal.GetDriverByName('GTiff')
     ogr_mem_driver = ogr.GetDriverByName('MEMORY')
 
-    # Copy the input shapefile
-    input_ds = ogr.Open(input_path)
-    input_lyr = input_ds.GetLayer()
-    input_osr = input_lyr.GetSpatialRef()
-    output_ds = shp_driver.CopyDataSource(input_ds, output_path)
-    output_ds = None
-    input_lyr = None
-
-    # Open the output shapefiles
-    output_ds = ogr.Open(output_path, 1)
-    output_lyr = output_ds.GetLayer()
+    if os.path.isfile(output_path):
+        if not overwrite_flag:
+            logging.warning(
+                '  Output file already exists and overwrite=False, exiting')
+            return False
+        else:
+            logging.debug('  Removing existing output file')
+            shp_driver.DeleteDataSource(output_path)
 
     # Build the output spatial reference object
     if output_epsg is None:
+        input_ds = ogr.Open(input_path, 0)
+        input_lyr = input_ds.GetLayer()
+        input_osr = input_lyr.GetSpatialRef()
         logging.debug('  Using input spatial reference: {}'.format(
             input_osr.ExportToProj4()))
         output_osr = input_osr.Clone()
+        output_srs = input_osr.ExportToWkt()
+        input_ds = None
+        del input_ds, input_lyr
     else:
         output_osr = osr.SpatialReference()
         output_osr.ImportFromEPSG(int(output_epsg))
+        output_srs = 'EPSG:{}'.format(output_epsg)
 
-    # Projection coordinate transformation
-    output_tx = osr.CoordinateTransformation(input_osr, output_osr)
+    # Use GDAL utilities to project the shapefile
+    subprocess.call([
+        'ogr2ogr', '-overwrite', '-t_srs', output_srs,
+        output_path, input_path])
 
-    # Read the input layer into memory and project
-    project_ds = ogr_mem_driver.CreateDataSource('project')
-    input_lyr = project_ds.CopyLayer(
-        input_ds.GetLayer(), 'project', ['OVERWRITE=YES'])
-    for input_ftr in input_lyr:
-        input_geom = input_ftr.GetGeometryRef()
-        input_geom.Transform(output_tx)
-        input_geom = input_geom.SimplifyPreserveTopology(cellsize / 100.0)
-        # input_geom = input_geom.Simplify(cellsize / 100.0)
-        input_ftr.SetGeometry(input_geom)
-        input_lyr.SetFeature(input_ftr)
-    input_lyr.ResetReading()
-    input_ds = None
+    # Open the output shapefile and modify the geometry in place
+    output_ds = ogr.Open(output_path, 1)
+    output_lyr = output_ds.GetLayer()
+
+    # Read the output layer into memory
+    # This is a separate layer for filtering by FID and rasterizing
+    memory_ds = ogr_mem_driver.CreateDataSource('memory')
+    memory_lyr = memory_ds.CopyLayer(output_lyr, 'memory', ['OVERWRITE=YES'])
+
+    # It may not be necessary to reset the layers
+    memory_lyr.ResetReading()
+    output_lyr.ResetReading()
 
     # Rasterize each feature separately
     for output_ftr in output_lyr:
         output_fid = output_ftr.GetFID()
-        logging.debug('  FID: {}'.format(output_fid))
+        logging.debug('FID: {}'.format(output_fid))
 
-        # Selec the current feature from the input layer
-        # input_lyr = input_ds.GetLayer()
-        # input_lyr.SetAttributeFilter("{0} = {1}".format('FID', output_fid))
-        input_lyr.SetAttributeFilter("{0} = {1}".format('FID', output_fid))
-        input_ftr = input_lyr.GetNextFeature()
+        # Select the current feature from the input layer
+        memory_lyr.SetAttributeFilter("{0} = {1}".format('FID', output_fid))
+        input_ftr = memory_lyr.GetNextFeature()
         input_geom = input_ftr.GetGeometryRef()
         # logging.debug('  Geom: {}'.format(input_geom.ExportToWkt()))
-
-        # Compute snapped extent (in the projected coordinate system)
-        # input_geom = output_ftr.GetGeometryRef()
 
         output_extent = ogrenv_swap(input_geom.GetEnvelope())
         # logging.debug('  Extent: {}'.format(output_extent))
         output_extent = adjust_to_snap(
             output_extent, 'EXPAND', snap[0], snap[1], cellsize)
         output_geo = extent_geo(output_extent, cellsize)
-        # logging.debug('  Extent: {}'.format(output_extent))
-        # logging.debug('  Geo: {}'.format(output_geo))
+        logging.debug('  Extent: {}'.format(output_extent))
+        logging.debug('  Geo:    {}'.format(output_geo))
 
         # Create the in-memory raster to rasterize into
         raster_rows, raster_cols = extent_shape(output_extent, cellsize)
-        # logging.debug('  Shape: {}x{}'.format(raster_rows, raster_cols))
+        logging.debug('  Shape:  {}x{}'.format(raster_rows, raster_cols))
         raster_ds = gdal_mem_driver.Create(
             '', raster_cols, raster_rows, 1, gdal.GDT_Byte)
+        # raster_ds = gdal_tif_driver.Create(
+        #     'test.tif', raster_cols, raster_rows, 1, gdal.GDT_Byte)
         raster_ds.SetProjection(output_osr.ExportToWkt())
         raster_ds.SetGeoTransform(output_geo)
         raster_band = raster_ds.GetRasterBand(1)
@@ -100,7 +106,7 @@ def main(input_path, output_path, output_epsg=None,
 
         # Rasterize the current feature
         gdal.RasterizeLayer(
-            raster_ds, [1], input_lyr, burn_values=[1])
+            raster_ds, [1], memory_lyr, burn_values=[1])
         raster_band = raster_ds.GetRasterBand(1)
 
         # Polygonize the raster
@@ -117,8 +123,10 @@ def main(input_path, output_path, output_epsg=None,
         #     output_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         # else:
         #     output_geom = ogr.Geometry(ogr.wkbPolygon)
+
         for polygon_ftr in polygon_lyr:
             output_geom.AddGeometry(polygon_ftr.GetGeometryRef())
+        # logging.debug('  Geom: {}'.format(output_geom))
 
         # Replace the original geometry with the new geometry
         output_ftr.SetGeometry(output_geom)
@@ -127,7 +135,7 @@ def main(input_path, output_path, output_epsg=None,
         polygon_lyr, polygon_ds = None, None
 
     output_ds, output_lyr = None, None
-    project_ds = None
+    memory_ds, memory_lyr = None, None
 
     # Set the output spatial reference
     output_osr.MorphToESRI()
