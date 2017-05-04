@@ -604,6 +604,12 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             # if 'PIXEL_COUNT' in list(input_df.columns.values):
             #     input_df = input_df[input_df['PIXEL_COUNT'] > 0]
 
+            # Add QA/QC bands?
+            input_df['FMASK_PCT'] = (
+                input_df['FMASK_COUNT'].astype(np.float) /
+                input_df['FMASK_TOTAL'])
+            input_df['QA'] = 0
+
             try:
                 output_df = output_df.append(input_df)
             except:

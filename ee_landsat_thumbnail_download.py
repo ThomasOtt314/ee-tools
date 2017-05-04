@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-05-02
+# Created       2017-05-03
 # Python:       2.7
 #--------------------------------
 
@@ -176,6 +176,7 @@ def main(ini_path=None, overwrite_flag=False):
         landsat_df = pd.read_csv(landsat_daily_path)
         # landsat_df = pd.read_csv(
         #     landsat_daily_path, parse_dates=['DATE'], index_col='DATE')
+        landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
 
         # Common summary filtering
         logging.debug('  Filtering using INI SUMMARY parameters')
@@ -230,18 +231,6 @@ def main(ini_path=None, overwrite_flag=False):
             logging.debug('    Maximum QA: {0}'.format(
                 ini['SUMMARY']['max_qa']))
             landsat_df = landsat_df[landsat_df['QA'] <= ini['SUMMARY']['max_qa']]
-
-        # # Apply additional basic QA/QC filtering
-        # if ('QA' in list(landsat_df.columns.values) and
-        #         set(landsat_df['QA']) != set([0])):
-        #     logging.debug('  Filtering using QA flag (QA==0)')
-        #     landsat_df = landsat_df[landsat_df['QA'] == 0]
-        # else:
-        #     # If QA flag was not set, apply some basic filtering
-        #     logging.debug('  Not filtering by QA flag')
-        #     landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
-        #     landsat_df = landsat_df[landsat_df['CLOUD_SCORE'] < 100]
-        #     landsat_df = landsat_df[landsat_df['TS'] > 260]
 
         # Filter by average cloud score
         if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:

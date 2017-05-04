@@ -104,8 +104,7 @@ def main(ini_path=None, plot_flag=False, overwrite_flag=True):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
 
-        qaqc_ws = os.path.join(ini['SUMMARY']['output_ws'], 'qaqc')
-        # qaqc_ws = os.path.join(zone_stats_ws, 'qaqc')
+        qaqc_ws = os.path.join(zone_stats_ws, 'figures')
         if not os.path.isdir(qaqc_ws):
             os.makedirs(qaqc_ws)
 
@@ -133,19 +132,19 @@ def main(ini_path=None, plot_flag=False, overwrite_flag=True):
         # if 'OUTLIER_SCORE' not in list(landsat_df.columns.values):
         landsat_df['OUTLIER_SCORE'] = np.nan
 
-        # # Set QA flag for scenes in skip list
-        # if ini['INPUTS']['scene_id_skip_list']:
-        #     # Use primary ROW value for checking skip list SCENE_ID
-        #     scene_id_df = pd.Series([
-        #         s.replace('XXX', '{:03d}'.format(int(r)))
-        #         for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
-        #     skip_mask = scene_id_df.isin(
-        #         ini['INPUTS']['scene_id_skip_list']).values
-        #     landsat_df.loc[skip_mask, 'QA'] = 3
-        #     # Reset QA if scenes is not in skip list and flag is set
-        #     # landsat_df.loc[(landsat_df['QA'] != 3) & (~skip_mask), 'QA'] = 0
-        #     landsat_df.loc[~skip_mask, 'QA'] = 0
-        #     del scene_id_df, skip_mask
+        # Set QA flag for scenes in skip list
+        if ini['INPUTS']['scene_id_skip_list']:
+            # Use primary ROW value for checking skip list SCENE_ID
+            scene_id_df = pd.Series([
+                s.replace('XXX', '{:03d}'.format(int(r)))
+                for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+            skip_mask = scene_id_df.isin(
+                ini['INPUTS']['scene_id_skip_list']).values
+            landsat_df.loc[skip_mask, 'QA'] = 4
+            # Reset QA if scenes is not in skip list and flag is set
+            # landsat_df.loc[(landsat_df['QA'] != 3) & (~skip_mask), 'QA'] = 0
+            landsat_df.loc[~skip_mask, 'QA'] = 0
+            del scene_id_df, skip_mask
 
         # Set initial QA band values
         landsat_df.loc[landsat_df['CLOUD_SCORE'] >= 95, 'QA'] = 3
