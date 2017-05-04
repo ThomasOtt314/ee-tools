@@ -17,6 +17,7 @@ import sys
 from time import sleep
 
 import ee
+import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -57,6 +58,8 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     zone = {}
 
     # These may eventually be set in the INI file
+    # Currently FMASK_PCT and QA are added automatically when making
+    #   landsat daily CSV
     landsat_daily_fields = [
         'ZONE_FID', 'ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT',
         'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY', 'CLOUD_SCORE',
@@ -620,7 +623,9 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             zone['output_ws'], '{}_landsat_daily.csv'.format(zone['name']))
         logging.debug('  {}'.format(output_path))
         output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-        output_df.to_csv(output_path, index=False, columns=export_fields)
+        output_df.to_csv(
+            output_path, index=False,
+            columns=export_fields + ['FMASK_PCT', 'QA'])
     else:
         logging.info('  Empty output dataframe, the CSV files may not be ready')
 
