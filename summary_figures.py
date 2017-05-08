@@ -292,6 +292,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         elif not os.path.isdir(zone_figures_ws):
             os.makedirs(zone_figures_ws)
 
+        # Input paths
         landsat_daily_path = os.path.join(
             zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
         gridmet_daily_path = os.path.join(
@@ -310,6 +311,14 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
             # logging.error(
             #     '  GRIDMET daily and/or monthly CSV files do not exist.\n'
             #     '  ETo and PPT will not be processed.')
+
+        # Output paths
+        landsat_summary_path = os.path.join(
+            zone_stats_ws, 'figures',
+            '{}_landsat_figures.csv'.format(zone_name))
+        gridmet_summary_path = os.path.join(
+            zone_stats_ws, 'figures',
+            '{}_gridmet_figures.csv'.format(zone_name))
 
         logging.debug('  Reading Landsat CSV')
         landsat_df = pd.read_csv(landsat_daily_path)
@@ -522,6 +531,21 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # columns = ['ZONE_FID', 'YEAR'] + ['PPT_M{}'.format(m) for m in gridmet_months]
         # gridmet_month_df = gridmet_month_df[columns]
         # del gridmet_month_df.index.name
+
+
+        # Save annual Landsat and GRIDMET tables
+        logging.debug('  Saving summary tables')
+
+        logging.debug('  {}'.format(landsat_summary_path))
+        landsat_df.sort_values(by=['YEAR'], inplace=True)
+        landsat_df.to_csv(landsat_summary_path, index=False)
+        # columns=export_fields
+
+        logging.debug('  {}'.format(gridmet_summary_path))
+        gridmet_group_df.sort_values(by=['YEAR'], inplace=True)
+        gridmet_group_df.to_csv(gridmet_summary_path, index=False)
+        # columns=export_fields
+
 
         # Merge Landsat and GRIDMET collections
         zone_df = landsat_df.merge(
