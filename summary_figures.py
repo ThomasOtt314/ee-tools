@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_figures.py
 # Purpose:      Generate summary figures
-# Created       2017-05-02
+# Created       2017-05-08
 # Python:       2.7
 #--------------------------------
 
@@ -317,6 +317,11 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         logging.debug('  Filtering Landsat dataframe')
         landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
 
+        # QA field should have been written in zonal stats code
+        # Eventually this block can be removed
+        if 'QA' not in landsat_df.columns.values:
+            landsat_df['QA'] = 0
+
         # # This assumes that there are L5/L8 images in the dataframe
         # if not landsat_df.empty:
         #     max_pixel_count = max(landsat_df['PIXEL_COUNT'])
@@ -445,6 +450,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         landsat_df.columns = landsat_df.columns.droplevel(0)
         landsat_df.reset_index(inplace=True)
         landsat_df = landsat_df[landsat_annual_fields]
+        landsat_df['YEAR'] = landsat_df['YEAR'].astype(np.int)
         landsat_df['SCENE_COUNT'] = landsat_df['SCENE_COUNT'].astype(np.int)
         landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
         landsat_df['PIXEL_TOTAL'] = landsat_df['PIXEL_TOTAL'].astype(np.int)
@@ -478,18 +484,20 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
                 (gridmet_df['MONTH'] >= gridmet_start_month) &
                 (gridmet_df['MONTH'] <= gridmet_end_month))
             gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR']
-        gridmet_df['GROUP_YEAR'] = gridmet_df['GROUP_YEAR'].astype(int)
+        # GROUP_YEAR for rows not in the GRIDMET month range will be NAN
+        gridmet_df = gridmet_df[~pd.isnull(gridmet_df['GROUP_YEAR'])]
 
         if year_list:
             gridmet_df = gridmet_df[gridmet_df['GROUP_YEAR'].isin(year_list)]
-            if gridmet_df.empty:
-                logging.error(
-                    '    Empty GRIDMET dataframe after filtering by year')
-                continue
+
+        if gridmet_df.empty:
+            logging.error(
+                '    Empty GRIDMET dataframe after filtering by year')
+            continue
 
         # Group GRIDMET data by user specified range (default is water year)
-        gridmet_group_df = gridmet_df\
-            .groupby(['ZONE_FID', 'ZONE_NAME', 'GROUP_YEAR'])\
+        gridmet_group_df = gridmet_df \
+            .groupby(['ZONE_FID', 'ZONE_NAME', 'GROUP_YEAR']) \
             .agg({'ETO': {'ETO': 'sum'}, 'PPT': {'PPT': 'sum'}})
         gridmet_group_df.columns = gridmet_group_df.columns.droplevel(0)
         gridmet_group_df.reset_index(inplace=True)
