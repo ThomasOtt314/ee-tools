@@ -1,20 +1,23 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-05-03
-# Python:       2.7
+# Created       2017-05-15
+# Python:       3.6
 #--------------------------------
 
 import argparse
-from collections import defaultdict
+from builtins import input
 import datetime
 import json
 import logging
 import math
 import os
 import re
+import requests
+from subprocess import check_output
 import sys
 from time import sleep
+from io import StringIO
 
 import ee
 import numpy as np
@@ -23,8 +26,8 @@ import pandas as pd
 
 import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
-import ee_tools.ini_common as ini_common
-import ee_tools.python_common as python_common
+import ee_tools.inputs as inputs
+import ee_tools.utils as utils
 import ee_tools.wrs2 as wrs2
 
 
@@ -48,11 +51,11 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    ini = ini_common.read(ini_path)
-    ini_common.parse_section(ini, section='INPUTS')
-    ini_common.parse_section(ini, section='SPATIAL')
-    ini_common.parse_section(ini, section='EXPORT')
-    ini_common.parse_section(ini, section='ZONAL_STATS')
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='SPATIAL')
+    inputs.parse_section(ini, section='EXPORT')
+    inputs.parse_section(ini, section='ZONAL_STATS')
 
     # Set all zone specific parameters into a dictionary
     zone = {}
@@ -134,7 +137,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
             'This will likely cause problems!')
-        raw_input('Press ENTER to continue')
+        input('Press ENTER to continue')
     else:
         logging.debug('  Zone Projection:\n{}\n'.format(
             zone['osr'].ExportToWkt()))
@@ -157,14 +160,22 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     else:
         ini['INPUTS']['path_row_geom'] = None
 
-    # Get current running tasks
-    logging.debug('\nRunning tasks')
-    tasks = defaultdict(list)
-    for t in ee.data.getTaskList():
-        if t['state'] in ['RUNNING', 'READY']:
-            logging.debug('  {}'.format(t['description']))
-            tasks[t['description']].append(t['id'])
-            # tasks[t['id']] = t['description']
+    # Get current running tasks before getting file lists
+    tasks = utils.get_ee_tasks()
+
+    # Get list of existing images/files
+    if ini['EXPORT']['export_dest'] == 'CLOUD':
+        logging.debug('\nGetting cloud storage file list')
+        ini['EXPORT']['cloud_file_list'] = utils.get_bucket_files(
+            ini['EXPORT']['project_name'], ini['EXPORT']['export_ws'])
+        # logging.debug(ini['EXPORT']['cloud_file_list'])
+    # if ini['EXPORT']['export_dest'] == 'GDRIVE':
+    #     logging.debug('\nGetting Google drive file list')
+    #     ini['EXPORT']['gdrive_file_list'] = [
+    #         os.path.join(ini['EXPORT']['output_ws'], x)
+    #         for x in os.listdir(ini['EXPORT']['output_ws'])]
+    #     logging.debug(ini['EXPORT']['gdrive_file_list'])
+
 
     # Get end date of GRIDMET (if needed)
     # This could be moved to inside the INI function
@@ -310,16 +321,21 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if ini['EXPORT']['mosaic_method']:
             export_id += '_' + ini['EXPORT']['mosaic_method'].lower()
             output_id += '_' + ini['EXPORT']['mosaic_method'].lower()
+
         export_path = os.path.join(
             ini['EXPORT']['export_ws'], export_id + '.csv')
         output_path = os.path.join(zone['tables_ws'], output_id + '.csv')
-        temp_path = os.path.join(
-            ini['EXPORT']['export_ws'],
-            os.path.basename(ini['ZONAL_STATS']['output_ws']),
-            export_id + '.csv')
         logging.debug('  Export: {}'.format(export_path))
         logging.debug('  Output: {}'.format(output_path))
-        logging.debug('  Temp:   {}'.format(temp_path))
+
+        # There is an EE bug that appends "ee_export" to the end of CSV
+        #   file names when exporting to cloud storage
+        # Also, use the sharelink path for reading the csv directly
+        export_cloud_name = export_id + 'ee_export.csv'
+        export_cloud_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_cloud_name)
+        export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+            ini['EXPORT']['bucket_name'], export_cloud_name)
 
         if overwrite_flag:
             if export_id in tasks.keys():
@@ -328,22 +344,29 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     ee.data.cancelTask(task)
                 del tasks[export_id]
 
-            if ini['EXPORT']['export_dest'] == 'GDRIVE':
-                if os.path.isfile(export_path):
-                    logging.debug('  Export CSV already exists, removing')
-                    os.remove(export_path)
-                if os.path.isfile(output_path):
-                    logging.debug('  Output CSV already exists, removing')
-                    os.remove(output_path)
+            if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+                    os.path.isfile(export_path)):
+                logging.debug('  Export CSV already exists, removing')
+                os.remove(export_path)
             elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
-                    export_path in ini['EXPORT']['file_list']):
+                    export_cloud_name in ini['EXPORT']['file_list']):
                 logging.debug('    Export image already exists')
-                # Files in cloud storage are easily overwritten
-                #   so it is unneccesary to manually remove them
+                # # Files in cloud storage are easily overwritten
+                # #   so it is unneccesary to manually remove them
                 # # This would remove an existing file
-                # p = subprocess.call(['gsutil', 'rm', export_path])
+                # check_output(['gsutil', 'rm', export_cloud_path])
 
-        if os.path.isfile(export_path):
+            if os.path.isfile(output_path):
+                logging.debug('  Output CSV already exists, removing')
+                os.remove(output_path)
+
+        # This should probably be moved into an else block
+        #   to avoid lots of os.path.isfile calls when overwriting
+        if export_id in tasks.keys():
+            logging.debug('  Task already submitted, skipping')
+            continue
+        elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+                os.path.isfile(export_path)):
             logging.debug('  Export CSV already exists, moving')
             # Modify CSV while copying from Google Drive
             try:
@@ -362,11 +385,39 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 # continue
             os.remove(export_path)
             continue
+        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+                export_cloud_name in ini['EXPORT']['cloud_file_list']):
+            logging.debug('    Export file already exists, moving')
+            logging.debug('    Reading {}'.format(export_cloud_url))
+            try:
+                export_request = requests.get(export_cloud_url).content
+                export_df = pd.read_csv(
+                    StringIO(export_request.decode('utf-8')))
+                export_df = export_df[export_fields]
+                export_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+                export_df.to_csv(
+                    output_path, index=False, columns=export_fields)
+            except pd.io.common.EmptyDataError:
+                # Save an empty dataframe to the output path
+                logging.warning('    Empty dataframe')
+                export_df = pd.DataFrame(columns=export_fields)
+                export_df.to_csv(
+                    output_path, index=False, columns=export_fields)
+                # logging.warning('    Empty dataframe, skipping')
+                # continue
+            except Exception as e:
+                logging.error('Unhandled Exception')
+                logging.error(str(e))
+                continue
+            logging.debug('    Removing {}'.format(export_cloud_path))
+            try:
+                check_output(['gsutil', 'rm', export_cloud_path])
+            except Exception as e:
+                logging.error('Unhandled Exception')
+                logging.error(str(e))
+            continue
         elif os.path.isfile(output_path):
             logging.debug('  Output CSV already exists, skipping')
-            continue
-        elif export_id in tasks.keys():
-            logging.debug('  Task already submitted, skipping')
             continue
 
         landsat_args = {
@@ -396,7 +447,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
         # Debug
         # print(ee.Image(landsat_coll.first()).getInfo())
-        # raw_input('ENTER')
+        # input('ENTER')
         # if ee.Image(landsat_coll.first()).getInfo() is None:
         #     logging.info('    No images, skipping')
         #     continue
@@ -496,7 +547,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         #     ee.Image(landsat_coll.first())).getInfo()
         # for k, v in sorted(stats_info['properties'].items()):
         #     logging.info('{:24s}: {}'.format(k, v))
-        # raw_input('ENTER')
+        # input('ENTER')
         # return False
 
         # # DEADBEEF - Print the stats info to the screen
@@ -505,7 +556,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # pp = pprint.PrettyPrinter(indent=4)
         # for ftr in stats_info['features']:
         #     pp.pprint(ftr)
-        # raw_input('ENTER')
+        # input('ENTER')
         # return False
 
         # task = ee.batch.Export.table.toDrive(
@@ -600,7 +651,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             except Exception as e:
                 logging.debug('    Error reading: {}'.format(
                     os.path.basename(input_path)))
-                # raw_input('ENTER')
+                # input('ENTER')
                 continue
 
             # # Remove 0 pixel count rows
@@ -662,10 +713,21 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         os.path.splitext(ini['INPUTS']['zone_filename'])[0],
         zone['name'].replace(' ', '_').lower())
     output_id = '{}_gridmet_daily'.format(zone['name'].replace(' ', '_'))
-    export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.csv')
+
+    export_path = os.path.join(
+        ini['EXPORT']['export_ws'], export_id + '.csv')
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('  Export: {}'.format(export_path))
     logging.debug('  Output: {}'.format(output_path))
+
+    # There is an EE bug that appends "ee_export" to the end of CSV
+    #   file names when exporting to cloud storage
+    # Also, use the sharelink path for reading the csv directly
+    export_cloud_name = export_id + 'ee_export.csv'
+    export_cloud_path = os.path.join(
+        ini['EXPORT']['export_ws'], export_cloud_name)
+    export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+        ini['EXPORT']['bucket_name'], export_cloud_name)
 
     if overwrite_flag:
         if export_id in tasks.keys():
@@ -673,89 +735,144 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             for task in tasks[export_id]:
                 ee.data.cancelTask(task)
             del tasks[export_id]
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
-            if os.path.isfile(export_path):
-                logging.debug('  Export CSV already exists, removing')
-                os.remove(export_path)
-            if os.path.isfile(output_path):
-                logging.debug('  Output CSV already exists, removing')
-                os.remove(output_path)
 
-    if os.path.isfile(export_path):
+        if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+                os.path.isfile(export_path)):
+            logging.debug('  Export CSV already exists, removing')
+            os.remove(export_path)
+        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+                export_cloud_name in ini['EXPORT']['file_list']):
+            logging.debug('    Export image already exists')
+            # # Files in cloud storage are easily overwritten
+            # #   so it is unneccesary to manually remove them
+            # # This would remove an existing file
+            # check_output(['gsutil', 'rm', export_path])
+
+        if os.path.isfile(output_path):
+            logging.debug('  Output CSV already exists, removing')
+            os.remove(output_path)
+
+    # This should probably be moved into an else block
+    #   to avoid lots of os.path.isfile calls when overwriting
+    if export_id in tasks.keys():
+        logging.debug('  Task already submitted, skipping')
+        return True
+    elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+            os.path.isfile(export_path)):
         logging.debug('  Export CSV already exists, moving')
         # Modify CSV while copying from Google Drive
-        export_df = pd.read_csv(export_path)
-        export_df = export_df[export_fields]
-        export_df.sort_values(by=['DATE'], inplace=True)
-        export_df.to_csv(output_path, index=False, columns=export_fields)
+        try:
+            export_df = pd.read_csv(export_path)
+            export_df = export_df[export_fields]
+            export_df.sort_values(by=['DATE'], inplace=True)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+        except pd.io.common.EmptyDataError:
+            # Save an empty dataframe to the output path
+            logging.warning('    Empty dataframe')
+            export_df = pd.DataFrame(columns=export_fields)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+            # logging.warning('    Empty dataframe, skipping')
+            # continue
         os.remove(export_path)
-        # shutil.move(export_path, output_path)
+        return True
+    elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+            export_cloud_name in ini['EXPORT']['cloud_file_list']):
+        logging.debug('    Export file already exists, moving')
+        logging.debug('    Reading {}'.format(export_cloud_url))
+        try:
+            export_request = requests.get(export_cloud_url).content
+            export_df = pd.read_csv(
+                StringIO(export_request.decode('utf-8')))
+            export_df = export_df[export_fields]
+            export_df.sort_values(by=['DATE'], inplace=True)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+        except pd.io.common.EmptyDataError:
+            # Save an empty dataframe to the output path
+            logging.warning('    Empty dataframe')
+            export_df = pd.DataFrame(columns=export_fields)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+            # logging.warning('    Empty dataframe, skipping')
+            # continue
+        except Exception as e:
+            logging.error('Unhandled Exception')
+            logging.error(str(e))
+            return False
+        logging.debug('    Removing {}'.format(export_cloud_path))
+        try:
+            check_output(['gsutil', 'rm', export_cloud_path])
+        except Exception as e:
+            logging.error('Unhandled Exception')
+            logging.error(str(e))
+        return True
     elif os.path.isfile(output_path):
         logging.debug('  Output CSV already exists, skipping')
-    elif export_id in tasks.keys():
-        logging.debug('  Task already submitted, skipping')
-    else:
-        # Calculate values and statistics
-        # Build function in loop to set water year ETo/PPT values
-        def gridmet_zonal_stats_func(image):
-            """"""
-            date = ee.Date(image.get('system:time_start'))
-            year = ee.Number(date.get('year'))
-            month = ee.Number(date.get('month'))
-            doy = ee.Number(date.getRelative('day', 'year')).add(1)
-            wyear = ee.Number(ee.Date.fromYMD(
-                year, month, 1).advance(3, 'month').get('year'))
-            input_mean = ee.Image(image) \
-                .reduceRegion(
-                    ee.Reducer.mean(), geometry=zone['geom'],
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=1,
-                    maxPixels=zone['max_pixels'])
-            return ee.Feature(
-                None,
-                {
-                    'ZONE_NAME': zone['name'],
-                    'ZONE_FID': zone['fid'],
-                    'DATE': date.format('YYYY-MM-dd'),
-                    'YEAR': year,
-                    'MONTH': month,
-                    'DAY': date.get('day'),
-                    'DOY': doy,
-                    'WATER_YEAR': wyear,
-                    'ETO': input_mean.get('eto'),
-                    'PPT': input_mean.get('ppt')
-                })
-        stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
+        return True
 
-        logging.debug('  Building export task')
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
-            task = ee.batch.Export.table.toDrive(
-                collection=stats_coll,
-                description=export_id,
-                folder=ini['EXPORT']['export_folder'],
-                fileNamePrefix=export_id,
-                fileFormat='CSV')
-        elif ini['EXPORT']['export_dest'] == 'CLOUD':
-            task = ee.batch.Export.table.toCloudStorage(
-                collection=stats_coll,
-                description=export_id,
-                bucket=ini['EXPORT']['bucket_name'],
-                fileNamePrefix='{}'.format(export_id.replace('-', '')),
-                # fileNamePrefix=export_id,
-                fileFormat='CSV')
+    # Calculate values and statistics
+    # Build function in loop to set water year ETo/PPT values
+    def gridmet_zonal_stats_func(image):
+        """"""
+        date = ee.Date(image.get('system:time_start'))
+        year = ee.Number(date.get('year'))
+        month = ee.Number(date.get('month'))
+        doy = ee.Number(date.getRelative('day', 'year')).add(1)
+        wyear = ee.Number(ee.Date.fromYMD(
+            year, month, 1).advance(3, 'month').get('year'))
+        input_mean = ee.Image(image) \
+            .reduceRegion(
+                ee.Reducer.mean(), geometry=zone['geom'],
+                crs=ini['SPATIAL']['crs'],
+                crsTransform=ini['EXPORT']['transform'],
+                bestEffort=False, tileScale=1,
+                maxPixels=zone['max_pixels'])
+        return ee.Feature(
+            None,
+            {
+                'ZONE_NAME': zone['name'],
+                'ZONE_FID': zone['fid'],
+                'DATE': date.format('YYYY-MM-dd'),
+                'YEAR': year,
+                'MONTH': month,
+                'DAY': date.get('day'),
+                'DOY': doy,
+                'WATER_YEAR': wyear,
+                'ETO': input_mean.get('eto'),
+                'PPT': input_mean.get('ppt')
+            })
+    stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
-        logging.debug('  Starting export task')
-        for i in range(1, 10):
-            try:
-                task.start()
-                break
-            except Exception as e:
-                logging.error('  Exception: {}, retry {}'.format(e, i))
-                logging.debug('{}'.format(e))
-                sleep(i ** 2)
-        # logging.debug('  Status: {}'.format(task.status()))
-        # logging.debug('  Active: {}'.format(task.active()))
+    logging.debug('  Building export task')
+    if ini['EXPORT']['export_dest'] == 'GDRIVE':
+        task = ee.batch.Export.table.toDrive(
+            collection=stats_coll,
+            description=export_id,
+            folder=ini['EXPORT']['export_folder'],
+            fileNamePrefix=export_id,
+            fileFormat='CSV')
+    elif ini['EXPORT']['export_dest'] == 'CLOUD':
+        task = ee.batch.Export.table.toCloudStorage(
+            collection=stats_coll,
+            description=export_id,
+            bucket=ini['EXPORT']['bucket_name'],
+            fileNamePrefix='{}'.format(export_id.replace('-', '')),
+            # fileNamePrefix=export_id,
+            fileFormat='CSV')
+
+    logging.debug('  Starting export task')
+    for i in range(1, 10):
+        try:
+            task.start()
+            break
+        except Exception as e:
+            logging.error('  Exception: {}, retry {}'.format(e, i))
+            logging.debug('{}'.format(e))
+            sleep(i ** 2)
+    # logging.debug('  Status: {}'.format(task.status()))
+    # logging.debug('  Active: {}'.format(task.active()))
 
 
 def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
@@ -824,10 +941,21 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         zone['name'].replace(' ', '_').lower())
     output_id = '{}_gridmet_monthly'.format(
         zone['name'].replace(' ', '_'))
-    export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.csv')
+
+    export_path = os.path.join(
+        ini['EXPORT']['export_ws'], export_id + '.csv')
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('  Export: {}'.format(export_path))
     logging.debug('  Output: {}'.format(output_path))
+
+    # There is an EE bug that appends "ee_export" to the end of CSV
+    #   file names when exporting to cloud storage
+    # Also, use the sharelink path for reading the csv directly
+    export_cloud_name = export_id + 'ee_export.csv'
+    export_cloud_path = os.path.join(
+        ini['EXPORT']['export_ws'], export_cloud_name)
+    export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+        ini['EXPORT']['bucket_name'], export_cloud_name)
 
     if overwrite_flag:
         if export_id in tasks.keys():
@@ -835,86 +963,141 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             for task in tasks[export_id]:
                 ee.data.cancelTask(task)
             del tasks[export_id]
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
-            if os.path.isfile(export_path):
-                logging.debug('  Export CSV already exists, removing')
-                os.remove(export_path)
-            if os.path.isfile(output_path):
-                logging.debug('  Output CSV already exists, removing')
-                os.remove(output_path)
 
-    if os.path.isfile(export_path):
+        if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+                os.path.isfile(export_path)):
+            logging.debug('  Export CSV already exists, removing')
+            os.remove(export_path)
+        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+                export_cloud_name in ini['EXPORT']['file_list']):
+            logging.debug('    Export image already exists')
+            # # Files in cloud storage are easily overwritten
+            # #   so it is unneccesary to manually remove them
+            # # This would remove an existing file
+            # check_output(['gsutil', 'rm', export_path])
+
+        if os.path.isfile(output_path):
+            logging.debug('  Output CSV already exists, removing')
+            os.remove(output_path)
+
+    # This should probably be moved into an else block
+    #   to avoid lots of os.path.isfile calls when overwriting
+    if export_id in tasks.keys():
+        logging.debug('  Task already submitted, skipping')
+        return True
+    elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+            os.path.isfile(export_path)):
         logging.debug('  Export CSV already exists, moving')
         # Modify CSV while copying from Google Drive
-        export_df = pd.read_csv(export_path)
-        export_df = export_df[export_fields]
-        export_df.sort_values(by=['DATE'], inplace=True)
-        export_df.to_csv(output_path, index=False, columns=export_fields)
+        try:
+            export_df = pd.read_csv(export_path)
+            export_df = export_df[export_fields]
+            export_df.sort_values(by=['DATE'], inplace=True)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+        except pd.io.common.EmptyDataError:
+            # Save an empty dataframe to the output path
+            logging.warning('    Empty dataframe')
+            export_df = pd.DataFrame(columns=export_fields)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+            # logging.warning('    Empty dataframe, skipping')
+            # continue
         os.remove(export_path)
-        # shutil.move(export_path, output_path)
+        return True
+    elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+            export_cloud_name in ini['EXPORT']['cloud_file_list']):
+        logging.debug('    Export file already exists, moving')
+        logging.debug('    Reading {}'.format(export_cloud_url))
+        try:
+            export_request = requests.get(export_cloud_url).content
+            export_df = pd.read_csv(
+                StringIO(export_request.decode('utf-8')))
+            export_df = export_df[export_fields]
+            export_df.sort_values(by=['DATE'], inplace=True)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+        except pd.io.common.EmptyDataError:
+            # Save an empty dataframe to the output path
+            logging.warning('    Empty dataframe')
+            export_df = pd.DataFrame(columns=export_fields)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+            # logging.warning('    Empty dataframe, skipping')
+            # continue
+        except Exception as e:
+            logging.error('Unhandled Exception')
+            logging.error(str(e))
+            return False
+        logging.debug('    Removing {}'.format(export_cloud_path))
+        try:
+            check_output(['gsutil', 'rm', export_cloud_path])
+        except Exception as e:
+            logging.error('Unhandled Exception')
+            logging.error(str(e))
+        return True
     elif os.path.isfile(output_path):
         logging.debug('  Output CSV already exists, skipping')
-    elif export_id in tasks.keys():
-        logging.debug('  Task already submitted, skipping')
-    else:
-        # Calculate values and statistics
-        # Build function in loop to set water year ETo/PPT values
-        def gridmet_zonal_stats_func(image):
-            """"""
-            date = ee.Date(image.get('system:time_start'))
-            year = ee.Number(date.get('year'))
-            month = ee.Number(date.get('month'))
-            wyear = ee.Number(ee.Date.fromYMD(
-                year, month, 1).advance(3, 'month').get('year'))
-            input_mean = ee.Image(image) \
-                .reduceRegion(
-                    ee.Reducer.mean(), geometry=zone['geom'],
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=1,
-                    maxPixels=zone['max_pixels'])
-            return ee.Feature(
-                None,
-                {
-                    'ZONE_NAME': zone['name'],
-                    'ZONE_FID': zone['fid'],
-                    'DATE': date.format('YYYY-MM'),
-                    'YEAR': year,
-                    'MONTH': month,
-                    'WATER_YEAR': wyear,
-                    'ETO': input_mean.get('eto'),
-                    'PPT': input_mean.get('ppt')
-                })
-        stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
+        return True
 
-        logging.debug('  Building export task')
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
-            task = ee.batch.Export.table.toDrive(
-                collection=stats_coll,
-                description=export_id,
-                folder=ini['EXPORT']['export_folder'],
-                fileNamePrefix=export_id,
-                fileFormat='CSV')
-        elif ini['EXPORT']['export_dest'] == 'CLOUD':
-            task = ee.batch.Export.table.toCloudStorage(
-                collection=stats_coll,
-                description=export_id,
-                bucket=ini['EXPORT']['bucket_name'],
-                fileNamePrefix='{}'.format(export_id.replace('-', '')),
-                # fileNamePrefix=export_id,
-                fileFormat='CSV')
+    # Calculate values and statistics
+    # Build function in loop to set water year ETo/PPT values
+    def gridmet_zonal_stats_func(image):
+        """"""
+        date = ee.Date(image.get('system:time_start'))
+        year = ee.Number(date.get('year'))
+        month = ee.Number(date.get('month'))
+        wyear = ee.Number(ee.Date.fromYMD(
+            year, month, 1).advance(3, 'month').get('year'))
+        input_mean = ee.Image(image) \
+            .reduceRegion(
+                ee.Reducer.mean(), geometry=zone['geom'],
+                crs=ini['SPATIAL']['crs'],
+                crsTransform=ini['EXPORT']['transform'],
+                bestEffort=False, tileScale=1,
+                maxPixels=zone['max_pixels'])
+        return ee.Feature(
+            None,
+            {
+                'ZONE_NAME': zone['name'],
+                'ZONE_FID': zone['fid'],
+                'DATE': date.format('YYYY-MM'),
+                'YEAR': year,
+                'MONTH': month,
+                'WATER_YEAR': wyear,
+                'ETO': input_mean.get('eto'),
+                'PPT': input_mean.get('ppt')
+            })
+    stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
-        logging.debug('  Starting export task')
-        for i in range(1, 10):
-            try:
-                task.start()
-                break
-            except Exception as e:
-                logging.error('  Exception: {}, retry {}'.format(e, i))
-                logging.debug('{}'.format(e))
-                sleep(i ** 2)
-        # logging.debug('  Status: {}'.format(task.status()))
-        # logging.debug('  Active: {}'.format(task.active()))
+    logging.debug('  Building export task')
+    if ini['EXPORT']['export_dest'] == 'GDRIVE':
+        task = ee.batch.Export.table.toDrive(
+            collection=stats_coll,
+            description=export_id,
+            folder=ini['EXPORT']['export_folder'],
+            fileNamePrefix=export_id,
+            fileFormat='CSV')
+    elif ini['EXPORT']['export_dest'] == 'CLOUD':
+        task = ee.batch.Export.table.toCloudStorage(
+            collection=stats_coll,
+            description=export_id,
+            bucket=ini['EXPORT']['bucket_name'],
+            fileNamePrefix='{}'.format(export_id.replace('-', '')),
+            # fileNamePrefix=export_id,
+            fileFormat='CSV')
+
+    logging.debug('  Starting export task')
+    for i in range(1, 10):
+        try:
+            task.start()
+            break
+        except Exception as e:
+            logging.error('  Exception: {}, retry {}'.format(e, i))
+            logging.debug('{}'.format(e))
+            sleep(i ** 2)
+    # logging.debug('  Status: {}'.format(task.status()))
+    # logging.debug('  Active: {}'.format(task.active()))
 
 
 def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
@@ -941,10 +1124,21 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         zone['name'].replace(' ', '_').lower())
     output_id = '{}_pdsi_dekad'.format(
         zone['name'].replace(' ', '_'))
-    export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.csv')
+
+    export_path = os.path.join(
+        ini['EXPORT']['export_ws'], export_id + '.csv')
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('  Export: {}'.format(export_path))
     logging.debug('  Output: {}'.format(output_path))
+
+    # There is an EE bug that appends "ee_export" to the end of CSV
+    #   file names when exporting to cloud storage
+    # Also, use the sharelink path for reading the csv directly
+    export_cloud_name = export_id + 'ee_export.csv'
+    export_cloud_path = os.path.join(
+        ini['EXPORT']['export_ws'], export_cloud_name)
+    export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+        ini['EXPORT']['bucket_name'], export_cloud_name)
 
     if overwrite_flag:
         if export_id in tasks.keys():
@@ -952,92 +1146,138 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             for task in tasks[export_id]:
                 ee.data.cancelTask(task)
             del tasks[export_id]
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
-            if os.path.isfile(export_path):
-                logging.debug('  Export CSV already exists, removing')
-                os.remove(export_path)
-            if os.path.isfile(output_path):
-                logging.debug('  Output CSV already exists, removing')
-                os.remove(output_path)
 
-    if os.path.isfile(export_path):
+        if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+                os.path.isfile(export_path)):
+            logging.debug('  Export CSV already exists, removing')
+            os.remove(export_path)
+        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+                export_cloud_name in ini['EXPORT']['file_list']):
+            logging.debug('    Export image already exists')
+            # # Files in cloud storage are easily overwritten
+            # #   so it is unneccesary to manually remove them
+            # # This would remove an existing file
+            # check_output(['gsutil', 'rm', export_path])
+
+        if os.path.isfile(output_path):
+            logging.debug('  Output CSV already exists, removing')
+            os.remove(output_path)
+
+    # This should probably be moved into an else block
+    #   to avoid lots of os.path.isfile calls when overwriting
+    if export_id in tasks.keys():
+        logging.debug('  Task already submitted, skipping')
+        return True
+    elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+            os.path.isfile(export_path)):
         logging.debug('  Export CSV already exists, moving')
         # Modify CSV while copying from Google Drive
-        export_df = pd.read_csv(export_path)
-        export_df = export_df[export_fields]
-        export_df.sort_values(by=['DATE'], inplace=True)
-        export_df.to_csv(output_path, index=False, columns=export_fields)
+        try:
+            export_df = pd.read_csv(export_path)
+            export_df = export_df[export_fields]
+            export_df.sort_values(by=['DATE'], inplace=True)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+        except pd.io.common.EmptyDataError:
+            # Save an empty dataframe to the output path
+            logging.warning('    Empty dataframe')
+            export_df = pd.DataFrame(columns=export_fields)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+            # logging.warning('    Empty dataframe, skipping')
+            # continue
         os.remove(export_path)
-        # shutil.move(export_path, output_path)
+        return True
+    elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+            export_cloud_name in ini['EXPORT']['cloud_file_list']):
+        logging.debug('    Export file already exists, moving')
+        logging.debug('    Reading {}'.format(export_cloud_url))
+        try:
+            export_request = requests.get(export_cloud_url).content
+            export_df = pd.read_csv(
+                StringIO(export_request.decode('utf-8')))
+            export_df = export_df[export_fields]
+            export_df.sort_values(by=['DATE'], inplace=True)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+        except pd.io.common.EmptyDataError:
+            # Save an empty dataframe to the output path
+            logging.warning('    Empty dataframe')
+            export_df = pd.DataFrame(columns=export_fields)
+            export_df.to_csv(
+                output_path, index=False, columns=export_fields)
+            # logging.warning('    Empty dataframe, skipping')
+            # continue
+        except Exception as e:
+            logging.error('Unhandled Exception')
+            logging.error(str(e))
+            return False
+        logging.debug('    Removing {}'.format(export_cloud_path))
+        try:
+            check_output(['gsutil', 'rm', export_cloud_path])
+        except Exception as e:
+            logging.error('Unhandled Exception')
+            logging.error(str(e))
+        return True
     elif os.path.isfile(output_path):
         logging.debug('  Output CSV already exists, skipping')
-    elif export_id in tasks.keys():
-        logging.debug('  Task already submitted, skipping')
-    else:
-        # Calculate values and statistics
-        # Build function in loop to set water year ETo/PPT values
-        def pdsi_zonal_stats_func(image):
-            """"""
-            date = ee.Date(image.get('system:time_start'))
-            doy = ee.Number(date.getRelative('day', 'year')).add(1)
-            input_mean = ee.Image(image) \
-                .reduceRegion(
-                    ee.Reducer.mean(), geometry=zone['geom'],
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=1,
-                    maxPixels=zone['max_pixels'])
-            return ee.Feature(
-                None,
-                {
-                    'ZONE_NAME': zone['name'],
-                    'ZONE_FID': zone['fid'],
-                    'DATE': date.format('YYYY-MM-dd'),
-                    'YEAR': date.get('year'),
-                    'MONTH': date.get('month'),
-                    'DAY': date.get('day'),
-                    'DOY': doy,
-                    'PDSI': input_mean.get('pdsi'),
-                })
-        stats_coll = pdsi_coll.map(pdsi_zonal_stats_func)
+        return True
 
-        logging.debug('  Building export task')
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
-            task = ee.batch.Export.table.toDrive(
-                collection=stats_coll,
-                description=export_id,
-                folder=ini['EXPORT']['export_folder'],
-                fileNamePrefix=export_id,
-                fileFormat='CSV')
-        elif ini['EXPORT']['export_dest'] == 'CLOUD':
-            task = ee.batch.Export.table.toCloudStorage(
-                collection=stats_coll,
-                description=export_id,
-                bucket=ini['EXPORT']['bucket_name'],
-                fileNamePrefix='{}'.format(export_id.replace('-', '')),
-                # fileNamePrefix=export_id,
-                fileFormat='CSV')
+    # Calculate values and statistics
+    # Build function in loop to set water year ETo/PPT values
+    def pdsi_zonal_stats_func(image):
+        """"""
+        date = ee.Date(image.get('system:time_start'))
+        doy = ee.Number(date.getRelative('day', 'year')).add(1)
+        input_mean = ee.Image(image) \
+            .reduceRegion(
+                ee.Reducer.mean(), geometry=zone['geom'],
+                crs=ini['SPATIAL']['crs'],
+                crsTransform=ini['EXPORT']['transform'],
+                bestEffort=False, tileScale=1,
+                maxPixels=zone['max_pixels'])
+        return ee.Feature(
+            None,
+            {
+                'ZONE_NAME': zone['name'],
+                'ZONE_FID': zone['fid'],
+                'DATE': date.format('YYYY-MM-dd'),
+                'YEAR': date.get('year'),
+                'MONTH': date.get('month'),
+                'DAY': date.get('day'),
+                'DOY': doy,
+                'PDSI': input_mean.get('pdsi'),
+            })
+    stats_coll = pdsi_coll.map(pdsi_zonal_stats_func)
 
-        logging.debug('  Starting export task')
-        for i in range(1, 10):
-            try:
-                task.start()
-                break
-            except Exception as e:
-                logging.error('  Exception: {}, retry {}'.format(e, i))
-                # logging.debug('{}'.format(e))
-                sleep(i ** 2)
-        # logging.debug('  Status: {}'.format(task.status()))
-        # logging.debug('  Active: {}'.format(task.active()))
+    logging.debug('  Building export task')
+    if ini['EXPORT']['export_dest'] == 'GDRIVE':
+        task = ee.batch.Export.table.toDrive(
+            collection=stats_coll,
+            description=export_id,
+            folder=ini['EXPORT']['export_folder'],
+            fileNamePrefix=export_id,
+            fileFormat='CSV')
+    elif ini['EXPORT']['export_dest'] == 'CLOUD':
+        task = ee.batch.Export.table.toCloudStorage(
+            collection=stats_coll,
+            description=export_id,
+            bucket=ini['EXPORT']['bucket_name'],
+            fileNamePrefix='{}'.format(export_id.replace('-', '')),
+            # fileNamePrefix=export_id,
+            fileFormat='CSV')
 
-    # # Get current running tasks
-    # logging.debug('\nRunning tasks')
-    # tasks = defaultdict(list)
-    # for t in ee.data.getTaskList():
-    #     if t['state'] in ['RUNNING', 'READY']:
-    #         logging.debug('  {}'.format(t['description']))
-    #         tasks[t['description']].append(t['id'])
-    #         # tasks[t['id']] = t['description']
+    logging.debug('  Starting export task')
+    for i in range(1, 10):
+        try:
+            task.start()
+            break
+        except Exception as e:
+            logging.error('  Exception: {}, retry {}'.format(e, i))
+            # logging.debug('{}'.format(e))
+            sleep(i ** 2)
+    # logging.debug('  Status: {}'.format(task.status()))
+    # logging.debug('  Active: {}'.format(task.active()))
 
 
 def arg_parse():
@@ -1046,7 +1286,7 @@ def arg_parse():
         description='Earth Engine Zonal Statistics',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', type=lambda x: python_common.valid_file(x),
+        '-i', '--ini', type=utils.arg_valid_file,
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
@@ -1059,7 +1299,7 @@ def arg_parse():
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
     else:
-        args.ini = python_common.get_ini_path(os.getcwd())
+        args.ini = utils.get_ini_path(os.getcwd())
     return args
 
 

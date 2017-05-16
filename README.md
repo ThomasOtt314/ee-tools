@@ -136,18 +136,28 @@ Currently you must use the "summary" or "zonal stats" INI file to set the output
 The Landsat thumbnail script must also be run after zonal statistics have been computed, since it reads the landsat_daily.csv to determine which images to download.
 
 ## Dependencies
-The EE-Tools have only been tested using Python 2.7 but they may work with Python 3.x.
+The EE-Tools have been tested using both Python 3.6 and Python 2.7 (using the "configparser" backport and "future" module, see below).
 
 The following modules must be present to run all of the EE-Tools:
 * [numpy](http://www.numpy.org)
 * [pandas](http://pandas.pydata.org)
-* [configparser](https://docs.python.org/3/library/configparser.html) (backport from Python 3.X)
 * [gdal](http://gdal.org/)
-* [relativedelta](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
+* [dateutil](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
-* [bokeh](http://bokeh.pydata.org/) (for making interactive plots)
-* [openpyxl](https://openpyxl.readthedocs.io/en/default/) (for building summary excel table)
-* [pytest](http://doc.pytest.org/en/latest/) (only used for testing)
+
+The following modules are needed to generate summary figures
+* [matplotlib](https://matplotlib.org/) (for making static summary plots)
+* [bokeh](http://bokeh.pydata.org/) (for making interactive timeseries plots)
+
+The following module is needed to generate summary excel files (deprecated)
+* [openpyxl](https://openpyxl.readthedocs.io/en/default/)
+
+The following module is used to run the test suite
+* [pytest](http://doc.pytest.org/en/latest/)
+
+The following modules must be present if using Python 2.7
+* [configparser](https://docs.python.org/3/library/configparser.html) (backport of Python 3.X configparser module)
+* [future](http://python-future.org/)
 
 #### Anaconda
 The easiest way of obtaining Python and all of the necessary external modules, is to install [Anaconda](https://www.continuum.io/downloads).

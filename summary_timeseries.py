@@ -1,11 +1,12 @@
 #--------------------------------
 # Name:         summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
-# Created       2017-05-03
-# Python:       2.7
+# Created       2017-05-15
+# Python:       3.6
 #--------------------------------
 
 import argparse
+from builtins import input
 import datetime
 import logging
 import os
@@ -22,8 +23,8 @@ import numpy as np
 import pandas as pd
 
 import ee_tools.gdal_common as gdc
-import ee_tools.ini_common as ini_common
-import ee_tools.python_common as python_common
+import ee_tools.inputs as inputs
+import ee_tools.utils as utils
 
 
 def main(ini_path=None, show_flag=False, overwrite_flag=True):
@@ -45,9 +46,9 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
     logging.info('\nGenerate interactive timeseries figures')
 
     # Read config file
-    ini = ini_common.read(ini_path)
-    ini_common.parse_section(ini, section='INPUTS')
-    ini_common.parse_section(ini, section='SUMMARY')
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='SUMMARY')
 
     # Eventually read from INI
     plot_var_list = [
@@ -58,9 +59,9 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
 
     year_list = range(
         ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
-    month_list = list(python_common.wrapped_range(
+    month_list = list(utils.wrapped_range(
         ini['INPUTS']['start_month'], ini['INPUTS']['end_month'], 1, 12))
-    doy_list = list(python_common.wrapped_range(
+    doy_list = list(utils.wrapped_range(
         ini['INPUTS']['start_doy'], ini['INPUTS']['end_doy'], 1, 366))
 
     # Get ee features from shapefile
@@ -375,7 +376,7 @@ def main(ini_path=None, show_flag=False, overwrite_flag=True):
 
         # Don't automatically build all plots if show is True
         if show_flag:
-            raw_input('Press ENTER to continue')
+            input('Press ENTER to continue')
         # break
 
 
@@ -385,7 +386,7 @@ def arg_parse():
         description='Generate interactive timeseries figures',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', type=lambda x: python_common.valid_file(x),
+        '-i', '--ini', type=utils.arg_valid_file,
         help='Input file', metavar='FILE')
     parser.add_argument(
         '--show', default=False, action='store_true',
@@ -401,7 +402,7 @@ def arg_parse():
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
     else:
-        args.ini = python_common.get_ini_path(os.getcwd())
+        args.ini = utils.get_ini_path(os.getcwd())
     return args
 
 

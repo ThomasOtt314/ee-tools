@@ -1,23 +1,21 @@
 #--------------------------------
-# Name:         ini_common.py
+# Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-05-02
+# Created       2017-05-15
 # Python:       2.7
 #--------------------------------
 
-# import ConfigParser
-# from collections import defaultdict
+from builtins import input
 import datetime
 import logging
 import os
 import sys
 
 import configparser
-# from backports import configparser
 
 import ee_tools.gdal_common as gdc
-import ee_tools.python_common as python_common
+import ee_tools.utils as utils
 
 
 def read(ini_path):
@@ -26,10 +24,10 @@ def read(ini_path):
     config = configparser.ConfigParser()
     try:
         config.read(ini_path)
-    except:
+    except Exception as e:
         logging.error('\nERROR: Input file could not be read, '
                       'is not an input file, or does not exist\n'
-                      'ERROR: ini_path = {}\n'.format(ini_path))
+                      '  ini_path = {}\n{}\n'.format(ini_path, e))
         sys.exit()
 
     # Force conversion of unicode to strings
@@ -60,8 +58,8 @@ def parse_section(ini, section):
         parse_zonal_stats(ini)
     elif section == 'SUMMARY':
         parse_summary(ini)
-    elif section == 'TABLES':
-        parse_tables(ini)
+    # elif section == 'TABLES':
+    #     parse_tables(ini)
     elif section == 'FIGURES':
         parse_figures(ini)
 
@@ -171,7 +169,7 @@ def parse_inputs(ini, section='INPUTS'):
     if not os.path.isdir(os.path.dirname(ini[section]['zone_shp_path'])):
         logging.error(
             '\nERROR: The zone workspace does not exist, exiting\n'
-            '  {}'.format(os.path.dirname(ini[section]['zone_shp_ws'])))
+            '  {}'.format(os.path.dirname(ini[section]['zone_shp_path'])))
         sys.exit()
     elif not os.path.isfile(ini[section]['zone_shp_path']):
         logging.error(
@@ -225,18 +223,18 @@ def parse_inputs(ini, section='INPUTS'):
 
     if ini[section]['fid_keep_list']:
         ini[section]['fid_keep_list'] = sorted(list(
-            python_common.parse_int_set(ini[section]['fid_keep_list'])))
+            utils.parse_int_set(ini[section]['fid_keep_list'])))
     if ini[section]['fid_skip_list']:
         ini[section]['fid_skip_list'] = sorted(list(
-            python_common.parse_int_set(ini[section]['fid_skip_list'])))
+            utils.parse_int_set(ini[section]['fid_skip_list'])))
 
     # Convert path/row ranges to list
     if ini[section]['path_keep_list']:
         ini[section]['path_keep_list'] = sorted(list(
-            python_common.parse_int_set(ini[section]['path_keep_list'])))
+            utils.parse_int_set(ini[section]['path_keep_list'])))
     if ini[section]['row_keep_list']:
         ini[section]['row_keep_list'] = sorted(list(
-            python_common.parse_int_set(ini[section]['row_keep_list'])))
+            utils.parse_int_set(ini[section]['row_keep_list'])))
     if ini[section]['path_row_list']:
         ini[section]['path_row_list'] = sorted([
             pr.strip() for pr in ini[section]['path_row_list'].split(',')])
@@ -328,9 +326,8 @@ def parse_export(ini, section='EXPORT'):
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
-    # DEADBEEF - CLOUD export options are not fully supported yet
-    export_dest_list = ['GDRIVE']
-    # export_dest_list = ['GDRIVE', 'CLOUD']
+    # DEADBEEF - CLOUD export options are still experimental
+    export_dest_list = ['GDRIVE', 'CLOUD']
     if ini[section]['export_dest'].upper() not in export_dest_list:
         logging.error(
             '\nERROR: Invalid Export Destination: {}\n  Must be {}'.format(
@@ -339,11 +336,10 @@ def parse_export(ini, section='EXPORT'):
 
     # DEADBEEF - This might be better in an export module or separate function
     # Export destination specific options
-    if ini[section]['export_dest'] == 'GDRIVE':
+    if ini[section]['export_dest'] == 's':
         logging.info('  Google Drive Export')
         get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
         get_param(ini, section, 'export_folder', 'export_folder', str, '')
-        # get_param(ini, section, 'export_path', 'output_ws', str, 'ssebop')
 
         # DEADBEEF
         if ini[section]['export_folder']:
@@ -351,7 +347,7 @@ def parse_export(ini, section='EXPORT'):
                 '\nThere are currently issues writing to Google Drive folders'
                 '\n  Setting "export_folder" = ""\n')
             ini[section]['export_folder'] = ''
-            raw_input('ENTER')
+            input('ENTER')
 
         # Build and check file paths
         ini[section]['export_ws'] = os.path.join(
@@ -363,30 +359,36 @@ def parse_export(ini, section='EXPORT'):
 
     elif ini[section]['export_dest'] == 'CLOUD':
         logging.info('  Cloud Storage')
-        get_param(ini, section, 'project_name', 'project_name', str, 'ssebop')
-        get_param(ini, section, 'bucket_name', 'bucket_name', str, None)
+        get_param(ini, section, 'project_name', 'project_name', str, 'steel-melody-531')
+        get_param(ini, section, 'bucket_name', 'bucket_name', str, 'ee-tools-export')
 
         if not ini[section]['project_name']:
             logging.error('\nERROR: {} must be set in INI, exiting\n'.format(
                 ini[section]['project_name']))
-        elif ini[section]['project_name'] != 'ssebop':
+        elif ini[section]['project_name'] != 'steel-melody-531':
             logging.error(
                 '\nERROR: When exporting to Cloud Storage, the ' +
                 'project_name parameter sets the project name.' +
-                '  This parameter must be set to "ssebop" for now')
+                '  This parameter must be set to "steel-melody-531" for now')
             sys.exit()
         if not ini[section]['bucket_name']:
             logging.error('\nERROR: {} must be set in INI, exiting\n'.format(
                 ini[section]['bucket_name']))
             sys.exit()
+        elif ini[section]['bucket_name'] != 'ee-tools-export':
+            logging.error(
+                '\nERROR: When exporting to Cloud Storage, the ' +
+                'bucket_name parameter sets the project name.' +
+                '  This parameter must be set to "ee-tools-export" for now')
+            sys.exit()
         ini[section]['export_ws'] = 'gs://{}'.format(
             ini[section]['bucket_name'])
-        # logging.debug('  {:16s} {}'.format(
-        #     'Project:', ini[section]['project_name']))
+        logging.debug('  {:16s} {}'.format(
+            'Project:', ini[section]['project_name']))
         logging.debug('  {:16s} {}'.format(
             'Bucket:', ini[section]['bucket_name']))
         logging.debug('  {:16s} {}'.format(
-            'Output Workspace:', ini[section]['export_ws']))
+            'Cloud Workspace:', ini[section]['export_ws']))
 
         bucket_list = utils.get_buckets(ini[section]['project_name'])
         if ini[section]['bucket_name'] not in bucket_list:
@@ -406,10 +408,6 @@ def parse_export(ini, section='EXPORT'):
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
     param_list = [
-        # # Google Drive
-        # ['gdrive_workspace', 'gdrive_ws', str, ''],
-        # ['export_folder', 'export_folder', str, ''],
-
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
@@ -476,8 +474,9 @@ def parse_images(ini, section='IMAGES'):
         os.makedirs(ini[section]['output_ws'])
 
     # Image download bands
-    ini[section]['download_bands'] = map(
-        lambda x: x.strip().lower(), ini[section]['download_bands'].split(','))
+    ini[section]['download_bands'] = list(map(
+        lambda x: x.strip().lower(), 
+        ini[section]['download_bands'].split(',')))
     logging.debug('  Output Bands:')
     for band in ini[section]['download_bands']:
         logging.info('    {}'.format(band))
@@ -540,7 +539,7 @@ def parse_summary(ini, section='SUMMARY'):
         logging.error(
             '\nWARNING: max_cloud_score must be a percent (0-100)' +
             '\n  The value entered appears to be a decimal in the range 0-1')
-        raw_input('  Press ENTER to continue')
+        input('  Press ENTER to continue')
 
     # Remove scenes with Fmask counts above the target percentage
     if (ini[section]['max_fmask_pct'] < 0 or
@@ -552,7 +551,7 @@ def parse_summary(ini, section='SUMMARY'):
         logging.error(
             '\nWARNING: max_fmask_pct must be a percent (0-100)' +
             '\n  The value entered appears to be a decimal in the range 0-1')
-        raw_input('  Press ENTER to continue')
+        input('  Press ENTER to continue')
 
     # Remove SLC-off scenes with pixel counts below the target percentage
     if (ini[section]['min_slc_off_pct'] < 0 or
@@ -565,7 +564,7 @@ def parse_summary(ini, section='SUMMARY'):
         logging.error(
             '\nWARNING: min_slc_off_pct must be a percent (0-100)' +
             '\n  The value entered appears to be a decimal in the range 0-1')
-        raw_input('  Press ENTER to continue')
+        input('  Press ENTER to continue')
 
     # GRIDMET month range (default to water year)
     if (ini[section]['gridmet_start_month'] and
@@ -618,17 +617,16 @@ def parse_figures(ini, section='FIGURES'):
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
-    ini[section]['timeseries_bands'] = map(
+    ini[section]['timeseries_bands'] = list(map(
         lambda x: x.strip().lower(),
-        ini[section]['timeseries_bands'].split(','))
+        ini[section]['timeseries_bands'].split(',')))
 
     ini[section]['scatter_bands'] = [
-        map(lambda x: x.strip().lower(), b.split(':'))
+        list(map(lambda x: x.strip().lower(), b.split(':')))
         for b in ini[section]['scatter_bands'].split(',')]
-
-    ini[section]['complementary_bands'] = map(
+    ini[section]['complementary_bands'] = list(map(
         lambda x: x.strip().lower(),
-        ini[section]['complementary_bands'].split(','))
+        ini[section]['complementary_bands'].split(',')))
 
     if ini[section]['ppt_plot_type'].upper() not in ['LINE', 'BAR']:
         logging.error('\nERROR: ppt_plot_type must be "LINE" or "BAR"')

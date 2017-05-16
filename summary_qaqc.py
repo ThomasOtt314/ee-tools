@@ -1,8 +1,8 @@
 #--------------------------------
 # Name:         ee_summary_qaqc.py
 # Purpose:      Generate summary tables
-# Created       2017-05-02
-# Python:       2.7
+# Created       2017-05-15
+# Python:       3.6
 #--------------------------------
 
 import argparse
@@ -19,8 +19,8 @@ from scipy import optimize
 from sklearn.covariance import EllipticEnvelope
 
 import ee_tools.gdal_common as gdc
-import ee_tools.ini_common as ini_common
-import ee_tools.python_common as python_common
+import ee_tools.inputs as inputs
+import ee_tools.utils as utils
 
 
 def main(ini_path=None, plot_flag=False, overwrite_flag=True):
@@ -43,10 +43,10 @@ def main(ini_path=None, plot_flag=False, overwrite_flag=True):
     logging.info('\nGenerate summary QA/QC')
 
     # Read config file
-    ini = ini_common.read(ini_path)
-    ini_common.parse_section(ini, section='INPUTS')
-    ini_common.parse_section(ini, section='SUMMARY')
-    ini_common.parse_section(ini, section='TABLES')
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='SUMMARY')
+    # inputs.parse_section(ini, section='TABLES')
 
     landsat_daily_fields = [
         'ZONE_FID', 'ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT',
@@ -61,9 +61,9 @@ def main(ini_path=None, plot_flag=False, overwrite_flag=True):
     output_fields = landsat_daily_fields + ['FMASK_PCT', 'OUTLIER_SCORE', 'QA']
 
     # year_list = range(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
-    # month_list = list(python_common.wrapped_range(
+    # month_list = list(utils.wrapped_range(
     #     ini['INPUTS']['start_month'], ini['INPUTS']['end_month'], 1, 12))
-    # doy_list = list(python_common.wrapped_range(
+    # doy_list = list(utils.wrapped_range(
     #     ini['INPUTS']['start_doy'], ini['INPUTS']['end_doy'], 1, 366))
 
     # Add merged row XXX to keep list
@@ -448,7 +448,7 @@ def arg_parse():
         description='Generate summary QA/QC',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', type=lambda x: python_common.valid_file(x),
+        '-i', '--ini', type=utils.arg_valid_file,
         help='Input file', metavar='FILE')
     parser.add_argument(
         '--plots', default=False, action='store_true',
@@ -464,7 +464,7 @@ def arg_parse():
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
     else:
-        args.ini = python_common.get_ini_path(os.getcwd())
+        args.ini = utils.get_ini_path(os.getcwd())
     return args
 
 

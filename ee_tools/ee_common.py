@@ -2,8 +2,8 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-02-16
-# Python:       2.7
+# Created       2017-05-15
+# Python:       3.6
 #--------------------------------
 
 import datetime
@@ -600,7 +600,7 @@ def landsat_images_func(refl_toa_orig, landsat, adjust_method=''):
             refl_toa_orig.select('cloud_score'), refl_toa_orig.select('fmask'),
             refl_toa_orig.metadata('WRS_ROW', 'row')
         ]).select(
-            range(28),
+            list(range(28)),
             [
                 'toa_blue', 'toa_green', 'toa_red',
                 'toa_nir', 'toa_swir1', 'toa_swir2',

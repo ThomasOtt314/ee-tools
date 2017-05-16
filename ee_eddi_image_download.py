@@ -1,12 +1,11 @@
 #--------------------------------
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
-# Created       2017-05-02
-# Python:       2.7
+# Created       2017-05-15
+# Python:       3.6
 #--------------------------------
 
 import argparse
-from collections import defaultdict
 import datetime
 import json
 import logging
@@ -20,8 +19,8 @@ from osgeo import ogr
 
 # import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
-import ee_tools.ini_common as ini_common
-import ee_tools.python_common as python_common
+import ee_tools.inputs as inputs
+import ee_tools.utils as utils
 
 
 def ee_image_download(ini_path=None, overwrite_flag=False):
@@ -59,12 +58,12 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     climo_year_end = 2017
 
     # Read config file
-    # ini = ini_common.ini_parse(ini_path, section='IMAGE')
-    ini = ini_common.read(ini_path)
-    ini_common.parse_section(ini, section='INPUTS')
-    ini_common.parse_section(ini, section='SPATIAL')
-    ini_common.parse_section(ini, section='EXPORT')
-    ini_common.parse_section(ini, section='IMAGES')
+    # ini = inputs.ini_parse(ini_path, section='IMAGE')
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='SPATIAL')
+    inputs.parse_section(ini, section='EXPORT')
+    inputs.parse_section(ini, section='IMAGES')
 
     nodata_value = -9999
 
@@ -73,7 +72,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     ini['output_x'], ini['output_y'] = -124.79299639209513, 49.41685579737572
     ini['SPATIAL']['cellsize'] = 0.041666001963701
     # ini['SPATIAL']['cellsize'] = [0.041666001963701, 0.041666001489718]
-    # ini['output_x'], ini['output_y'] = -124.79166666666666666667, 25.04166666666666666667
+    # ini['output_x'] = -124.79166666666666666667
+    # ini['output_y'] = 25.04166666666666666667
     # ini['SPATIAL']['cellsize'] = 1. / 24
     ini['SPATIAL']['osr'] = gdc.epsg_osr(4326)
     # ini['SPATIAL']['osr'] = gdc.epsg_osr(4269)
@@ -123,13 +123,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     ee.Initialize()
 
     # Get current running tasks
-    logging.debug('\nRunning tasks')
-    tasks = defaultdict(list)
-    for t in ee.data.getTaskList():
-        if t['state'] in ['RUNNING', 'READY']:
-            logging.debug('  {}'.format(t['description']))
-            tasks[t['description']].append(t['id'])
-            # tasks[t['id']] = t['description']
+    tasks = utils.get_ee_tasks()
 
 
     # Download images for each feature separately
@@ -157,7 +151,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Adjust extent to match raster
         zone_extent = zone_extent.adjust_to_snap(
-            'EXPAND', ini['output_x'], ini['output_y'], ini['SPATIAL']['cellsize'])
+            'EXPAND', ini['output_x'], ini['output_y'], 
+            ini['SPATIAL']['cellsize'])
         zone_geo = zone_extent.geo(ini['SPATIAL']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
         zone_shape = zone_extent.shape(ini['SPATIAL']['cellsize'])
@@ -207,7 +202,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 ini['INPUTS']['zone_filename'], date_str, export_name.lower())
             output_id = '{}_{}'.format(date_str, output_name)
 
-            export_path = os.path.join(ini['EXPORT']['export_ws'], export_id + '.tif')
+            export_path = os.path.join(
+                ini['EXPORT']['export_ws'], export_id + '.tif')
             output_path = os.path.join(
                 zone_eddi_ws, output_id + '.tif')
             logging.debug('  Export: {}'.format(export_path))
@@ -221,11 +217,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     del tasks[export_id]
                 if os.path.isfile(export_path):
                     logging.debug('  Export image already exists, removing')
-                    python_common.remove_file(export_path)
+                    utils.remove_file(export_path)
                     # os.remove(export_path)
                 if os.path.isfile(output_path):
                     logging.debug('  Output image already exists, removing')
-                    python_common.remove_file(output_path)
+                    utils.remove_file(output_path)
                     # os.remove(output_path)
             else:
                 if os.path.isfile(export_path):
@@ -264,15 +260,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     '  {}'.format(str(e)))
                 continue
             # logging.debug(task.status())
-
-    # # Get current running tasks
-    # logging.debug('\nRunning tasks')
-    # tasks = defaultdict(list)
-    # for t in ee.data.getTaskList():
-    #     if t['state'] in ['RUNNING', 'READY']:
-    #         logging.debug('  {}'.format(t['description']))
-    #         tasks[t['description']].append(t['id'])
-    #         # tasks[t['id']] = t['description']
 
 
 def ee_eddi_image(tgt_date, agg_days=30, variable='eddi',
@@ -433,7 +420,7 @@ def arg_parse():
         description='Earth Engine EDDI Image Download',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', type=lambda x: python_common.valid_file(x),
+        '-i', '--ini', type=utils.arg_valid_file,
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
@@ -446,7 +433,7 @@ def arg_parse():
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
     else:
-        args.ini = python_common.get_ini_path(os.getcwd())
+        args.ini = utils.get_ini_path(os.getcwd())
     return args
 
 

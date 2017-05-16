@@ -1,12 +1,12 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-05-02
-# Python:       2.7
+# Created       2017-05-15
+# Python:       3.6
 #--------------------------------
 
 import argparse
-from collections import defaultdict
+from builtins import input
 import datetime
 import json
 import logging
@@ -21,8 +21,8 @@ from osgeo import ogr
 
 import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
-import ee_tools.ini_common as ini_common
-import ee_tools.python_common as python_common
+import ee_tools.inputs as inputs
+import ee_tools.utils as utils
 
 
 def ee_image_download(ini_path=None, overwrite_flag=False):
@@ -41,18 +41,18 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     if overwrite_flag:
         logging.warning(
             '\nAre you sure you want to overwrite existing images?')
-        raw_input('Press ENTER to continue')
+        input('Press ENTER to continue')
 
     # Regular expression to pull out Landsat scene_id
     # landsat_re = re.compile(
     #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
 
     # Read config file
-    ini = ini_common.read(ini_path)
-    ini_common.parse_section(ini, section='INPUTS')
-    ini_common.parse_section(ini, section='SPATIAL')
-    ini_common.parse_section(ini, section='EXPORT')
-    ini_common.parse_section(ini, section='IMAGES')
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='SPATIAL')
+    inputs.parse_section(ini, section='EXPORT')
+    inputs.parse_section(ini, section='IMAGES')
 
     nodata_value = -9999
 
@@ -117,7 +117,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
             'This will likely cause problems!')
-        raw_input('Press ENTER to continue')
+        rinput('Press ENTER to continue')
     else:
         logging.debug('  Zone Projection:\n{}\n'.format(
             zone_osr.ExportToWkt()))
@@ -131,13 +131,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     ee.Initialize()
 
     # Get current running tasks
-    logging.debug('\nRunning tasks')
-    tasks = defaultdict(list)
-    for t in ee.data.getTaskList():
-        if t['state'] in ['RUNNING', 'READY']:
-            logging.debug('  {}'.format(t['description']))
-            tasks[t['description']].append(t['id'])
-            # tasks[t['id']] = t['description']
+    tasks = utils.get_ee_tasks()
 
 
     # Download images for each feature separately
@@ -310,12 +304,12 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     if os.path.isfile(export_path):
                         logging.debug(
                             '  Export image already exists, removing')
-                        python_common.remove_file(export_path)
+                        utils.remove_file(export_path)
                         # os.remove(export_path)
                     if os.path.isfile(output_path):
                         logging.debug(
                             '  Output image already exists, removing')
-                        python_common.remove_file(output_path)
+                        utils.remove_file(output_path)
                         # os.remove(output_path)
                 else:
                     if os.path.isfile(export_path):
@@ -393,15 +387,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     continue
                 logging.debug(task.status())
 
-    # # Get current running tasks
-    # logging.debug('\nRunning tasks')
-    # tasks = defaultdict(list)
-    # for t in ee.data.getTaskList():
-    #     if t['state'] in ['RUNNING', 'READY']:
-    #         logging.debug('  {}'.format(t['description']))
-    #         tasks[t['description']].append(t['id'])
-    #         # tasks[t['id']] = t['description']
-
 
 def arg_parse():
     """"""
@@ -409,7 +394,7 @@ def arg_parse():
         description='Earth Engine Landsat Image Download',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '-i', '--ini', type=lambda x: python_common.valid_file(x),
+        '-i', '--ini', type=utils.arg_valid_file,
         help='Input file', metavar='FILE')
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
@@ -422,7 +407,7 @@ def arg_parse():
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
     else:
-        args.ini = python_common.get_ini_path(os.getcwd())
+        args.ini = utils.get_ini_path(os.getcwd())
     return args
 
 
