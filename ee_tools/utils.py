@@ -4,7 +4,7 @@ import glob
 import logging
 import os
 import re
-from subprocess import check_output
+import subprocess
 import sys
 # Python 3 (or 2 with future module)
 import tkinter
@@ -51,9 +51,9 @@ def get_buckets(project_name):
     """
     # logging.debug('\nGetting cloud storage bucket list')
     try:
-        bucket_list = check_output(
+        bucket_list = subprocess.check_output(
             ['gsutil', 'ls', '-p', project_name],
-            universal_newlines=True)
+            universal_newlines=True, shell=True)
     except Exception as e:
         logging.error(
             '\nERROR: There was a problem getting the bucket list ' +
@@ -78,9 +78,9 @@ def get_bucket_files(project_name, bucket_name):
         list of file names
     """
     try:
-        file_list = check_output(
+        file_list = subprocess.check_output(
             ['gsutil', 'ls', '-r', '-p', project_name, bucket_name],
-            universal_newlines=True)
+            universal_newlines=True, shell=True)
     except Exception as e:
         logging.error(
             '\nERROR: There was a problem getting the bucket file list ' +
