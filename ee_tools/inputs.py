@@ -336,7 +336,7 @@ def parse_export(ini, section='EXPORT'):
 
     # DEADBEEF - This might be better in an export module or separate function
     # Export destination specific options
-    if ini[section]['export_dest'] == 's':
+    if ini[section]['export_dest'] == 'GDRIVE':
         logging.info('  Google Drive Export')
         get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
         get_param(ini, section, 'export_folder', 'export_folder', str, '')
@@ -475,7 +475,7 @@ def parse_images(ini, section='IMAGES'):
 
     # Image download bands
     ini[section]['download_bands'] = list(map(
-        lambda x: x.strip().lower(), 
+        lambda x: x.strip().lower(),
         ini[section]['download_bands'].split(',')))
     logging.debug('  Output Bands:')
     for band in ini[section]['download_bands']:
