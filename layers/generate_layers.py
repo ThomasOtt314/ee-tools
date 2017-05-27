@@ -9,30 +9,46 @@ import tempfile
 import arcpy
 
 
-def main():
-    """Generate Layer Files for each Landsat image from templates"""
+def main(version='10p4'):
+    """Generate Layer Files for each Landsat image from templates
+
+    Args:
+        version (str): ArcGIS major version number.
+            Choices: 10p3 or 10p4
+
+    """
+
+    product_list = [
+        'albedo_sur',
+        'cloud_score',
+        'evi_sur',
+        'fmask',
+        'ndvi_sur',
+        'ndvi_toa',
+        'ndwi_green_nir_sur',
+        'ndwi_green_swir1_sur',
+        'ndwi_nir_swir1_sur',
+        'refl_sur',
+        # 'tasseled_cap',
+        'ts'
+    ]
 
     # Search for Landsat images to build templates for in the input workspace
     # Code currently is assuming images are in separate folders for each year
-    input_ws = r'Y:\justinh\Projects\SNWA\ee\images\spring_valley\landsat'
+    input_ws = r'..\example\images\example\landsat'
 
     # Set a different raster workspace in the layers
-    layer_ws = r'Y:\justinh\Projects\SNWA\ee\images\spring_valley\landsat'
-    # layer_ws = r'R:\Image_Regional\SpringValley\Hearings_2017_GDE\ee\images\spring_valley\landsat'
+    layer_ws = r'..\example\images\example\landsat'
 
     # Save layer files to the output workspace
     #   (separate folders for each year)
-    output_ws = r'Y:\justinh\Projects\SNWA\ee\images\spring_valley\layers'
+    output_ws = r'..\example\images\example\layers'
 
     # Folder where the template layers are stored
-    template_ws = r'Y:\justinh\Projects\SNWA\ee\layers'
+    template_ws = r'..\layers\{}'.format(version)
 
+    template_lyr_fmt = 'template.{}.tif.lyr'
 
-    # This would need to be appended to process other products
-    template_dict = {
-        'refl_sur': 'template.refl_sur.tif.lyr'
-        # 'ndvi_sur': 'template.ndvi_sur.tif.lyr'
-    }
 
     # Need a temporary folder because of a bug in replaceDataSource
     temp_ws = tempfile.mkdtemp()
@@ -41,11 +57,12 @@ def main():
         os.makedirs(temp_ws)
 
     # Check that templates exists
-    for product, template in template_dict.items():
-        template_path = os.path.join(template_ws, template)
+    for product in product_list:
+        template_path = os.path.join(
+            template_ws, template_lyr_fmt.format(product))
         if not os.path.isfile(template_path):
             logging.error(
-                '\nERROR: The {} template layer does not exist\m    {}'.format(
+                '\nERROR: The {} template layer does not exist\n    {}'.format(
                     product, template_path))
 
     # Process each year separately
@@ -63,13 +80,14 @@ def main():
             if not item.endswith('.tif'):
                 continue
 
-            for product, template in template_dict.items():
+            for product in product_list:
                 # logging.debug('{}'.format(product))
                 if not item.endswith(product + '.tif'):
                     continue
                 logging.info('{}'.format(item))
 
-                template_path = os.path.join(template_ws, template)
+                template_path = os.path.join(
+                    template_ws, template_lyr_fmt.format(product))
                 layer_path = os.path.join(
                     output_year_ws, item.replace('.tif', '.lyr'))
                 logging.debug('  Template: {}'.format(template_path))
@@ -117,6 +135,9 @@ def arg_parse():
         description='Generate Layer Files',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
+        '-v', '--version', default='10p4', choices=['10p3', '10p4'],
+        help='ArcGIS major version number')
+    parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
         help='Debug level logging', action="store_const", dest="loglevel")
     args = parser.parse_args()
@@ -135,4 +156,4 @@ if __name__ == '__main__':
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
 
-    main()
+    main(version=args.version)
