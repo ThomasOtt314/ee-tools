@@ -724,11 +724,12 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage
     # Also, use the sharelink path for reading the csv directly
-    export_cloud_name = export_id + 'ee_export.csv'
-    export_cloud_path = os.path.join(
-        ini['EXPORT']['export_ws'], export_cloud_name)
-    export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
-        ini['EXPORT']['bucket_name'], export_cloud_name)
+    if ini['EXPORT']['export_dest'] == 'CLOUD':
+        export_cloud_name = export_id + 'ee_export.csv'
+        export_cloud_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_cloud_name)
+        export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+            ini['EXPORT']['bucket_name'], export_cloud_name)
 
     if overwrite_flag:
         if export_id in tasks.keys():
@@ -952,11 +953,12 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage
     # Also, use the sharelink path for reading the csv directly
-    export_cloud_name = export_id + 'ee_export.csv'
-    export_cloud_path = os.path.join(
-        ini['EXPORT']['export_ws'], export_cloud_name)
-    export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
-        ini['EXPORT']['bucket_name'], export_cloud_name)
+    if ini['EXPORT']['export_dest'] == 'CLOUD':
+        export_cloud_name = export_id + 'ee_export.csv'
+        export_cloud_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_cloud_name)
+        export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+            ini['EXPORT']['bucket_name'], export_cloud_name)
 
     if overwrite_flag:
         if export_id in tasks.keys():
@@ -1135,11 +1137,12 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage
     # Also, use the sharelink path for reading the csv directly
-    export_cloud_name = export_id + 'ee_export.csv'
-    export_cloud_path = os.path.join(
-        ini['EXPORT']['export_ws'], export_cloud_name)
-    export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
-        ini['EXPORT']['bucket_name'], export_cloud_name)
+    if ini['EXPORT']['export_dest'] == 'CLOUD':
+        export_cloud_name = export_id + 'ee_export.csv'
+        export_cloud_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_cloud_name)
+        export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
+            ini['EXPORT']['bucket_name'], export_cloud_name)
 
     if overwrite_flag:
         if export_id in tasks.keys():
