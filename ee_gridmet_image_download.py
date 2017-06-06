@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-05-15
+# Created       2017-06-05
 # Python:       3.6
 #--------------------------------
 
@@ -12,6 +12,7 @@ import logging
 import os
 import shutil
 import sys
+from time import sleep
 
 # import arcpy
 from dateutil.relativedelta import relativedelta
@@ -186,11 +187,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         if gridmet_flag:
             # Process each image in the collection by date
             export_list = []
-            for year in xrange(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
+            for year in range(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
                 for b_key, b_name in sorted(gridmet_download_bands.items()):
                     if gridmet_monthly_flag:
                         # Monthly
-                        for start_month in xrange(1, 13):
+                        for start_month in range(1, 13):
                             start_dt = datetime.datetime(year, start_month, 1)
                             end_dt = (
                                 start_dt + relativedelta(months=1) -
@@ -233,8 +234,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 if overwrite_flag:
                     if export_id in tasks.keys():
                         logging.debug('  Task already submitted, cancelling')
-                        for task in tasks[export_id]:
-                            ee.data.cancelTask(task)
+                        ee.data.cancelTask(tasks[export_id])
                         del tasks[export_id]
                     if os.path.isfile(export_path):
                         logging.debug('  Export image already exists, removing')
@@ -251,7 +251,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         gdc.raster_path_set_nodata(output_path, nodata_value)
                         # arcpy.CalculateStatistics_management(output_path)
                         # gdc.raster_statistics(output_path)
-                        # subprocess.call([
+                        # subprocess.check_output([
                         #         'gdalwarp',
                         #         '-ot', float_output_type, '-overwrite',
                         #         '-of', 'GTiff', '-co', 'COMPRESS=LZW',
@@ -259,10 +259,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         #         '-dstnodata', '{:f}'.format(float_nodata_value),
                         #         export_path, output_path])
                         # with open(os.devnull, 'w') as devnull:
-                        #     subprocess.call(
+                        #     subprocess.check_call(
                         #         ['gdalinfo', '-stats', output_path],
                         #         stdout=devnull)
-                        # subprocess.call(['gdalmanage', 'delete', export_path])
+                        # subprocess.check_output(
+                        #     ['gdalmanage', 'delete', export_path])
                         continue
                     elif os.path.isfile(output_path):
                         logging.debug('  Output image already exists, skipping')
@@ -278,21 +279,43 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 gridmet_image = ee.Image(gridmet_coll.sum())
 
                 logging.debug('  Starting download task')
+                # if ini['EXPORT']['export_dest'] == 'gdrive':
                 task = ee.batch.Export.image.toDrive(
-                    gridmet_image,
+                    image=gridmet_image,
                     description=export_id,
                     # folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['SPATIAL']['crs'],
                     crsTransform=output_transform)
-                try:
-                    task.start()
-                except:
-                    logging.error(
-                        '  Unhandled error starting download task, skipping')
-                    continue
-                # logging.debug(task.status())
+                # elif ini['EXPORT']['export_dest'] == 'gdrive':
+                #     task = ee.batch.Export.image.toCloudStorage(
+                #         image=gridmet_image,
+                #         description=export_id,
+                #         bucket=ini['EXPORT']['export_folder'],
+                #         fileNamePrefix=export_id,
+                #         dimensions=output_shape,
+                #         crs=ini['SPATIAL']['crs'],
+                #         crsTransform=output_transform)
+
+                logging.debug('  Starting export task')
+                for i in range(1, 10):
+                    try:
+                        task.start()
+                        break
+                    except Exception as e:
+                        logging.error('  Exception: {}, retry {}'.format(e, i))
+                        logging.debug('{}'.format(e))
+                        sleep(i ** 2)
+                # try:
+                #     task.start()
+                # except Exception as e:
+                #     logging.error(
+                #         '  Unhandled error starting task, skipping\n'
+                #         '  {}'.format(str(e)))
+                #     continue
+                # logging.debug('  Status: {}'.format(task.status()))
+                # logging.debug('  Active: {}'.format(task.active()))
 
 
         # GRIDMET PDSI
@@ -300,9 +323,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             # Process each image in the collection by date
             export_list = []
             b_name = 'pdsi'
-            for year in xrange(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
+            for year in range(ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
                 # Dekad
-                for start_month in xrange(1, 13):
+                for start_month in range(1, 13):
                     for start_day, end_day in zip([1, 10, 20], [10, 20, 30]):
                         if start_month == 12 and start_day == 20:
                             # Go to the first day of the next year (and month)
@@ -348,8 +371,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 if overwrite_flag:
                     if export_id in tasks.keys():
                         logging.debug('  Task already submitted, cancelling')
-                        for task in tasks[export_id]:
-                            ee.data.cancelTask(task)
+                        ee.data.cancelTask(tasks[export_id])
                         del tasks[export_id]
                     if os.path.isfile(export_path):
                         logging.debug('  Export image already exists, removing')
@@ -364,7 +386,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         logging.debug('  Export image already exists, moving')
                         shutil.move(export_path, output_path)
                         gdc.raster_path_set_nodata(output_path, nodata_value)
-                        arcpy.CalculateStatistics_management(output_path)
+                        # arcpy.CalculateStatistics_management(output_path)
                         # gdc.raster_statistics(output_path)
                         continue
                     elif os.path.isfile(output_path):
@@ -383,23 +405,44 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 #     .select(['pdsi'])
                 # pdsi_image = ee.Image(pdsi_coll.mean())
 
-                logging.debug('  Starting download task')
+                logging.debug('  Building export task')
+                # if ini['EXPORT']['export_dest'] == 'gdrive':
                 task = ee.batch.Export.image.toDrive(
-                    pdsi_image,
+                    image=pdsi_image,
                     description=export_id,
-                    #folder=ini['EXPORT']['export_folder'],
+                    # folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['SPATIAL']['crs'],
                     crsTransform=output_transform)
-                try:
-                    task.start()
-                except Exception as e:
-                    logging.error(
-                        '  Unhandled error starting task, skipping\n'
-                        '  {}'.format(str(e)))
-                    continue
-                # logging.debug(task.status())
+                # elif ini['EXPORT']['export_dest'] == 'cloud':
+                #     task = ee.batch.Export.image.toCloudStorage(
+                #         image=pdsi_image,
+                #         description=export_id,
+                #         bucket=ini['EXPORT']['export_folder'],
+                #         fileNamePrefix=export_id,
+                #         dimensions=output_shape,
+                #         crs=ini['SPATIAL']['crs'],
+                #         crsTransform=output_transform)
+
+                logging.debug('  Starting export task')
+                for i in range(1, 10):
+                    try:
+                        task.start()
+                        break
+                    except Exception as e:
+                        logging.error('  Exception: {}, retry {}'.format(e, i))
+                        logging.debug('{}'.format(e))
+                        sleep(i ** 2)
+                # try:
+                #     task.start()
+                # except Exception as e:
+                #     logging.error(
+                #         '  Unhandled error starting task, skipping\n'
+                #         '  {}'.format(str(e)))
+                #     continue
+                # logging.debug('  Status: {}'.format(task.status()))
+                # logging.debug('  Active: {}'.format(task.active()))
 
 
 def arg_parse():

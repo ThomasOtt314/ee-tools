@@ -9,4 +9,6 @@ __pycache__/
 schema.ini
 
 example/stats
+example/stats*
 example/images
+example/images*

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-05-15
+# Created       2017-06-05
 # Python:       3.6
 #--------------------------------
 
@@ -13,6 +13,7 @@ import logging
 import os
 import subprocess
 import sys
+from time import sleep
 
 # import arcpy
 import ee
@@ -117,7 +118,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             '\nWARNING: \n'
             'The output and zone spatial references do not appear to match\n'
             'This will likely cause problems!')
-        rinput('Press ENTER to continue')
+        input('Press ENTER to continue')
     else:
         logging.debug('  Zone Projection:\n{}\n'.format(
             zone_osr.ExportToWkt()))
@@ -126,6 +127,39 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         logging.debug('  Output Cellsize: {}'.format(
             ini['SPATIAL']['cellsize']))
 
+    # Keyword arguments for ee_common.get_landsat_collection() and
+    #   ee_common.get_landsat_image()
+    # Zone geom will be updated inside the loop
+    landsat_args = {
+        k: v for section in ['INPUTS', 'EXPORT']
+        for k, v in ini[section].items()
+        if k in [
+            'landsat4_flag', 'landsat5_flag', 'landsat7_flag',
+            'landsat8_flag', 'fmask_flag', 'acca_flag', 'fmask_source',
+            'start_year', 'end_year',
+            'start_month', 'end_month', 'start_doy', 'end_doy',
+            'scene_id_keep_list', 'scene_id_skip_list',
+            'path_keep_list', 'row_keep_list',
+            'adjust_method', 'mosaic_method']}
+    # landsat_args['start_date'] = start_date
+    # landsat_args['end_date'] = end_date
+
+    # For composite images, compute all components bands
+    landsat_args['products'] = ini['IMAGES']['download_bands'][:]
+    if 'refl_toa' in landsat_args['products']:
+        landsat_args['products'].extend([
+            'blue_toa', 'green_toa', 'red_toa',
+            'nir_toa', 'swir1_toa', 'swir2_toa'])
+        landsat_args['products'].remove('refl_toa')
+    if 'refl_sur' in landsat_args['products']:
+        landsat_args['products'].extend([
+            'blue_sur', 'green_sur', 'red_sur',
+            'nir_sur', 'swir1_sur', 'swir2_sur'])
+        landsat_args['products'].remove('refl_sur')
+    if 'tasseled_cap' in landsat_args['products']:
+        landsat_args['products'].extend([
+            'tc_green', 'tc_bright', 'tc_wet'])
+        landsat_args['products'].remove('tasseled_cap')
 
     # Initialize Earth Engine API key
     ee.Initialize()
@@ -142,8 +176,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # Build EE geometry object for zonal stats
         zone_geom = ee.Geometry(
             geo_json=zone_json, opt_proj=zone_proj, opt_geodesic=False)
-        logging.debug('  Centroid: {}'.format(
-            zone_geom.centroid(100).getInfo()['coordinates']))
+        landsat_args['zone_geom'] = zone_geom
+        # logging.debug('  Centroid: {}'.format(
+        #     zone_geom.centroid(100).getInfo()['coordinates']))
 
         # Use feature geometry to build extent, transform, and shape
         zone_extent = gdc.Extent(
@@ -172,51 +207,16 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         if not os.path.isdir(zone_images_ws):
             os.makedirs(zone_images_ws)
 
-        # Keyword arguments for ee_common.get_landsat_collection() and
-        #   ee_common.get_landsat_image()
-        landsat_args = {
-            k: v for section in ['INPUTS', 'EXPORT']
-            for k, v in ini[section].items()
-            if k in [
-                'fmask_flag', 'acca_flag', 'fmask_type',
-                'start_year', 'end_year',
-                'start_month', 'end_month', 'start_doy', 'end_doy',
-                'scene_id_keep_list', 'scene_id_skip_list',
-                'path_keep_list', 'row_keep_list', 'adjust_method']}
-        # landsat_args['start_date'] = start_date
-        # landsat_args['end_date'] = end_date
-        landsat_args['zone_geom'] = zone_geom
-
-        # Move to EE common
+        # Move to EE common?
         def get_collection_ids(image):
-            return ee.Feature(None, {'id': image.get('system:index')})
+            return ee.Feature(None, {'id': image.get('SCENE_ID')})
 
         # Get list of available Landsat images
-        scene_id_list = []
-        if ini['INPUTS']['landsat4_flag']:
-            logging.debug('  Getting Landsat 4 scene_id list')
-            scene_id_list.extend([
-                f['properties']['id']
-                for f in ee_common.get_landsat_collection('LT4', **landsat_args)\
-                    .map(get_collection_ids).getInfo()['features']])
-        if ini['INPUTS']['landsat5_flag']:
-            logging.debug('  Getting Landsat 5 scene_id list')
-            scene_id_list.extend([
-                f['properties']['id']
-                for f in ee_common.get_landsat_collection('LT5', **landsat_args)\
-                    .map(get_collection_ids).getInfo()['features']])
-        if ini['INPUTS']['landsat7_flag']:
-            logging.debug('  Getting Landsat 7 scene_id list')
-            scene_id_list.extend([
-                f['properties']['id']
-                for f in ee_common.get_landsat_collection('LE7', **landsat_args)\
-                    .map(get_collection_ids).getInfo()['features']])
-        if ini['INPUTS']['landsat8_flag']:
-            logging.debug('  Getting Landsat 8 scene_id list')
-            scene_id_list.extend([
-                f['properties']['id']
-                for f in ee_common.get_landsat_collection('LC8', **landsat_args)\
-                    .map(get_collection_ids).getInfo()['features']])
+        landsat_obj = ee_common.Landsat(landsat_args)
+        scene_id_list = [
+            f['properties']['id']
+            for f in landsat_obj.get_collection().map(
+                get_collection_ids).getInfo()['features']]
 
         # Get list of unique image "dates"
         # Keep scene_id components as string for set operation
@@ -254,9 +254,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 os.makedirs(zone_year_ws)
 
             # Get the prepped Landsat image by ID
-            landsat_image = ee.Image(ee_common.get_landsat_image(
-                landsat, year, doy, path, row, ini['EXPORT']['mosaic_method'],
-                landsat_args))
+            landsat_image = ee.Image(landsat_obj.get_image(
+                landsat, year, doy, path, row))
 
             # Clip using the feature geometry
             if ini['IMAGES']['clip_landsat_flag']:
@@ -298,8 +297,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 if overwrite_flag:
                     if export_id in tasks.keys():
                         logging.debug('  Task already submitted, cancelling')
-                        for task in tasks[export_id]:
-                            ee.data.cancelTask(task)
+                        ee.data.cancelTask(tasks[export_id])
                         del tasks[export_id]
                     if os.path.isfile(export_path):
                         logging.debug(
@@ -315,7 +313,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     if os.path.isfile(export_path):
                         logging.debug('  Export image already exists, moving')
                         if band in int_bands:
-                            subprocess.call([
+                            subprocess.check_output([
                                 'gdalwarp',
                                 '-ot', int_output_type, '-overwrite',
                                 '-of', 'GTiff', '-co', 'COMPRESS=LZW',
@@ -323,7 +321,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                                 '-dstnodata', str(int_nodata_value),
                                 export_path, output_path])
                         else:
-                            subprocess.call([
+                            subprocess.check_output([
                                 'gdalwarp',
                                 '-ot', float_output_type, '-overwrite',
                                 '-of', 'GTiff', '-co', 'COMPRESS=LZW',
@@ -331,10 +329,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                                 '-dstnodata', '{:f}'.format(float_nodata_value),
                                 export_path, output_path])
                         with open(os.devnull, 'w') as devnull:
-                            subprocess.call(
+                            subprocess.check_call(
                                 ['gdalinfo', '-stats', output_path],
                                 stdout=devnull)
-                        subprocess.call(['gdalmanage', 'delete', export_path])
+                        subprocess.check_output(
+                            ['gdalmanage', 'delete', export_path])
                         continue
                     elif os.path.isfile(output_path):
                         logging.debug(
@@ -348,13 +347,17 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 # Should composites include Ts?
                 if band == 'refl_toa':
                     band_list = [
-                        'toa_blue', 'toa_green', 'toa_red',
-                        'toa_nir', 'toa_swir1', 'toa_swir2']
+                        'blue_toa', 'green_toa', 'red_toa',
+                        'nir_toa', 'swir1_toa', 'swir2_toa']
+                        # 'toa_blue', 'toa_green', 'toa_red',
+                        # 'toa_nir', 'toa_swir1', 'toa_swir2']
                     # band_list = ['toa_red', 'toa_green', 'toa_blue']
                 elif band == 'refl_sur':
                     band_list = [
-                        'sur_blue', 'sur_green', 'sur_red',
-                        'sur_nir', 'sur_swir1', 'sur_swir2']
+                        'blue_sur', 'green_sur', 'red_sur',
+                        'nir_sur', 'swir1_sur', 'swir2_sur']
+                        # 'sur_blue', 'sur_green', 'sur_red',
+                        # 'sur_nir', 'sur_swir1', 'sur_swir2']
                     # band_list = ['sur_red', 'sur_green', 'sur_blue']
                 elif band == 'tasseled_cap':
                     band_list = ['tc_bright', 'tc_green', 'tc_wet']
@@ -369,23 +372,44 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 #     cloud_mask = fmask.eq(2).Or(fmask.eq(3)).Or(fmask.eq(4)).Not()
                 #     band_image = band_image.updateMask(cloud_mask)
 
-                logging.debug('  Starting download task')
+                logging.debug('  Building export task')
+                # if ini['EXPORT']['export_dest'] == 'gdrive':
                 task = ee.batch.Export.image.toDrive(
                     band_image,
                     description=export_id,
-                    #folder=ini['EXPORT']['export_folder'],
+                    # folder=ini['EXPORT']['export_folder'],
                     fileNamePrefix=export_id,
                     dimensions=output_shape,
                     crs=ini['SPATIAL']['crs'],
                     crsTransform=output_transform)
-                try:
-                    task.start()
-                except Exception as e:
-                    logging.error(
-                        '  Unhandled error starting task, skipping\n'
-                        '  {}'.format(str(e)))
-                    continue
-                logging.debug(task.status())
+                # elif ini['EXPORT']['export_dest'] == 'cloud':
+                #     task = ee.batch.Export.image.toCloudStorage(
+                #         band_image,
+                #         description=export_id,
+                #         bucket=ini['EXPORT']['export_folder'],
+                #         fileNamePrefix=export_id,
+                #         dimensions=output_shape,
+                #         crs=ini['SPATIAL']['crs'],
+                #         crsTransform=output_transform)
+
+                logging.debug('  Starting export task')
+                for i in range(1, 10):
+                    try:
+                        task.start()
+                        break
+                    except Exception as e:
+                        logging.error('  Exception: {}, retry {}'.format(e, i))
+                        logging.debug('{}'.format(e))
+                        sleep(i ** 2)
+                # try:
+                #     task.start()
+                # except Exception as e:
+                #     logging.error(
+                #         '  Unhandled error starting task, skipping\n'
+                #         '  {}'.format(str(e)))
+                #     continue
+                # logging.debug('  Status: {}'.format(task.status()))
+                # logging.debug('  Active: {}'.format(task.active()))
 
 
 def arg_parse():

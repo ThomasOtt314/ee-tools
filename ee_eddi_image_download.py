@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
-# Created       2017-05-15
+# Created       2017-06-05
 # Python:       3.6
 #--------------------------------
 
@@ -12,6 +12,7 @@ import logging
 import os
 import shutil
 import sys
+from time import sleep
 
 # import arcpy
 import ee
@@ -151,7 +152,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
         # Adjust extent to match raster
         zone_extent = zone_extent.adjust_to_snap(
-            'EXPAND', ini['output_x'], ini['output_y'], 
+            'EXPAND', ini['output_x'], ini['output_y'],
             ini['SPATIAL']['cellsize'])
         zone_geo = zone_extent.geo(ini['SPATIAL']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
@@ -212,8 +213,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             if overwrite_flag:
                 if export_id in tasks.keys():
                     logging.debug('  Task already submitted, cancelling')
-                    for task in tasks[export_id]:
-                        ee.data.cancelTask(task)
+                    ee.data.cancelTask(tasks[export_id])
                     del tasks[export_id]
                 if os.path.isfile(export_path):
                     logging.debug('  Export image already exists, removing')
@@ -243,23 +243,44 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 variable='eddi',
                 year_start=climo_year_start, year_end=climo_year_end)
 
-            logging.debug('  Starting download task')
+            logging.debug('  Building export task')
+            # if ini['EXPORT']['export_dest'] == 'gdrive':
             task = ee.batch.Export.image.toDrive(
-                eddi_image,
+                image=eddi_image,
                 description=export_id,
-                folder=ini['EXPORT']['export_folder'],
+                # folder=ini['EXPORT']['export_folder'],
                 fileNamePrefix=export_id,
                 dimensions=output_shape,
                 crs=ini['SPATIAL']['crs'],
                 crsTransform=output_transform)
-            try:
-                task.start()
-            except Exception as e:
-                logging.error(
-                    '  Unhandled error starting task, skipping\n'
-                    '  {}'.format(str(e)))
-                continue
-            # logging.debug(task.status())
+            # elif ini['EXPORT']['export_dest'] == 'gdrive':
+            #     task = ee.batch.Export.image.toCloudStorage(
+            #         image=eddi_image,
+            #         description=export_id,
+            #         bucket=ini['EXPORT']['export_folder'],
+            #         fileNamePrefix=export_id,
+            #         dimensions=output_shape,
+            #         crs=ini['SPATIAL']['crs'],
+            #         crsTransform=output_transform)
+
+            logging.debug('  Starting export task')
+            for i in range(1, 10):
+                try:
+                    task.start()
+                    break
+                except Exception as e:
+                    logging.error('  Exception: {}, retry {}'.format(e, i))
+                    logging.debug('{}'.format(e))
+                    sleep(i ** 2)
+            # try:
+            #     task.start()
+            # except Exception as e:
+            #     logging.error(
+            #         '  Unhandled error starting task, skipping\n'
+            #         '  {}'.format(str(e)))
+            #     continue
+            # logging.debug('  Status: {}'.format(task.status()))
+            # logging.debug('  Active: {}'.format(task.active()))
 
 
 def ee_eddi_image(tgt_date, agg_days=30, variable='eddi',

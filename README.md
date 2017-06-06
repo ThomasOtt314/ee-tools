@@ -4,10 +4,13 @@ Earth Engine Zonal Stats and Image Download Tools
 The ee-tools can be separated into three main components:
 + Download time series of zonal statistics
 + Download daily Landsat and GRIDMET PPT/ETo imagery
-+ Generate annual summary figures and tables
 
 ## Requirements
-See the [Dependencies](## Dependencies) section below for additional details on the Python specific requirements needed to run the ee-tools.
+
+#### Python Dependencies
+See the [Dependencies](## dependencies) section below for additional details on the Python specific requirements needed to run the ee-tools.
+
+For information on installing Python and Pandas or details on how to run the Python scripts, please see the [Python README](PYTHON.md).
 
 #### Earth Engine
 To run the ee-tools you must have an Earth Engine account.
@@ -28,33 +31,6 @@ Each of the scripts reads a different combination of INI sections.  There are se
 + SUMMARY - Summary specific parameters and is read by the summary figures and summary tables scripts.
 + FIGURES - Summary figure specific parameters.
 + TABLES - Summary table specific parameters.
-
-## Command Prompt / Terminal
-All of the scripts should be run from the command prompt (windows) or terminal (mac/linux).  Some of the scripts can also be run by double clicking, in which case the script will open a GUI asking you to select an INI file.
-
-#### Help
-To see what arguments are available for a script, and their default values, pass the "-h" argument to the script.
-```
-> python ee_shapefile_zonal_stats_export.py -h
-usage: ee_shapefile_zonal_stats_export.py [-h] [-i PATH] [-d] [-o]
-
-Earth Engine Zonal Statistics
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -i FILE, --ini FILE   Input file (default: None)
-  -d, --debug           Debug level logging (default: 20)
-  -o, --overwrite       Force overwrite of existing files (default: False)
-```
-
-#### Input file
-To set the input file, use the "-i" or "--ini" argument.  The INI file path can be absolute or relative to the current working directory.
-```
-> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
-```
-
-#### Overwrite
-
 
 ## Study Area Zones
 The user must provide a shapefile of the zones they wish to analyze.  Zonal statistics for each feature in the shapefile will be computed.  Images can be downloaded separately for each zone separately (set IMAGES parameter merge_geometries=False) or as a single image that includes all zones (merge_geometries=True).
@@ -113,19 +89,6 @@ To download GRIDMET ETo/PPT images, execute the following:
 
 The download scripts must be run twice (like the zonal stats script) in order to first export the TIF files to your Google drive and then copy them to the output workspace.
 
-## Summary Figures/Tables
-To generate summary tables and figures, execute the following:
-```
-> python summary_tables.py -i example\example_summary.ini
-> python summary_figures.py -i example\example_summary.ini
-```
-
-## Interactive Timeseries Figures
-To generate interactive timeseries figures (using Bokeh), execute the following:
-```
-> python summary_timeseries.py -i example\example_summary.ini
-```
-
 ## Landsat Thumbnail Download
 To download Landsat thumbnail images for each zone, execute the following:
 ```
@@ -145,44 +108,12 @@ The following modules must be present to run all of the EE-Tools:
 * [dateutil](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
 
-The following modules are needed to generate summary figures
-* [matplotlib](https://matplotlib.org/) (for making static summary plots)
-* [bokeh](http://bokeh.pydata.org/) (for making interactive timeseries plots)
-
-The following module is needed to generate summary excel files (deprecated)
-* [openpyxl](https://openpyxl.readthedocs.io/en/default/)
-
 The following module is used to run the test suite
 * [pytest](http://doc.pytest.org/en/latest/)
 
 The following modules must be present if using Python 2.7
 * [configparser](https://docs.python.org/3/library/configparser.html) (backport of Python 3.X configparser module)
 * [future](http://python-future.org/)
-
-#### Anaconda
-The easiest way of obtaining Python and all of the necessary external modules, is to install [Anaconda](https://www.continuum.io/downloads).
-
-It is important to double check that you are calling the Anaconda version, especially if you have two or more version of Python installed (e.g. Anaconda and ArcGIS).
-
-+ Windows: "where python"
-+ Linux/Mac: "which python"
-
-(Note, this step not be necessary any more) After installing Anaconda, add the conda-forge channel by entering the following in the command prompt or terminal:
-```
-> conda config --add channels conda-forge
-```
-
-The external modules can then be installed with conda one at a time:
-```
-> conda install numpy
-> conda install gdal
-...
-```
-
-or all together:
-```
-> conda install bokeh configparser gdal numpy pandas openypxl relativedelta
-```
 
 #### EarthEngine-API / PIP
 The EarthEngine API must be installed through pip:

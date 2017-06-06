@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-05-15
+# Created       2017-06-05
 # Python:       3.6
 #--------------------------------
 
@@ -66,13 +66,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     landsat_daily_fields = [
         'ZONE_FID', 'ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT',
         'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY', 'CLOUD_SCORE',
-        'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
-        'TS', 'ALBEDO_SUR', 'NDVI_TOA', 'NDVI_SUR', 'EVI_SUR',
-        'NDWI_GREEN_NIR_SUR', 'NDWI_GREEN_SWIR1_SUR', 'NDWI_NIR_SWIR1_SUR',
-        # 'NDWI_GREEN_NIR_TOA', 'NDWI_GREEN_SWIR1_TOA', 'NDWI_NIR_SWIR1_TOA',
-        # 'NDWI_SWIR1_GREEN_TOA', 'NDWI_SWIR1_GREEN_SUR',
-        # 'NDWI_TOA', 'NDWI_SUR',
-        'TC_BRIGHT', 'TC_GREEN', 'TC_WET']
+        'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL']
     gridmet_daily_fields = [
         'ZONE_FID', 'ZONE_NAME', 'DATE',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR', 'ETO', 'PPT']
@@ -82,6 +76,24 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     pdsi_dekad_fields = [
         'ZONE_FID', 'ZONE_NAME', 'DATE',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'PDSI']
+
+    # Concert REFL_TOA, REFL_SUR, and TASSELED_CAP products to bands
+    if 'refl_toa' in ini['ZONAL_STATS']['landsat_products']:
+        ini['ZONAL_STATS']['landsat_products'].extend([
+            'blue_toa', 'green_toa', 'red_toa',
+            'nir_toa', 'swir1_toa', 'swir2_toa'])
+        ini['ZONAL_STATS']['landsat_products'].remove('refl_toa')
+    if 'refl_sur' in ini['ZONAL_STATS']['landsat_products']:
+        ini['ZONAL_STATS']['landsat_products'].extend([
+            'blue_sur', 'green_sur', 'red_sur',
+            'nir_sur', 'swir1_sur', 'swir2_sur'])
+        ini['ZONAL_STATS']['landsat_products'].remove('refl_sur')
+    if 'tasseled_cap' in ini['ZONAL_STATS']['landsat_products']:
+        ini['ZONAL_STATS']['landsat_products'].extend([
+            'tc_green', 'tc_bright', 'tc_wet'])
+        ini['ZONAL_STATS']['landsat_products'].remove('tasseled_cap')
+    landsat_daily_fields.extend(
+        [p.upper() for p in ini['ZONAL_STATS']['landsat_products']])
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
@@ -164,12 +176,12 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
     tasks = utils.get_ee_tasks()
 
     # Get list of existing images/files
-    if ini['EXPORT']['export_dest'] == 'CLOUD':
+    if ini['EXPORT']['export_dest'] == 'cloud':
         logging.debug('\nGetting cloud storage file list')
         ini['EXPORT']['cloud_file_list'] = utils.get_bucket_files(
             ini['EXPORT']['project_name'], ini['EXPORT']['export_ws'])
         # logging.debug(ini['EXPORT']['cloud_file_list'])
-    # if ini['EXPORT']['export_dest'] == 'GDRIVE':
+    # if ini['EXPORT']['export_dest'] == 'gdrive':
     #     logging.debug('\nGetting Google drive file list')
     #     ini['EXPORT']['gdrive_file_list'] = [
     #         os.path.join(ini['EXPORT']['output_ws'], x)
@@ -228,7 +240,7 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
         # logging.debug('  Zone Geom: {}'.format(zone['geom'].getInfo()))
 
         # Assume all pixels in all 14+2 images could be reduced
-        zone['max_pixels'] = zone['shape'][0] * zone['shape'][1] * 16
+        zone['max_pixels'] = zone['shape'][0] * zone['shape'][1]
         logging.debug('  Max Pixels: {}'.format(zone['max_pixels']))
 
         # Set output spatial reference
@@ -331,7 +343,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # There is an EE bug that appends "ee_export" to the end of CSV
         #   file names when exporting to cloud storage
         # Also, use the sharelink path for reading the csv directly
-        if ini['EXPORT']['export_dest'] == 'CLOUD':
+        if ini['EXPORT']['export_dest'] == 'cloud':
             export_cloud_name = export_id + 'ee_export.csv'
             export_cloud_path = os.path.join(
                 ini['EXPORT']['export_ws'], export_cloud_name)
@@ -341,15 +353,14 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if overwrite_flag:
             if export_id in tasks.keys():
                 logging.debug('  Task already submitted, cancelling')
-                for task in tasks[export_id]:
-                    ee.data.cancelTask(task)
+                ee.data.cancelTask(tasks[export_id])
                 del tasks[export_id]
 
-            if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+            if (ini['EXPORT']['export_dest'] == 'gdrive' and
                     os.path.isfile(export_path)):
                 logging.debug('  Export CSV already exists, removing')
                 os.remove(export_path)
-            elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+            elif (ini['EXPORT']['export_dest'] == 'cloud' and
                     export_cloud_name in ini['EXPORT']['file_list']):
                 logging.debug('    Export image already exists')
                 # # Files in cloud storage are easily overwritten
@@ -366,8 +377,12 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if export_id in tasks.keys():
             logging.debug('  Task already submitted, skipping')
             continue
-        elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+        elif (ini['EXPORT']['export_dest'] == 'gdrive' and
                 os.path.isfile(export_path)):
+            if ini['EXPORT']['export_only']:
+                logging.debug('  Export CSV already exists, skipping')
+                continue
+
             logging.debug('  Export CSV already exists, moving')
             # Modify CSV while copying from Google Drive
             try:
@@ -386,9 +401,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 # continue
             os.remove(export_path)
             continue
-        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+        elif (ini['EXPORT']['export_dest'] == 'cloud' and
                 export_cloud_name in ini['EXPORT']['cloud_file_list']):
-            logging.debug('    Export file already exists, moving')
+            if ini['EXPORT']['export_only']:
+                logging.debug('  Export CSV already exists, skipping')
+                continue
+
+            logging.debug('    Export CSV already exists, moving')
             logging.debug('    Reading {}'.format(export_cloud_url))
             try:
                 export_request = requests.get(export_cloud_url).content
@@ -425,29 +444,30 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             k: v for section in ['INPUTS', 'EXPORT']
             for k, v in ini[section].items()
             if k in [
-                'fmask_flag', 'acca_flag', 'fmask_type',
-                'start_year', 'end_year',
-                'start_month', 'end_month', 'start_doy', 'end_doy',
+                'landsat4_flag', 'landsat5_flag', 'landsat7_flag',
+                'landsat8_flag', 'fmask_flag', 'acca_flag', 'fmask_source',
+                # Since dates are available, only filter by date
+                # 'start_year', 'end_year',
+                # 'start_month', 'end_month', 'start_doy', 'end_doy',
                 'scene_id_keep_list', 'scene_id_skip_list',
-                'path_keep_list', 'row_keep_list', 'adjust_method']}
+                'path_keep_list', 'row_keep_list',
+                'adjust_method', 'mosaic_method']}
         landsat_args['zone_geom'] = zone['geom']
         landsat_args['start_date'] = start_date
         landsat_args['end_date'] = end_date
+        landsat_args['products'] = ini['ZONAL_STATS']['landsat_products']
+        # Currently only using TOA collections and comput Tasumi at-surface
+        #   reflectance is supported
+        landsat_args['refl_type'] = 'toa'
         if ini['INPUTS']['path_row_geom']:
             landsat_args['path_row_geom'] = ini['INPUTS']['path_row_geom']
 
-        landsat_coll = ee_common.get_landsat_images(
-            ini['INPUTS']['landsat4_flag'], ini['INPUTS']['landsat5_flag'],
-            ini['INPUTS']['landsat7_flag'], ini['INPUTS']['landsat8_flag'],
-            ini['EXPORT']['mosaic_method'], landsat_args)
-
-        # Mosaic overlapping images
-        if ini['EXPORT']['mosaic_method']:
-            landsat_coll = ee_common.mosaic_landsat_images(
-                landsat_coll, ini['EXPORT']['mosaic_method'])
+        # Initialize the Landsat object
+        landsat = ee_common.Landsat(landsat_args)
+        landsat_coll = landsat.get_collection()
 
         # Debug
-        # print(ee.Image(landsat_coll.first()).getInfo())
+        # print(ee.Image(landsat_coll.first()).getInfo()['properties']['SCENE_ID'])
         # input('ENTER')
         # if ee.Image(landsat_coll.first()).getInfo() is None:
         #     logging.info('    No images, skipping')
@@ -460,92 +480,100 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             scene_id = ee.String(image.get('SCENE_ID'))
             date = ee.Date(image.get('system:time_start'))
             doy = ee.Number(date.getRelative('day', 'year')).add(1)
+            bands = len(landsat_args['products']) + 3
+
             # Using zone['geom'] as the geomtry should make it
             #   unnecessary to clip also
-            # Decide whether to keep old NDWI
-            input_mean = ee.Image(image).select(
-                [
-                    'albedo_sur', 'cloud_score',
-                    'evi_sur', 'ndvi_sur', 'ndvi_toa',
-                    'ndwi_green_nir_sur', 'ndwi_green_swir1_sur', 'ndwi_nir_swir1_sur',
-                    # 'ndwi_green_nir_toa', 'ndwi_green_swir1_toa', 'ndwi_nir_swir1_toa',
-                    # 'ndwi_swir1_green_sur','ndwi_swir1_green_toa',
-                    # 'ndwi_sur','ndwi_toa',
-                    'row', 'tc_bright', 'tc_green', 'tc_wet', 'ts'
-                ]) \
+            input_mean = ee.Image(image) \
+                .select(landsat_args['products'] + ['cloud_score', 'row']) \
                 .reduceRegion(
                     reducer=ee.Reducer.mean(),
                     geometry=zone['geom'],
                     crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=2,
-                    maxPixels=zone['max_pixels'])
-            # Use surface temperature to determine masked pixels
-            pixel_count = ee.Image(image) \
-                .select(['ts']).gt(0).unmask().select([0], ['pixel']) \
+                    bestEffort=False,
+                    tileScale=2,
+                    maxPixels=zone['max_pixels'] * bands)
+
+            # Count unmasked Fmask pixels to get pixel count
+            # Count Fmask > 1 to get Fmask count (0 is clear and 1 is water)
+            fmask_img = ee.Image(image).select(['fmask'])
+            input_count = ee.Image([
+                    fmask_img.gte(0).unmask().rename(['pixel']),
+                    fmask_img.gt(1).rename(['fmask'])]) \
                 .reduceRegion(
                     reducer=ee.Reducer.sum().combine(
                         ee.Reducer.count(), '', True),
                     geometry=zone['geom'],
                     crs=ini['SPATIAL']['crs'],
                     crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=2,
-                    maxPixels=zone['max_pixels'])
-            # Fmask 0 is clear and 1 is water
-            fmask_count = ee.Image(image) \
-                .select(['fmask']).gt(1).select([0], ['fmask']) \
-                .reduceRegion(
-                    reducer=ee.Reducer.sum().combine(
-                        ee.Reducer.count(), '', True),
-                    geometry=zone['geom'],
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False, tileScale=2,
-                    maxPixels=zone['max_pixels'])
-            return ee.Feature(
-                None,
-                {
-                    'ZONE_NAME': zone['name'],
-                    'ZONE_FID': zone['fid'],
-                    'SCENE_ID': scene_id.slice(0, 16),
-                    'LANDSAT': scene_id.slice(0, 3),
-                    'PATH': ee.Number(scene_id.slice(3, 6)),
-                    'ROW': ee.Number(input_mean.get('row')),
-                    # 'ROW': ee.Number(scene_id.slice(6, 9)),
-                    'DATE': date.format('YYYY-MM-dd'),
-                    'YEAR': date.get('year'),
-                    'MONTH': date.get('month'),
-                    'DAY': date.get('day'),
-                    'DOY': doy,
-                    'PIXEL_COUNT': pixel_count.get('pixel_sum'),
-                    'PIXEL_TOTAL': pixel_count.get('pixel_count'),
-                    'FMASK_COUNT': fmask_count.get('fmask_sum'),
-                    'FMASK_TOTAL': fmask_count.get('fmask_count'),
-                    'CLOUD_SCORE': input_mean.get('cloud_score'),
-                    'ALBEDO_SUR': input_mean.get('albedo_sur'),
-                    'EVI_SUR': input_mean.get('evi_sur'),
-                    'NDVI_SUR': input_mean.get('ndvi_sur'),
-                    'NDVI_TOA': input_mean.get('ndvi_toa'),
-                    'NDWI_GREEN_NIR_SUR': input_mean.get('ndwi_green_nir_sur'),
-                    # 'NDWI_GREEN_NIR_TOA': input_mean.get('ndwi_green_nir_toa'),
-                    'NDWI_GREEN_SWIR1_SUR': input_mean.get('ndwi_green_swir1_sur'),
-                    # 'NDWI_GREEN_SWIR1_TOA': input_mean.get('ndwi_green_swir1_toa'),
-                    'NDWI_NIR_SWIR1_SUR': input_mean.get('ndwi_nir_swir1_sur'),
-                    # 'NDWI_NIR_SWIR1_TOA': input_mean.get('ndwi_nir_swir1_toa'),
-                    # 'NDWI_SWIR1_GREEN_SUR': input_mean.get('ndwi_swir1_green_sur'),
-                    # 'NDWI_SWIR1_GREEN_TOA': input_mean.get('ndwi_swir1_green_toa'),
-                    # 'NDWI_SUR': input_mean.get('ndwi_swir1_green_sur'),
-                    # 'NDWI_TOA': input_mean.get('ndwi_swir1_green_toa'),
-                    'TC_BRIGHT': input_mean.get('tc_bright'),
-                    'TC_GREEN': input_mean.get('tc_green'),
-                    'TC_WET': input_mean.get('tc_wet'),
-                    'TS': input_mean.get('ts')
-                })
+                    bestEffort=False,
+                    tileScale=2,
+                    maxPixels=zone['max_pixels'] * 3)
+
+            # # Use surface temperature to determine masked pixels
+            # # .select(['ts']).gte(0).unmask().select([0], ['pixel']) \
+            # pixel_count = ee.Image(image) \
+            #     .select(['ts']).gte(0).unmask().select([0], ['pixel']) \
+            #     .reduceRegion(
+            #         reducer=ee.Reducer.sum().combine(
+            #             ee.Reducer.count(), '', True),
+            #         geometry=zone['geom'],
+            #         crs=ini['SPATIAL']['crs'],
+            #         crsTransform=ini['EXPORT']['transform'],
+            #         bestEffort=False,
+            #         tileScale=2,
+            #         maxPixels=zone['max_pixels'] * bands)
+            # # Fmask 0 is clear and 1 is water
+            # fmask_count = ee.Image(image) \
+            #     .select(['fmask']).gt(1).select([0], ['fmask']) \
+            #     .reduceRegion(
+            #         reducer=ee.Reducer.sum().combine(
+            #             ee.Reducer.count(), '', True),
+            #         geometry=zone['geom'],
+            #         crs=ini['SPATIAL']['crs'],
+            #         crsTransform=ini['EXPORT']['transform'],
+            #         bestEffort=False,
+            #         tileScale=2,
+            #         maxPixels=zone['max_pixels'] * 3)
+
+            # Standard output
+            zs_dict = {
+                'ZONE_NAME': zone['name'],
+                'ZONE_FID': zone['fid'],
+                'SCENE_ID': scene_id.slice(0, 16),
+                'LANDSAT': scene_id.slice(0, 3),
+                'PATH': ee.Number(scene_id.slice(3, 6)),
+                'ROW': ee.Number(input_mean.get('row')),
+                # 'ROW': ee.Number(scene_id.slice(6, 9)),
+                'DATE': date.format('YYYY-MM-dd'),
+                'YEAR': date.get('year'),
+                'MONTH': date.get('month'),
+                'DAY': date.get('day'),
+                'DOY': doy,
+                'PIXEL_COUNT': input_count.get('pixel_sum'),
+                'PIXEL_TOTAL': input_count.get('pixel_count'),
+                'FMASK_COUNT': input_count.get('fmask_sum'),
+                'FMASK_TOTAL': input_count.get('fmask_count'),
+                # 'PIXEL_COUNT': pixel_count.get('pixel_sum'),
+                # 'PIXEL_TOTAL': pixel_count.get('pixel_count'),
+                # 'FMASK_COUNT': fmask_count.get('fmask_sum'),
+                # 'FMASK_TOTAL': fmask_count.get('fmask_count'),
+                'CLOUD_SCORE': input_mean.get('cloud_score')
+            }
+            # Product specific output
+            zs_dict.update({
+                p.upper(): input_mean.get(p.lower())
+                for p in landsat_args['products']
+            })
+            return ee.Feature(None, zs_dict)
+
         stats_coll = landsat_coll.map(landsat_zonal_stats_func)
 
         # # DEADBEEF - Test the function for a single image
         # stats_info = landsat_zonal_stats_func(
         #     ee.Image(landsat_coll.first())).getInfo()
+        # print(stats_info)
         # for k, v in sorted(stats_info['properties'].items()):
         #     logging.info('{:24s}: {}'.format(k, v))
         # input('ENTER')
@@ -560,25 +588,15 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # input('ENTER')
         # return False
 
-        # task = ee.batch.Export.table.toDrive(
-        #     collection=stats_coll,
-        #     description=export_id,
-        #     folder=ini['EXPORT']['export_folder'],
-        #     fileNamePrefix=export_id,
-        #     fileFormat='CSV')
-        # task.start()
-        # return False
-
-        #
         logging.debug('  Building export task')
-        if ini['EXPORT']['export_dest'] == 'GDRIVE':
+        if ini['EXPORT']['export_dest'] == 'gdrive':
             task = ee.batch.Export.table.toDrive(
                 collection=stats_coll,
                 description=export_id,
                 folder=ini['EXPORT']['export_folder'],
                 fileNamePrefix=export_id,
                 fileFormat='CSV')
-        elif ini['EXPORT']['export_dest'] == 'CLOUD':
+        elif ini['EXPORT']['export_dest'] == 'cloud':
             task = ee.batch.Export.table.toCloudStorage(
                 collection=stats_coll,
                 description=export_id,
@@ -724,7 +742,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage
     # Also, use the sharelink path for reading the csv directly
-    if ini['EXPORT']['export_dest'] == 'CLOUD':
+    if ini['EXPORT']['export_dest'] == 'cloud':
         export_cloud_name = export_id + 'ee_export.csv'
         export_cloud_path = os.path.join(
             ini['EXPORT']['export_ws'], export_cloud_name)
@@ -734,15 +752,14 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if overwrite_flag:
         if export_id in tasks.keys():
             logging.debug('  Task already submitted, cancelling')
-            for task in tasks[export_id]:
-                ee.data.cancelTask(task)
+            ee.data.cancelTask(tasks[export_id])
             del tasks[export_id]
 
-        if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+        if (ini['EXPORT']['export_dest'] == 'gdrive' and
                 os.path.isfile(export_path)):
             logging.debug('  Export CSV already exists, removing')
             os.remove(export_path)
-        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+        elif (ini['EXPORT']['export_dest'] == 'cloud' and
                 export_cloud_name in ini['EXPORT']['file_list']):
             logging.debug('    Export image already exists')
             # # Files in cloud storage are easily overwritten
@@ -759,7 +776,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if export_id in tasks.keys():
         logging.debug('  Task already submitted, skipping')
         return True
-    elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+    elif (ini['EXPORT']['export_dest'] == 'gdrive' and
             os.path.isfile(export_path)):
         logging.debug('  Export CSV already exists, moving')
         # Modify CSV while copying from Google Drive
@@ -779,7 +796,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             # continue
         os.remove(export_path)
         return True
-    elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+    elif (ini['EXPORT']['export_dest'] == 'cloud' and
             export_cloud_name in ini['EXPORT']['cloud_file_list']):
         logging.debug('    Export file already exists, moving')
         logging.debug('    Reading {}'.format(export_cloud_url))
@@ -830,7 +847,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 crs=ini['SPATIAL']['crs'],
                 crsTransform=ini['EXPORT']['transform'],
                 bestEffort=False, tileScale=1,
-                maxPixels=zone['max_pixels'])
+                maxPixels=zone['max_pixels'] * 3)
         return ee.Feature(
             None,
             {
@@ -848,14 +865,14 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
     logging.debug('  Building export task')
-    if ini['EXPORT']['export_dest'] == 'GDRIVE':
+    if ini['EXPORT']['export_dest'] == 'gdrive':
         task = ee.batch.Export.table.toDrive(
             collection=stats_coll,
             description=export_id,
             folder=ini['EXPORT']['export_folder'],
             fileNamePrefix=export_id,
             fileFormat='CSV')
-    elif ini['EXPORT']['export_dest'] == 'CLOUD':
+    elif ini['EXPORT']['export_dest'] == 'cloud':
         task = ee.batch.Export.table.toCloudStorage(
             collection=stats_coll,
             description=export_id,
@@ -953,7 +970,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage
     # Also, use the sharelink path for reading the csv directly
-    if ini['EXPORT']['export_dest'] == 'CLOUD':
+    if ini['EXPORT']['export_dest'] == 'cloud':
         export_cloud_name = export_id + 'ee_export.csv'
         export_cloud_path = os.path.join(
             ini['EXPORT']['export_ws'], export_cloud_name)
@@ -963,15 +980,14 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     if overwrite_flag:
         if export_id in tasks.keys():
             logging.debug('  Task already submitted, cancelling')
-            for task in tasks[export_id]:
-                ee.data.cancelTask(task)
+            ee.data.cancelTask(tasks[export_id])
             del tasks[export_id]
 
-        if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+        if (ini['EXPORT']['export_dest'] == 'gdrive' and
                 os.path.isfile(export_path)):
             logging.debug('  Export CSV already exists, removing')
             os.remove(export_path)
-        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+        elif (ini['EXPORT']['export_dest'] == 'cloud' and
                 export_cloud_name in ini['EXPORT']['file_list']):
             logging.debug('    Export image already exists')
             # # Files in cloud storage are easily overwritten
@@ -988,7 +1004,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     if export_id in tasks.keys():
         logging.debug('  Task already submitted, skipping')
         return True
-    elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+    elif (ini['EXPORT']['export_dest'] == 'gdrive' and
             os.path.isfile(export_path)):
         logging.debug('  Export CSV already exists, moving')
         # Modify CSV while copying from Google Drive
@@ -1008,7 +1024,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             # continue
         os.remove(export_path)
         return True
-    elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+    elif (ini['EXPORT']['export_dest'] == 'cloud' and
             export_cloud_name in ini['EXPORT']['cloud_file_list']):
         logging.debug('    Export file already exists, moving')
         logging.debug('    Reading {}'.format(export_cloud_url))
@@ -1058,7 +1074,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 crs=ini['SPATIAL']['crs'],
                 crsTransform=ini['EXPORT']['transform'],
                 bestEffort=False, tileScale=1,
-                maxPixels=zone['max_pixels'])
+                maxPixels=zone['max_pixels'] * 3)
         return ee.Feature(
             None,
             {
@@ -1074,14 +1090,14 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     stats_coll = gridmet_coll.map(gridmet_zonal_stats_func)
 
     logging.debug('  Building export task')
-    if ini['EXPORT']['export_dest'] == 'GDRIVE':
+    if ini['EXPORT']['export_dest'] == 'gdrive':
         task = ee.batch.Export.table.toDrive(
             collection=stats_coll,
             description=export_id,
             folder=ini['EXPORT']['export_folder'],
             fileNamePrefix=export_id,
             fileFormat='CSV')
-    elif ini['EXPORT']['export_dest'] == 'CLOUD':
+    elif ini['EXPORT']['export_dest'] == 'cloud':
         task = ee.batch.Export.table.toCloudStorage(
             collection=stats_coll,
             description=export_id,
@@ -1137,7 +1153,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage
     # Also, use the sharelink path for reading the csv directly
-    if ini['EXPORT']['export_dest'] == 'CLOUD':
+    if ini['EXPORT']['export_dest'] == 'cloud':
         export_cloud_name = export_id + 'ee_export.csv'
         export_cloud_path = os.path.join(
             ini['EXPORT']['export_ws'], export_cloud_name)
@@ -1147,15 +1163,14 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if overwrite_flag:
         if export_id in tasks.keys():
             logging.debug('  Task already submitted, cancelling')
-            for task in tasks[export_id]:
-                ee.data.cancelTask(task)
+            ee.data.cancelTask(tasks[export_id])
             del tasks[export_id]
 
-        if (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+        if (ini['EXPORT']['export_dest'] == 'gdrive' and
                 os.path.isfile(export_path)):
             logging.debug('  Export CSV already exists, removing')
             os.remove(export_path)
-        elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+        elif (ini['EXPORT']['export_dest'] == 'cloud' and
                 export_cloud_name in ini['EXPORT']['file_list']):
             logging.debug('    Export image already exists')
             # # Files in cloud storage are easily overwritten
@@ -1172,7 +1187,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if export_id in tasks.keys():
         logging.debug('  Task already submitted, skipping')
         return True
-    elif (ini['EXPORT']['export_dest'] == 'GDRIVE' and
+    elif (ini['EXPORT']['export_dest'] == 'gdrive' and
             os.path.isfile(export_path)):
         logging.debug('  Export CSV already exists, moving')
         # Modify CSV while copying from Google Drive
@@ -1192,7 +1207,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             # continue
         os.remove(export_path)
         return True
-    elif (ini['EXPORT']['export_dest'] == 'CLOUD' and
+    elif (ini['EXPORT']['export_dest'] == 'cloud' and
             export_cloud_name in ini['EXPORT']['cloud_file_list']):
         logging.debug('    Export file already exists, moving')
         logging.debug('    Reading {}'.format(export_cloud_url))
@@ -1239,7 +1254,7 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 crs=ini['SPATIAL']['crs'],
                 crsTransform=ini['EXPORT']['transform'],
                 bestEffort=False, tileScale=1,
-                maxPixels=zone['max_pixels'])
+                maxPixels=zone['max_pixels'] * 2)
         return ee.Feature(
             None,
             {
@@ -1255,14 +1270,14 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     stats_coll = pdsi_coll.map(pdsi_zonal_stats_func)
 
     logging.debug('  Building export task')
-    if ini['EXPORT']['export_dest'] == 'GDRIVE':
+    if ini['EXPORT']['export_dest'] == 'gdrive':
         task = ee.batch.Export.table.toDrive(
             collection=stats_coll,
             description=export_id,
             folder=ini['EXPORT']['export_folder'],
             fileNamePrefix=export_id,
             fileFormat='CSV')
-    elif ini['EXPORT']['export_dest'] == 'CLOUD':
+    elif ini['EXPORT']['export_dest'] == 'cloud':
         task = ee.batch.Export.table.toCloudStorage(
             collection=stats_coll,
             description=export_id,

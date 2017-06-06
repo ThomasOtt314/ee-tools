@@ -4,7 +4,7 @@
 
 import pytest
 
-import ee_tools.python_common as python_common
+import ee_tools.utils as utils
 
 
 # def test_get_ini_path(workspace):
@@ -23,11 +23,11 @@ import ee_tools.python_common as python_common
 def test_parse_int_set(inputstr, expected):
     """Return list of numbers given a string of ranges
 
-    Originally in python_common.py
+    Originally in utils.py
 
     http://thoughtsbyclayg.blogspot.com/2008/10/parsing-list-of-numbers-in-python.html
     """
-    assert python_common.parse_int_set(inputstr) == expected
+    assert utils.parse_int_set(inputstr) == expected
 
 
 # def test_remove_file(file_path):
@@ -49,7 +49,7 @@ def test_parse_int_set(inputstr, expected):
     ]
 )
 def test_month_range(start, end, expected):
-    assert list(python_common.month_range(start, end)) == expected
+    assert list(utils.month_range(start, end)) == expected
 
 
 @pytest.mark.parametrize(
@@ -66,4 +66,4 @@ def test_month_range(start, end, expected):
 )
 def test_wrapped_range(a, b, x_min, x_max, expected):
     """Return the values between a range b for a given start/end"""
-    assert list(python_common.wrapped_range(a, b, x_min, x_max)) == expected
+    assert list(utils.wrapped_range(a, b, x_min, x_max)) == expected

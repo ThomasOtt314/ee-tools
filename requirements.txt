@@ -1,9 +1,6 @@
-bokeh
 configparser=3.5.0
 earthengine-api>=0.1.110
-gdal>=2.1.0
+gdal>=2.2.0
 numpy
 pandas
 pytest
-openypxl=2.4.5
-relativedelta

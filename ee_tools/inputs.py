@@ -2,7 +2,7 @@
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-05-15
+# Created       2017-06-05
 # Python:       2.7
 #--------------------------------
 
@@ -93,6 +93,10 @@ def get_param(ini, section, input_name, output_name, get_type,
             ini[section][output_name] = float(ini[section][input_name])
         elif get_type is list:
             ini[section][output_name] = str(ini[section][input_name])
+            # Parsing strings to list is handled in each section separately
+            # ini[section][output_name] = [
+            #     x.strip()
+            #     for x in str(ini[section][input_name]).split(',')]
         else:
             ini[section][output_name] = str(ini[section][input_name])
             # Convert 'None' (strings) to None
@@ -321,22 +325,23 @@ def parse_export(ini, section='EXPORT'):
 
     # DEADBEEF - Eventually switch this back to being a mandatory parameter
     param_list = [
-        ['export_dest', 'export_dest', str, 'GDRIVE']
+        ['export_dest', 'export_dest', str, 'gdrive']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
     # DEADBEEF - CLOUD export options are still experimental
-    export_dest_list = ['GDRIVE', 'CLOUD']
-    if ini[section]['export_dest'].upper() not in export_dest_list:
+    export_dest_options = ['gdrive', 'cloud']
+    ini[section]['export_dest'] = ini[section]['export_dest'].lower()
+    if ini[section]['export_dest'] not in export_dest_options:
         logging.error(
             '\nERROR: Invalid Export Destination: {}\n  Must be {}'.format(
-                ini[section]['export_dest'], ', '.join(export_dest_list)))
+                ini[section]['export_dest'], ', '.join(export_dest_options)))
         sys.exit()
 
     # DEADBEEF - This might be better in an export module or separate function
     # Export destination specific options
-    if ini[section]['export_dest'] == 'GDRIVE':
+    if ini[section]['export_dest'] == 'gdrive':
         logging.info('  Google Drive Export')
         get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
         get_param(ini, section, 'export_folder', 'export_folder', str, '')
@@ -357,7 +362,7 @@ def parse_export(ini, section='EXPORT'):
         logging.debug('  {:16s} {}'.format(
             'GDrive Workspace:', ini['EXPORT']['export_ws']))
 
-    elif ini[section]['export_dest'] == 'CLOUD':
+    elif ini[section]['export_dest'] == 'cloud':
         logging.info('  Cloud Storage')
         get_param(ini, section, 'project_name', 'project_name', str, 'steel-melody-531')
         get_param(ini, section, 'bucket_name', 'bucket_name', str, 'ee-tools-export')
@@ -398,12 +403,11 @@ def parse_export(ini, section='EXPORT'):
             return False
             # Try creating the storage bucket if it doesn't exist using gsutil
             # For now, I think it is better to make the user go do this
-            # p = subprocess.Popen([
+            # subprocess.check_output([
             #     'gsutil', 'mb', '-p', ini[section]['project_name'],
             #     'gs://{}-{}'.format(
             #         ini[section]['project_name'],
             #         ini[section]['bucket_name'])])
-
 
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
@@ -412,56 +416,65 @@ def parse_export(ini, section='EXPORT'):
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
         #
-        ['fmask_type', 'fmask_type', str, None],
+        ['fmask_source', 'fmask_source', str, None],
         ['mosaic_method', 'mosaic_method', str, 'mean'],
-        ['adjust_method', 'adjust_method', str, None]
+        ['adjust_method', 'adjust_method', str, None],
+        ['export_only', 'export_only', bool, False]
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
     # Fmask source type
-    if ini[section]['fmask_flag'] and not ini[section]['fmask_type']:
+    if ini[section]['fmask_flag'] and not ini[section]['fmask_source']:
         logging.error(
             '\nERROR: Fmask source type must be set if fmask_flag = True')
         sys.exit()
-    if ini[section]['fmask_type']:
-        ini[section]['fmask_type'] = ini[section]['fmask_type'].lower()
-        if ini[section]['fmask_type'] not in ['fmask', 'cfmask']:
+    if ini[section]['fmask_source']:
+        ini[section]['fmask_source'] = ini[section]['fmask_source'].lower()
+        if ini[section]['fmask_source'] not in ['fmask', 'cfmask']:
             logging.error(
                 '\nERROR: Invalid Fmask source type: {}\n'
                 '  Must be "fmask" or "cfmask"'.format(
-                    ini[section]['fmask_type']))
+                    ini[section]['fmask_source']))
             sys.exit()
 
     # Mosaic method
     if ini[section]['mosaic_method']:
         ini[section]['mosaic_method'] = ini[section]['mosaic_method'].lower()
-        mosaic_method_list = ['mean', 'median', 'mosaic', 'min', 'max']
-        if ini[section]['mosaic_method'] not in mosaic_method_list:
+        mosaic_method_options = ['mean', 'median', 'mosaic', 'min', 'max']
+        if ini[section]['mosaic_method'] not in mosaic_method_options:
             logging.error(
                 '\nERROR: Invalid mosaic method: {}\n''  Must be: {}'.format(
                     ini[section]['mosaic_method'],
-                    ', '.join(mosaic_method_list)))
+                    ', '.join(mosaic_method_options)))
             sys.exit()
 
     # Adjust Landsat Red and NIR bands
     if ini[section]['adjust_method']:
-        ini[section]['adjust_method'] = ini[section]['adjust_method'].upper()
-        adjust_method_list = ['OLI_2_ETM', 'ETM_2_OLI']
-        if ini[section]['adjust_method'] not in adjust_method_list:
+        ini[section]['adjust_method'] = ini[section]['adjust_method'].lower()
+        adjust_method_options = ['oli_2_etm', 'etm_2_oli']
+        if ini[section]['adjust_method'] not in adjust_method_options:
             logging.error(
                 '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
                     ini[section]['adjust_method'],
-                    ', '.join(adjust_method_list)))
+                    ', '.join(adjust_method_options)))
             sys.exit()
 
 
 def parse_images(ini, section='IMAGES'):
     """"""
+    # Image download bands
+    get_param(ini, section, 'download_bands', 'download_bands', str)
+    ini[section]['download_bands'] = sorted(list(set(map(
+        lambda x: x.strip().lower(),
+        ini[section]['download_bands'].split(',')))))
+    logging.debug('  Output Bands:')
+    for band in ini[section]['download_bands']:
+        logging.debug('    {}'.format(band))
+
     # param_section, input_name, output_name, get_type, default
     param_list = [
         ['output_workspace', 'output_ws', str, os.getcwd()],
-        ['download_bands', 'download_bands', str, ''],
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
         ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
         ['image_buffer', 'image_buffer', int, 0]
@@ -473,17 +486,17 @@ def parse_images(ini, section='IMAGES'):
     if not os.path.isdir(ini[section]['output_ws']):
         os.makedirs(ini[section]['output_ws'])
 
-    # Image download bands
-    ini[section]['download_bands'] = list(map(
-        lambda x: x.strip().lower(),
-        ini[section]['download_bands'].split(',')))
-    logging.debug('  Output Bands:')
-    for band in ini[section]['download_bands']:
-        logging.info('    {}'.format(band))
-
 
 def parse_zonal_stats(ini, section='ZONAL_STATS'):
     """"""
+    # Get the list of Landsat products to compute
+    get_param(ini, section, 'landsat_products', 'landsat_products', list, [])
+    ini[section]['landsat_products'] = sorted(list(set(map(
+        lambda x: x.lower().strip(),
+        ini[section]['landsat_products'].split(',')))))
+    logging.debug('  Output Bands:')
+    for band in ini[section]['landsat_products']:
+        logging.debug('    {}'.format(band))
 
     # OPTIONAL PARAMETERS
     # param_section, input_name, output_name, get_type, default

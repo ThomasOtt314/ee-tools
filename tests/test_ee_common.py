@@ -36,20 +36,10 @@ def image_value(image, band_name):
         scale=1).getInfo()[band_name]
 
 
-# def test_get_landsat_images(landsat4_flag=False, landsat5_flag=True,
-#                        landsat7_flag=True, landsat8_flag=True,
-#                        landsat_coll_args={}):
+# def test_Landsat(landsat_coll_args={}):
 #     """Compute Landsat derived images
 
-#     NLDAS must be merged with Landsat before calling images function
-#     Since images functions are Landsat specific,
-#         joining NLDAS images must be inside each Landsat conditional
-
 #     Args:
-#         landsat4_flag (bool): if True, include Landsat 4 images
-#         landsat5_flag (bool): if True, include Landsat 5 images
-#         landsat7_flag (bool): if True, include Landsat 7 images
-#         landsat8_flag (bool): if True, include Landsat 8 images
 #         landsat_coll_args (dict): keyword arguments for get_landst_collection
 
 #     Returns:
@@ -58,15 +48,17 @@ def image_value(image, band_name):
 #     assert False
 
 
-# def test_get_landsat_image(landsat, year, doy, landsat_coll_args={}):
+# def test_get_image(landsat, year, doy, path, row):
 #     """Return a single Landsat image
 
-#     Mosaic images from different rows
+#     Mosaic images from different rows from the same date (same path)
 
 #     Args:
-#         image_id (str): Landsat scene ID
-#         fmask_flag (bool): if True, apply FMASK cloud mask to image
-#         acca_flag (bool): if True, apply ACCA cloud mask to image
+#         landsat (str):
+#         year (int): year
+#         doy (int): day of year
+#         path (int): Landsat path number
+#         row (int): Landsat row number
 
 #     Returns:
 #         ee.Image
@@ -74,46 +66,8 @@ def image_value(image, band_name):
 #     assert False
 
 
-# def get_landsat_collection(landsat, landsat_type='TOA', fmask_type='none',
-#                            fmask_flag=False, acca_flag=False,
-#                            zone_geom=None, start_date=None, end_date=None,
-#                            start_year=None, end_year=None,
-#                            start_month=None, end_month=None,
-#                            start_doy=None, end_doy=None,
-#                            scene_id_keep_list=[], scene_id_skip_list=[],
-#                            path_keep_list=[], row_keep_list=[],
-#                            adjust_mode=''):
-#     """Build and filter a Landsat collection
-
-#     Args:
-#         landsat ():
-#         landsat_type (str): 'TOA' or 'SR' (not currently supported)
-#             To support 'SR' would need to modify collection_name and
-#             make WRS_PATH and WRS_ROW lower case.
-#         fmask_type (str): 'none', 'fmask' or 'cfmask'
-#         fmask_flag (bool): if True, mask Fmask cloud, shadow, and snow pixels
-#         acca_flag (bool): if True, mask pixels with clouds scores > 50
-#         zone_geom ():
-#         start_date (str):
-#         end_date (str):
-#         start_year (int):
-#         end_year (int):
-#         start_month (int):
-#         end_month (int):
-#         start_doy (int):
-#         end_doy (int):
-#         scene_id_keep_list (list):
-#         scene_id_skip_list (list):
-#         path_keep_list (list):
-#         row_keep_list (list):
-#         adjust_mode (str): Adjust Landsat red and NIR bands
-#             'ETM_2_OLI' or 'OLI_2_ETM'
-#             This could probably be simplifed to a simple flag
-#             This flag is not used directly in this function
-
-#     Returns:
-#         ee.ImageCollection
-#     """
+# def get_collection():
+#     """Build and filter a Landsat collection"""
 
 #     assert False
 
