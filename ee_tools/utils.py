@@ -253,3 +253,12 @@ def wrapped_range(start, end, x_min=1, x_max=12):
         x += 1
         if x > x_max:
             x = x_min
+
+
+def unique_keep_order(seq):
+    """https://stackoverflow.com/questions/480214/how-do-you-remove-duplicates
+       -from-a-list-in-whilst-preserving-order?page=1&tab=active#tab-top
+    """
+    seen = set()
+    seen_add = seen.add
+    return [x for x in seq if not (x in seen or seen_add(x))]

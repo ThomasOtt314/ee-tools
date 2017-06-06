@@ -491,9 +491,9 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     """"""
     # Get the list of Landsat products to compute
     get_param(ini, section, 'landsat_products', 'landsat_products', list, [])
-    ini[section]['landsat_products'] = sorted(list(set(map(
+    ini[section]['landsat_products'] = utils.unique_keep_order(map(
         lambda x: x.lower().strip(),
-        ini[section]['landsat_products'].split(',')))))
+        ini[section]['landsat_products'].split(',')))
     logging.debug('  Output Bands:')
     for band in ini[section]['landsat_products']:
         logging.debug('    {}'.format(band))
