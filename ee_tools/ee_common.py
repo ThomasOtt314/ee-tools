@@ -16,7 +16,7 @@ import ee
 
 ee.Initialize()
 
-system_properties = ['system:index', 'system:time_start', 'system:time_end']
+system_properties = ['system:index', 'system:time_start']
 
 refl_bands = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
 
@@ -212,9 +212,6 @@ class Landsat():
                     '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
                         landsat, self.refl_source, self.fmask_source))
                 sys.exit()
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
 
             # Exclude 2012 Landsat 5 images
             if landsat == 'LT5':
@@ -249,9 +246,6 @@ class Landsat():
                     self.start_doy, self.end_doy, 'day_of_year')
                 landsat_coll = landsat_coll.filter(doy_filter)
                 fmask_coll = fmask_coll.filter(doy_filter)
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
 
             if self.path_keep_list:
                 # path_keep_list = sorted(path_keep_list)
@@ -276,19 +270,11 @@ class Landsat():
             if self.path_row_geom:
                 landsat_coll = landsat_coll.filterBounds(self.path_row_geom)
                 fmask_coll = fmask_coll.filterBounds(self.path_row_geom)
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
-            # raw_input('ENTER')
 
             # Filter by geometry
             if self.zone_geom:
                 landsat_coll = landsat_coll.filterBounds(self.zone_geom)
                 fmask_coll = fmask_coll.filterBounds(self.zone_geom)
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
-            # raw_input('ENTER')
 
             # Set SCENE_ID property for joining and filtering
             def scene_id_func(input_image):
@@ -313,10 +299,6 @@ class Landsat():
                     'SCENE_ID', self.scene_id_skip_list).Not()
                 landsat_coll = landsat_coll.filter(scene_id_skip_filter)
                 fmask_coll = fmask_coll.filter(scene_id_skip_filter)
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
-            # raw_input('ENTER')
 
             # Join the at-surface reflectance CFmask collection if necessary
             if (self.fmask_source and self.fmask_source == 'cfmask'):
@@ -339,11 +321,6 @@ class Landsat():
                 landsat_coll = landsat_coll.map(landsat7_toa_band_func)
             elif landsat == 'LC8':
                 landsat_coll = landsat_coll.map(landsat8_toa_band_func)
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
-            # logging.info('{}'.format(ee.Image(landsat_coll.first()).getInfo()))
-            # raw_input('ENTER')
 
             # Apply cloud masks
             if self.fmask_flag:
@@ -366,21 +343,11 @@ class Landsat():
                 landsat_coll = landsat_coll.map(self.landsat7_images_func)
             elif landsat.upper() == 'LC8':
                 landsat_coll = landsat_coll.map(self.landsat8_images_func)
-            # logging.info('{}'.format([
-            #     f['properties']['system:index']
-            #     for f in landsat_coll.getInfo()['features']]))
-            # logging.info('{}'.format(ee.Image(landsat_coll.first()).getInfo()))
-            # raw_input('ENTER')
 
             # Mosaic overlapping images
             if self.mosaic_method:
                 landsat_coll = mosaic_landsat_images(
                     landsat_coll, self.mosaic_method)
-            # logging.info('{}'.format([
-            #     f['properties']['SCENE_ID']
-            #     for f in landsat_coll.getInfo()['features']]))
-            # logging.info('{}'.format(ee.Image(landsat_coll.first()).getInfo()))
-            # raw_input('ENTER')
 
             # Merge Landsat specific collection into output collection
             output_coll = ee.ImageCollection(
@@ -502,7 +469,7 @@ class Landsat():
             output_images.append(ndwi_nir_swir1_sur)
 
         # NDWI - Allen 2007
-        # Return this NDWI as the default ndwi_sur and ndwi_toa
+        # Return this NDWI as the default ndwi_sur and ndwi_toa below
         if 'ndwi_swir1_green_toa' in self.products:
             ndwi_swir1_green_toa = refl_toa \
                 .normalizedDifference(['swir1', 'green']) \
@@ -514,12 +481,21 @@ class Landsat():
                 .rename(['ndwi_swir1_green_sur'])
             output_images.append(ndwi_swir1_green_sur)
 
+        if 'ndwi_toa' in self.products:
+            output_images.append(refl_toa \
+                .normalizedDifference(['swir1', 'green']) \
+                .rename(['ndwi_toa']))
+        if 'ndwi_sur' in self.products:
+            output_images.append(refl_sur \
+                .normalizedDifference(['swir1', 'green']) \
+                .rename(['ndwi_sur']))
+
         # LAI (for computing Ts) (Empirical function from Allen et al 2007)
         if 'lai_toa' in self.products or 'ts' in self.products:
             lai_toa = ee.Image(ndvi_lai_func(ndvi_toa)) \
                 .rename(['lai_toa'])
             output_images.append(lai_toa)
-        if 'lai_sur' in self.products or 'ts' in self.products:
+        if 'lai_sur' in self.products:
             lai_sur = ee.Image(ndvi_lai_func(ndvi_sur)) \
                 .rename(['lai_sur'])
             output_images.append(lai_sur)
@@ -580,10 +556,11 @@ class Landsat():
             output_images.append(etstar_uci)
 
         # # For each Landsat scene, I need to calculate water year PPT and ETo sums
-        # ppt = ee.Image.constant(100)
-        # eto = ee.Image.constant(1000)
-        # # ppt = ee.Image.constant(refl_toa_orig.get('wy_ppt'))
-        # # eto = ee.Image.constant(refl_toa_orig.get('wy_eto'))
+        # # ppt = ee.Image.constant(100)
+        # # eto = ee.Image.constant(1000)
+        # if any([p for p in self.products if 'etg_' in p]):
+        #     ppt = ee.Image.constant(refl_toa_orig.get('wy_ppt'))
+        #     eto = ee.Image.constant(refl_toa_orig.get('wy_eto'))
 
         # # ETg
         # if 'etg_mean' in self.products:
@@ -1057,9 +1034,7 @@ def nldas_interp_func(img):
     # Interpolate NLDAS values at Landsat image time
     return nldas_next_image.subtract(nldas_prev_image) \
         .multiply(time_ratio).add(nldas_prev_image) \
-        .setMulti({
-            'system:time_start': scene_time,
-            'system:time_end': scene_time})
+        .setMulti({'system:time_start': scene_time})
 
 
 def landsat_acca_band_func(refl_toa_img):
