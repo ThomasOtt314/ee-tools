@@ -70,10 +70,10 @@ class Landsat():
             zone_geom (ee.Geometry): apply filterBounds using this geometry
             scene_id_keep_list (list): SCENE_IDs to explicitly include
                 SCENE_IDs do not include version or downlink station
-                Example: "LT50410321984214"
+                Example: "LT05_041032_1984214"
             scene_id_skip_list (list): SCENE_IDs to explicitly skip/exclude
                 SCENE_IDs do not include version or downlink station
-                Example: "LT50410321984214"
+                Example: "LT05_041032_1984214"
             path_keep_list (list): Landsat path numbers (as int)
             row_keep_list (list): Landsat row numbers (as int)
             path_row_geom (ee.Geometry):
@@ -102,7 +102,7 @@ class Landsat():
             'landsat7_flag', 'landsat8_flag'
         ]
 
-        logging.debug('  Init Args')
+        # logging.debug('  Init Args')
         for key in arg_list:
             try:
                 value = args[key]
@@ -116,16 +116,15 @@ class Landsat():
         #   from the flags?
         landsat_list = []
         if self.landsat4_flag:
-            landsat_list.append('LT4')
+            landsat_list.append('LT04')
         if self.landsat5_flag:
-            landsat_list.append('LT5')
+            landsat_list.append('LT05')
         if self.landsat7_flag:
-            landsat_list.append('LE7')
+            landsat_list.append('LE07')
         if self.landsat8_flag:
-            landsat_list.append('LC8')
+            landsat_list.append('LC08')
         self.landsat_list = landsat_list
-        logging.debug('  {}: {}'.format(
-            'landsat_list', self.landsat_list))
+        logging.debug('  {}: {}'.format('landsat_list', self.landsat_list))
 
     def get_image(self, landsat, year, doy, path=None, row=None):
         """Return a single Landsat image
@@ -178,74 +177,104 @@ class Landsat():
         output_coll = ee.ImageCollection([])
         for landsat in self.landsat_list:
             logging.debug('  Landsat: {}'.format(landsat))
-            landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat)
-            landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat)
-            landsat_fmask_name = 'LANDSAT/{}_L1T_TOA_FMASK'.format(landsat)
 
-            # Currently only using TOA collections and comput Tasumi at-surface
-            #   reflectance is supported
-            self.refl_source = 'tasumi'
-            if (self.refl_source == 'tasumi' and
-                    (not self.fmask_source or self.fmask_source == 'none')):
-                landsat_coll = ee.ImageCollection(landsat_toa_name)
-                # Add empty fmask band
-                landsat_coll = landsat_coll.map(
-                    landsat_empty_fmask_band_func)
-                # Build fmask_coll so filtering is cleaner, but don't use it
-                fmask_coll = ee.ImageCollection(landsat_sr_name) \
-                    .select(['cfmask'], ['fmask'])
-            elif (self.refl_source == 'tasumi' and
-                    self.fmask_source == 'cfmask'):
-                # Join Fmask band from SR collection to TOA collection
-                landsat_coll = ee.ImageCollection(landsat_toa_name)
-                fmask_coll = ee.ImageCollection(landsat_sr_name) \
-                    .select(['cfmask'], ['fmask'])
-            elif (self.refl_source == 'tasumi' and
-                    self.fmask_source == 'fmask'):
-                landsat_coll = ee.ImageCollection(landsat_fmask_name)
-                # This fmask collection will not be used
-                fmask_coll = ee.ImageCollection(landsat_sr_name) \
-                    .select(['cfmask'], ['fmask'])
-            else:
-                logging.error(
-                    '\nERROR: Unknown Landsat/Fmask type combination, exiting\n'
-                    '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
-                        landsat, self.refl_source, self.fmask_source))
-                sys.exit()
+            if landsat in ['LE07', 'LC08']:
+                # Collection 1
+                # landsat_sr_name = 'LANDSAT/{}/C01/T1_SR'.format(landsat)
+                landsat_toa_name = 'LANDSAT/{}/C01/T1_TOA'.format(landsat)
+
+                # Currently only using TOA collection with Tasumi at-surface
+                #   reflectance is supported
+                self.refl_source = 'tasumi'
+                if self.refl_source == 'tasumi':
+                    landsat_coll = ee.ImageCollection(landsat_toa_name)
+                    # Keep fmask_coll for filtering below
+                    # Once Collection 1 is fully supported, this could be removed
+                    # fmask_coll = ee.ImageCollection(landsat_toa_name)
+                    # fmask_coll = ee.ImageCollection([])
+                else:
+                    logging.error(
+                        '\nERROR: Unknown Landsat/Fmask type combination, exiting\n'
+                        '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
+                            landsat, self.refl_source, self.fmask_source))
+                    sys.exit()
+            elif landsat in ['LT04', 'LT05']:
+                # Pre-collection
+                landsat_pre = landsat.replace('0', '')
+                landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat_pre)
+                landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat_pre)
+                landsat_fmask_name = 'LANDSAT/{}_L1T_TOA_FMASK'.format(
+                    landsat_pre)
+
+                # Currently only using TOA collection with Tasumi at-surface
+                #   reflectance is supported
+                self.refl_source = 'tasumi'
+                if (self.refl_source == 'tasumi' and
+                        (not self.fmask_source or self.fmask_source == 'none')):
+                    landsat_coll = ee.ImageCollection(landsat_toa_name)
+                    # Add empty fmask band
+                    landsat_coll = landsat_coll.map(
+                        landsat_empty_fmask_band_func)
+                    # Build fmask_coll so filtering is cleaner, but don't use it
+                    fmask_coll = ee.ImageCollection(landsat_sr_name) \
+                        .select(['cfmask'], ['fmask'])
+                elif (self.refl_source == 'tasumi' and
+                        self.fmask_source == 'cfmask'):
+                    # Join Fmask band from SR collection to TOA collection
+                    landsat_coll = ee.ImageCollection(landsat_toa_name)
+                    fmask_coll = ee.ImageCollection(landsat_sr_name) \
+                        .select(['cfmask'], ['fmask'])
+                elif (self.refl_source == 'tasumi' and
+                        self.fmask_source == 'fmask'):
+                    landsat_coll = ee.ImageCollection(landsat_fmask_name)
+                    # This fmask collection will not be used
+                    fmask_coll = ee.ImageCollection(landsat_sr_name) \
+                        .select(['cfmask'], ['fmask'])
+                else:
+                    logging.error(
+                        '\nERROR: Unknown Landsat/Fmask type combination, exiting\n'
+                        '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
+                            landsat, self.refl_source, self.fmask_source))
+                    sys.exit()
 
             # Exclude 2012 Landsat 5 images
-            if landsat == 'LT5':
+            if landsat == 'LT05':
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.calendarRange(1984, 2011, 'year'))
-                fmask_coll = fmask_coll.filter(
-                    ee.Filter.calendarRange(1984, 2011, 'year'))
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(
+                        ee.Filter.calendarRange(1984, 2011, 'year'))
 
             # Filter by date
             if self.start_date and self.end_date:
                 landsat_coll = landsat_coll.filterDate(
                     self.start_date, self.end_date)
-                fmask_coll = fmask_coll.filterDate(
-                    self.start_date, self.end_date)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filterDate(
+                        self.start_date, self.end_date)
             # Filter by year
             if self.start_year and self.end_year:
                 year_filter = ee.Filter.calendarRange(
                     self.start_year, self.end_year, 'year')
                 landsat_coll = landsat_coll.filter(year_filter)
-                fmask_coll = fmask_coll.filter(year_filter)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(year_filter)
             # Filter by month
             if ((self.start_month and self.start_month != 1) and
                     (self.end_month and self.end_month != 12)):
                 month_filter = ee.Filter.calendarRange(
                     self.args['start_month'], self.end_month, 'month')
                 landsat_coll = landsat_coll.filter(month_filter)
-                fmask_coll = fmask_coll.filter(month_filter)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(month_filter)
             # Filter by day of year
             if ((self.start_doy and self.start_doy != 1) and
                     (self.end_doy and self.end_doy != 365)):
                 doy_filter = ee.Filter.calendarRange(
                     self.start_doy, self.end_doy, 'day_of_year')
                 landsat_coll = landsat_coll.filter(doy_filter)
-                fmask_coll = fmask_coll.filter(doy_filter)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(doy_filter)
 
             if self.path_keep_list:
                 # path_keep_list = sorted(path_keep_list)
@@ -255,8 +284,9 @@ class Landsat():
                 #     'wrs_row', path_keep_list[0], path_keep_list[-1]))
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.inList('WRS_PATH', self.path_keep_list))
-                fmask_coll = fmask_coll.filter(
-                    ee.Filter.inList('wrs_path', self.path_keep_list))
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(
+                        ee.Filter.inList('wrs_path', self.path_keep_list))
             if self.row_keep_list:
                 # row_keep_list = sorted(row_keep_list)
                 # landsat_coll = landsat_coll.filter(ee.Filter.rangeContains(
@@ -265,43 +295,57 @@ class Landsat():
                 #     'wrs_row', row_keep_list[0], row_keep_list[-1]))
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.inList('WRS_ROW', self.row_keep_list))
-                fmask_coll = fmask_coll.filter(
-                    ee.Filter.inList('wrs_row', self.row_keep_list))
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(
+                        ee.Filter.inList('wrs_row', self.row_keep_list))
             if self.path_row_geom:
                 landsat_coll = landsat_coll.filterBounds(self.path_row_geom)
-                fmask_coll = fmask_coll.filterBounds(self.path_row_geom)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filterBounds(self.path_row_geom)
 
             # Filter by geometry
             if self.zone_geom:
                 landsat_coll = landsat_coll.filterBounds(self.zone_geom)
-                fmask_coll = fmask_coll.filterBounds(self.zone_geom)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filterBounds(self.zone_geom)
 
             # Set SCENE_ID property for joining and filtering
-            def scene_id_func(input_image):
-                scene_id = ee.String(
-                    input_image.get('system:index')).slice(0, 16)
-                #     input_image.get('LANDSAT_SCENE_ID')).slice(0, 16)
-                return input_image.setMulti({'SCENE_ID': scene_id})
-                # mosaic_id = scene_id.slice(0, 6).cat('XXX').cat(scene_id.slice(9, 16))
-                # return input_image.setMulti({
-                #     'SCENE_ID': scene_id, 'MOSAIC_ID': mosaic_id})
-            landsat_coll = landsat_coll.map(scene_id_func)
-            fmask_coll = fmask_coll.map(scene_id_func)
+            if landsat in ['LE07', 'LC08']:
+                def scene_id_func(img):
+                    return img.setMulti({
+                        'SCENE_ID': ee.String(img.get('system:index'))})
+                landsat_coll = landsat_coll.map(scene_id_func)
+            elif landsat in ['LT04', 'LT05']:
+                def scene_id_func(img):
+                    scene_id = ee.String(img.get('system:index'))
+                    scene_id = scene_id.slice(0, 2).cat('0') \
+                        .cat(scene_id.slice(2, 3)).cat('_') \
+                        .cat(scene_id.slice(3, 9)).cat('_') \
+                        .cat(ee.Date(img.get('system:time_start')).format('yyyyMMdd'))
+                    return img.setMulti({'SCENE_ID': scene_id})
+                    # mosaic_id = scene_id.slice(0, 6).cat('XXX').cat(scene_id.slice(9, 16))
+                    # return input_image.setMulti({
+                    #     'SCENE_ID': scene_id, 'MOSAIC_ID': mosaic_id})
+                landsat_coll = landsat_coll.map(scene_id_func)
+                fmask_coll = fmask_coll.map(scene_id_func)
 
             # Filter by SCENE_ID
             if self.scene_id_keep_list:
                 scene_id_keep_filter = ee.Filter.inList(
                     'SCENE_ID', self.scene_id_keep_list)
                 landsat_coll = landsat_coll.filter(scene_id_keep_filter)
-                fmask_coll = fmask_coll.filter(scene_id_keep_filter)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(scene_id_keep_filter)
             if self.scene_id_skip_list:
                 scene_id_skip_filter = ee.Filter.inList(
                     'SCENE_ID', self.scene_id_skip_list).Not()
                 landsat_coll = landsat_coll.filter(scene_id_skip_filter)
-                fmask_coll = fmask_coll.filter(scene_id_skip_filter)
+                if landsat in ['LT04', 'LT05']:
+                    fmask_coll = fmask_coll.filter(scene_id_skip_filter)
 
             # Join the at-surface reflectance CFmask collection if necessary
-            if (self.fmask_source and self.fmask_source == 'cfmask'):
+            if (self.fmask_source and self.fmask_source == 'cfmask' and
+                    landsat in ['LT04', 'LT05']):
                 scene_id_filter = ee.Filter.equals(
                     leftField='SCENE_ID', rightField='SCENE_ID')
                 landsat_coll = ee.ImageCollection(
@@ -310,16 +354,22 @@ class Landsat():
 
                 # Add Fmask band from joined property
                 landsat_coll = landsat_coll.map(landsat_fmask_band_func)
+            elif landsat in ['LE07']:
+                # Extract Fmask band from QA band
+                landsat_coll = landsat_coll.map(landsat_qa_band_func)
+            elif landsat in ['LC08']:
+                # Extract Fmask band from QA band
+                landsat_coll = landsat_coll.map(landsat_qa_band_func)
 
             # Add ACCA band (must be done before bands are renamed)
             landsat_coll = landsat_coll.map(landsat_acca_band_func)
 
             # Modify landsat collections to have same band names
-            if landsat in ['LT4', 'LT5']:
-                landsat_coll = landsat_coll.map(landsat45_toa_band_func)
-            elif landsat == 'LE7':
+            if landsat in ['LT04', 'LT05']:
+                landsat_coll = landsat_coll.map(landsat5_toa_band_func)
+            elif landsat == 'LE07':
                 landsat_coll = landsat_coll.map(landsat7_toa_band_func)
-            elif landsat == 'LC8':
+            elif landsat == 'LC08':
                 landsat_coll = landsat_coll.map(landsat8_toa_band_func)
 
             # Apply cloud masks
@@ -337,11 +387,11 @@ class Landsat():
             # landsat_coll = landsat_coll.map(scene_id_func)
 
             # Compute derived images
-            if landsat.upper() in ['LT4', 'LT5']:
-                landsat_coll = landsat_coll.map(self.landsat45_images_func)
-            elif landsat.upper() == 'LE7':
+            if landsat in ['LT04', 'LT05']:
+                landsat_coll = landsat_coll.map(self.landsat5_images_func)
+            elif landsat == 'LE07':
                 landsat_coll = landsat_coll.map(self.landsat7_images_func)
-            elif landsat.upper() == 'LC8':
+            elif landsat == 'LC08':
                 landsat_coll = landsat_coll.map(self.landsat8_images_func)
 
             # Mosaic overlapping images
@@ -359,17 +409,17 @@ class Landsat():
 
         return output_coll
 
-    def landsat45_images_func(self, refl_toa):
+    def landsat5_images_func(self, refl_toa):
         """EE mappable function for calling landsat_image_func for Landsat 4/5"""
-        return self.landsat_images_func(refl_toa, landsat='LT5')
+        return self.landsat_images_func(refl_toa, landsat='LT05')
 
     def landsat7_images_func(self, refl_toa):
         """EE mappable function for calling landsat_image_func for Landsat 7"""
-        return self.landsat_images_func(refl_toa, landsat='LE7')
+        return self.landsat_images_func(refl_toa, landsat='LE07')
 
     def landsat8_images_func(self, refl_toa):
         """EE mappable function for calling landsat_image_func for Landsat 8"""
-        return self.landsat_images_func(refl_toa, landsat='LC8')
+        return self.landsat_images_func(refl_toa, landsat='LC08')
 
     def landsat_images_func(self, refl_toa_orig, landsat):
         """Calculate Landsat products
@@ -379,7 +429,7 @@ class Landsat():
 
         Args:
             refl_toa_orig (ee.ImageCollection): Landsat TOA reflectance collection
-            landsat (str): Landsat type ('LT4', 'LT5', 'LE7', or 'LC8')
+            landsat (str): Landsat type ('LT04', 'LT05', 'LE07', or 'LC08')
                 This is not an input argument
 
         Self Properties
@@ -395,8 +445,14 @@ class Landsat():
         # Clip to common area of all bands
         # Make a copy so original Fmask and cloud score can be passed through
         refl_toa = common_area_func(refl_toa_orig)
+
+        # Eventually use Fmask band to set common area instead
+        # refl_toa = refl_toa_orig.updateMask(
+        #     refl_toa_orig.select(['fmask']).gte(0))
+
         # Brightness temperature must be > 250 K
         # refl_toa = refl_toa.updateMask(refl_toa.select(['thermal']).gt(250))
+
         # Output individual TOA reflectance bands
         for band in refl_bands:
             if band + '_toa' in self.products:
@@ -629,7 +685,7 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
     # Precipitable water?
     w = pair.multiply(0.14).multiply(ea).add(2.1)
 
-    if landsat.upper() in ['LT5', 'LT4', 'LE7']:
+    if landsat in ['LT05', 'LT04', 'LE07']:
         c1 = [0.987, 2.319, 0.951, 0.375, 0.234, 0.365]
         c2 = [-0.00071, -0.000164, -0.000329, -0.000479, -0.001012, -0.000966]
         c3 = [0.000036, 0.000105, 0.00028, 0.005018, 0.004336, 0.004296]
@@ -642,7 +698,7 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
         # c4 = ee.Image([0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155])
         # c5 = ee.Image([0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639])
         # cb = ee.Image([0.640, 0.31, 0.286, 0.189, 0.274, -0.186])
-    elif landsat.upper() == 'LC8':
+    elif landsat == 'LC08':
         c1 = [0.987, 2.148, 0.942, 0.248, 0.260, 0.315]
         c2 = [-0.000727, -0.000199, -0.000261, -0.000410, -0.001084, -0.000975]
         c3 = [0.000037, 0.000058, 0.000406, 0.000563, 0.000675, 0.004012]
@@ -670,14 +726,14 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
             {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out})
 
     if (adjust_method and adjust_method.lower() == 'etm_2_oli' and
-            landsat.upper() in ['LT5', 'LT4', 'LE7']):
+            landsat in ['LT05', 'LT04', 'LE07']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling ETM+ to OLI
         refl_sur = ee.Image(refl_sur) \
             .subtract([0, 0, 0.0024, -0.0003, 0, 0]) \
             .divide([1, 1, 1.0047, 1.0036, 1, 1])
     elif (adjust_method and adjust_method.lower() == 'oli_2_etm' and
-            landsat.upper() in ['LC8']):
+            landsat in ['LC08']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling OLI to ETM+
         refl_sur = ee.Image(refl_sur) \
@@ -804,11 +860,11 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
 
 def albedo_func(refl_sur, landsat):
     """At-surface albedo"""
-    if landsat.upper() in ['LT5', 'LT4']:
+    if landsat in ['LT05', 'LT04']:
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-    elif landsat.upper() == 'LE7':
+    elif landsat == 'LE07':
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-    elif landsat.upper() == 'LC8':
+    elif landsat == 'LC08':
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
     return ee.Image(refl_sur).select(refl_bands).multiply(wb_coef) \
         .reduce(ee.Reducer.sum())
@@ -905,18 +961,18 @@ def tc_bright_func(refl_toa, landsat):
 
     Top of atmosphere (at-satellite) reflectance
 
-    LT5 - http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf
-    LE7 - http://landcover.usgs.gov/pdf/tasseled.pdf
-    LC8 - http://www.tandfonline.com/doi/abs/10.1080/2150704X.2014.915434
+    LT04/LT05 - http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf
+    LE07 - http://landcover.usgs.gov/pdf/tasseled.pdf
+    LC08 - http://www.tandfonline.com/doi/abs/10.1080/2150704X.2014.915434
     https://www.researchgate.net/publication/262005316_Derivation_of_a_tasselled_cap_transformation_based_on_Landsat_8_at-_satellite_reflectance
     """
-    if landsat in ['LT4', 'LT5']:
+    if landsat in ['LT04', 'LT05']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_bright_coef = [0.2043, 0.4158, 0.5524, 0.5741, 0.3124, 0.2303]
-    elif landsat == 'LE7':
+    elif landsat == 'LE07':
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_bright_coef = [0.3561, 0.3972, 0.3904, 0.6966, 0.2286, 0.1596]
-    elif landsat == 'LC8':
+    elif landsat == 'LC08':
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_bright_coef = [0.3029, 0.2786, 0.4733, 0.5599, 0.5080, 0.1872]
@@ -926,13 +982,13 @@ def tc_bright_func(refl_toa, landsat):
 
 def tc_green_func(refl_toa, landsat):
     """Tasseled cap greeness"""
-    if landsat in ['LT4', 'LT5']:
+    if landsat in ['LT04', 'LT05']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_green_coef = [-0.1603, -0.2819, -0.4934, 0.7940, -0.0002, -0.1446]
-    elif landsat == 'LE7':
+    elif landsat == 'LE07':
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_green_coef = [-0.3344, -0.3544, -0.4556, 0.6966, -0.0242, -0.2630]
-    elif landsat == 'LC8':
+    elif landsat == 'LC08':
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_green_coef = [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608]
@@ -942,13 +998,13 @@ def tc_green_func(refl_toa, landsat):
 
 def tc_wet_func(refl_toa, landsat):
     """Tasseled cap wetness"""
-    if landsat in ['LT4', 'LT5']:
+    if landsat in ['LT04', 'LT05']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_wet_coef = [0.0315, 0.2021, 0.3102, 0.1594, -0.6806, -0.6109]
-    elif landsat == 'LE7':
+    elif landsat == 'LE07':
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_wet_coef = [0.2626, 0.2141, 0.0926, 0.0656, -0.7629, -0.5388]
-    elif landsat == 'LC8':
+    elif landsat == 'LC08':
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_wet_coef = [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559]
@@ -1005,10 +1061,7 @@ def nldas_interp_func(img):
     """Interpolate NLDAS image at Landsat scene time
 
     Args:
-        img (ee.Image()):
-            NLDAS hourly image collection must have been joined to it
-            Previous NLDAS image must be selectable with 'nldas_prev_match'
-            Next NLDAS image must be selectable with 'nldas_next_match'
+        img (ee.Image):
 
     Returns
         ee.Image(): NLDAS values interpolated at the image time
@@ -1056,7 +1109,57 @@ def landsat_empty_fmask_band_func(refl_toa_img):
         refl_toa_img.select([0]).multiply(0).select([0], ['fmask']))
 
 
-def landsat45_toa_band_func(img):
+def landsat_qa_band_func(refl_toa_img):
+    """Get Fmask band from the joined properties
+
+    https://landsat.usgs.gov/collectionqualityband
+
+    Confidence values
+    00 = "Not Determined" = Algorithm did not determine the status of this condition
+    01 = "No" = Algorithm has low to no confidence that this condition exists (0-33 percent confidence)
+    10 = "Maybe" = Algorithm has medium confidence that this condition exists (34-66 percent confidence)
+    11 = "Yes" = Algorithm has high confidence that this condition exists (67-100 percent confidence
+    """
+    qa_img = ee.Image(refl_toa_img.select(['BQA']))
+
+    def getQABits(image, start, end, newName):
+        """
+        Tyler's function from https://ee-api.appspot.com/#97ab9a8f694b28128a5a5ca2e2df7841
+        """
+        pattern = 0
+        for i in range(start, end + 1):
+            pattern += int(2 ** i)
+        return image.select([0], [newName]) \
+            .bitwise_and(pattern).right_shift(start)
+
+    # Extract the various masks from the QA band
+    fill_mask = getQABits(qa_img, 0, 0, 'designated_fill')
+    # drop_mask = getQABits(qa_img, 1, 1, 'dropped_pixel')
+    # Landsat 8 only
+    # terrain_mask = getQABits(qa_img, 1, 1, 'terrain_occlusion')
+    # saturation_mask = getQABits(qa_img, 2, 3, 'saturation_confidence').gte(2)
+    # cloud_mask = getQABits(qa_img, 4, 4, 'cloud')
+    cloud_mask = getQABits(qa_img, 7, 8, 'cloud_confidence').gte(2)
+    shadow_mask = getQABits(qa_img, 7, 8, 'shadow_confidence').gte(3)
+    snow_mask = getQABits(qa_img, 9, 10, 'snow_confidence').gte(3)
+    # Landsat 8 only
+    # cirrus_mask = getQABits(qa_img, 11, 12, 'cirrus_confidence').gte(3)
+
+    # Convert masks to old style Fmask values
+    # 0 - Clear land
+    # 1 - Clear water
+    # 2 - Cloud shadow
+    # 3 - Snow
+    # 4 - Cloud
+    fmask_img = fill_mask \
+        .add(shadow_mask.multiply(2)) \
+        .add(snow_mask.multiply(3)) \
+        .add(cloud_mask.multiply(4))
+
+    return refl_toa_img.addBands(fmask_img.rename(['fmask']))
+
+
+def landsat5_toa_band_func(img):
     """Rename Landsat 4 and 5 bands to common band names
 
     Change band order to match Landsat 8
@@ -1118,64 +1221,64 @@ def landsat8_toa_band_func(img):
         .copyProperties(img, system_properties)
 
 
-def landsat45_sr_band_func(img):
-    """Rename Landsat 4 and 5 bands to common band names
+# def landsat5_sr_band_func(img):
+#     """Rename Landsat 4 and 5 bands to common band names
 
-    Change band order to match Landsat 8
-    Scale values by 10000
-    """
-    sr_image = img \
-        .select(
-            ['B1', 'B2', 'B3', 'B4', 'B5', 'B7'],
-            ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']) \
-        .divide(10000.0)
-    # Cloud mask bands must be set after scaling
-    return ee.Image(sr_image) \
-        .addBands(img.select(
-            ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
-        .copyProperties(img, system_properties)
-
-
-def landsat7_sr_band_func(img):
-    """Rename Landsat 7 bands to common band names
-
-    Change band order to match Landsat 8
-    For now, don't include pan-chromatic or high gain thermal band
-    Scale values by 10000
-    """
-    # ['B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'B8'],
-    # ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'pan'])
-    sr_image = img \
-        .select(
-            ['B1', 'B2', 'B3', 'B4', 'B5', 'B7'],
-            ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'])\
-        .divide(10000.0)
-    # Cloud mask bands must be set after scaling
-    return ee.Image(sr_image) \
-        .addBands(img.select(
-            ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
-        .copyProperties(img, system_properties)
+#     Change band order to match Landsat 8
+#     Scale values by 10000
+#     """
+#     sr_image = img \
+#         .select(
+#             ['B1', 'B2', 'B3', 'B4', 'B5', 'B7'],
+#             ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']) \
+#         .divide(10000.0)
+#     # Cloud mask bands must be set after scaling
+#     return ee.Image(sr_image) \
+#         .addBands(img.select(
+#             ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
+#         .copyProperties(img, system_properties)
 
 
-def landsat8_sr_band_func(img):
-    """Rename Landsat 8 bands to common band names
+# def landsat7_sr_band_func(img):
+#     """Rename Landsat 7 bands to common band names
 
-    For now, don't include coastal, cirrus, or pan-chromatic
-    Scale values by 10000
-    """
-    # ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'],
-    # ['coastal', 'blue', 'green', 'red', 'nir', 'swir1', 'swir2',
-    #  'pan', 'cirrus'])
-    sr_image = img \
-        .select(
-            ['B2', 'B3', 'B4', 'B5', 'B6', 'B7'],
-            ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'])\
-        .divide(10000.0)
-    # Cloud mask bands must be set after scaling
-    return ee.Image(sr_image) \
-        .addBands(img.select(
-            ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
-        .copyProperties(img, system_properties)
+#     Change band order to match Landsat 8
+#     For now, don't include pan-chromatic or high gain thermal band
+#     Scale values by 10000
+#     """
+#     # ['B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'B8'],
+#     # ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'pan'])
+#     sr_image = img \
+#         .select(
+#             ['B1', 'B2', 'B3', 'B4', 'B5', 'B7'],
+#             ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'])\
+#         .divide(10000.0)
+#     # Cloud mask bands must be set after scaling
+#     return ee.Image(sr_image) \
+#         .addBands(img.select(
+#             ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
+#         .copyProperties(img, system_properties)
+
+
+# def landsat8_sr_band_func(img):
+#     """Rename Landsat 8 bands to common band names
+
+#     For now, don't include coastal, cirrus, or pan-chromatic
+#     Scale values by 10000
+#     """
+#     # ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'],
+#     # ['coastal', 'blue', 'green', 'red', 'nir', 'swir1', 'swir2',
+#     #  'pan', 'cirrus'])
+#     sr_image = img \
+#         .select(
+#             ['B2', 'B3', 'B4', 'B5', 'B6', 'B7'],
+#             ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'])\
+#         .divide(10000.0)
+#     # Cloud mask bands must be set after scaling
+#     return ee.Image(sr_image) \
+#         .addBands(img.select(
+#             ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
+#         .copyProperties(img, system_properties)
 
 
 def common_area_func(img):
@@ -1464,10 +1567,22 @@ def vapor_pressure_func(temperature_image):
 def mosaic_landsat_images(landsat_coll, mosaic_method):
     """"""
     def mosaic_id_func(image):
-        scene_id = ee.String(ee.List(ee.String(
-            image.get('system:index')).split('_')).get(-1))
-        # scene_id = scene_id.slice(0, 16)
-        mosaic_id = scene_id.slice(0, 6).cat('XXX').cat(scene_id.slice(9, 16))
+        """Set MOSAIC_ID with row set to XXX
+
+        Using GEE Collection 1 system:index naming convention
+        LT05_PPPRRR_YYYYMMDD
+        """
+        scene_id = ee.String(image.get('SCENE_ID'))
+        mosaic_id = scene_id.slice(0, 8).cat('XXX').cat(scene_id.slice(11, 20))
+        # If mosaicing after merging, SCENE_ID is at end
+        # scene_id = ee.String(ee.List(ee.String(
+        #     image.get('system:index')).split('_')).get(-1))
+        # Build product ID from old style scene ID
+        # scene_id = ee.String(img.get('system:index'))
+        # scene_id = scene_id.slice(0, 2).cat('0') \
+        #     .cat(scene_id.slice(2, 3)).cat('_') \
+        #     .cat(scene_id.slice(3, 9)).cat('_') \
+        #     .cat(ee.Date(img.get('system:time_start')).format('yyyyMMdd'))
         return image.setMulti({'MOSAIC_ID': mosaic_id})
     landsat_coll = landsat_coll.map(mosaic_id_func)
 
@@ -1500,7 +1615,6 @@ def mosaic_landsat_images(landsat_coll, mosaic_method):
             image = coll.first()
         return ee.Image(image).setMulti({
             'SCENE_ID': ee.String(ftr.get('MOSAIC_ID')),
-            # 'system:index': ee.String(ftr.get('MOSAIC_ID')),
             'system:time_start': time})
     mosaic_coll = ee.ImageCollection(join_coll.map(aggregate_func))
 

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-06-05
+# Created       2017-06-06
 # Python:       3.6
 #--------------------------------
 
@@ -100,9 +100,10 @@ def main(ini_path=None, overwrite_flag=False):
     ee.Initialize()
 
     coll_dict = {
-        'LT5': 'LANDSAT/LT5_SR',
-        'LE7': 'LANDSAT/LE7_SR',
-        'LC8': 'LANDSAT/LC8_SR'
+        'LT04': 'LANDSAT/LT4_SR',
+        'LT05': 'LANDSAT/LT5_SR',
+        'LE07': 'LANDSAT/LE7_SR',
+        'LC08': 'LANDSAT/LC8_SR'
     }
 
     logging.info('\nProcessing zones')
@@ -298,11 +299,11 @@ def main(ini_path=None, overwrite_flag=False):
             logging.debug('  {}'.format(start_date))
             # logging.debug('  {}'.format(output_path))
 
-            if landsat in ['LT5', 'LE7']:
+            if landsat in ['LT04', 'LT05', 'LE07']:
                 ee_coll = ee.ImageCollection(coll_dict[landsat]).select(
                     ['B1', 'B2', 'B3', 'B4', 'B5', 'B7'],
                     ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'])
-            elif landsat in ['LC8']:
+            elif landsat in ['LC08']:
                 ee_coll = ee.ImageCollection(coll_dict[landsat]).select(
                     ['B2', 'B3', 'B4', 'B5', 'B6', 'B7'],
                     ['blue', 'green', 'red', 'nir', 'swir1', 'swir2'])

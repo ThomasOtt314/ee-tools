@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_shapefile_zonal_stats_export.py
 # Purpose:      Download zonal stats for shapefiles using Earth Engine
-# Created       2017-06-05
+# Created       2017-06-06
 # Python:       3.6
 #--------------------------------
 
@@ -329,7 +329,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # export_id = '{}_{}_landsat_{}'.format(
         #     os.path.splitext(ini['INPUTS']['zone_filename'])[0],
         #     zone_name, year_str)
-        output_id = '{}_landsat{}_{}'.format(zone['name'], crs_str, year_str)
+        output_id = '{}_landsat{}_{}'.format(
+            zone['name'], crs_str, year_str)
         if ini['EXPORT']['mosaic_method']:
             export_id += '_' + ini['EXPORT']['mosaic_method'].lower()
             output_id += '_' + ini['EXPORT']['mosaic_method'].lower()
@@ -446,13 +447,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             if k in [
                 'landsat4_flag', 'landsat5_flag', 'landsat7_flag',
                 'landsat8_flag', 'fmask_flag', 'acca_flag', 'fmask_source',
-                # Since dates are available, only filter by date
-                # 'start_year', 'end_year',
-                # 'start_month', 'end_month', 'start_doy', 'end_doy',
+                'start_year', 'end_year',
+                'start_month', 'end_month', 'start_doy', 'end_doy',
                 'scene_id_keep_list', 'scene_id_skip_list',
                 'path_keep_list', 'row_keep_list',
                 'adjust_method', 'mosaic_method']}
         landsat_args['zone_geom'] = zone['geom']
+        # Filter by iteration date in addition to input date parameters
         landsat_args['start_date'] = start_date
         landsat_args['end_date'] = end_date
         landsat_args['products'] = ini['ZONAL_STATS']['landsat_products']
@@ -541,11 +542,12 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             zs_dict = {
                 'ZONE_NAME': zone['name'],
                 'ZONE_FID': zone['fid'],
-                'SCENE_ID': scene_id.slice(0, 16),
-                'LANDSAT': scene_id.slice(0, 3),
-                'PATH': ee.Number(scene_id.slice(3, 6)),
+                'SCENE_ID': scene_id.slice(0, 20),
+                'LANDSAT': scene_id.slice(0, 4),
+                'PATH': ee.Number(scene_id.slice(5, 8)),
                 'ROW': ee.Number(input_mean.get('row')),
-                # 'ROW': ee.Number(scene_id.slice(6, 9)),
+                # Compute dominant row
+                # 'ROW': ee.Number(scene_id.slice(8, 11)),
                 'DATE': date.format('YYYY-MM-dd'),
                 'YEAR': date.get('year'),
                 'MONTH': date.get('month'),
@@ -585,7 +587,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # pp = pprint.PrettyPrinter(indent=4)
         # for ftr in stats_info['features']:
         #     pp.pprint(ftr)
-        # input('ENTER')
+        # raw_input('ENTER')
         # return False
 
         logging.debug('  Building export task')
@@ -731,7 +733,8 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     export_id = '{}_{}_gridmet_daily'.format(
         os.path.splitext(ini['INPUTS']['zone_filename'])[0],
         zone['name'].replace(' ', '_').lower())
-    output_id = '{}_gridmet_daily'.format(zone['name'].replace(' ', '_'))
+    output_id = '{}_gridmet_daily'.format(
+        zone['name'].replace(' ', '_'))
 
     export_path = os.path.join(
         ini['EXPORT']['export_ws'], export_id + '.csv')

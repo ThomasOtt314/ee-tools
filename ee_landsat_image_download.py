@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-06-05
+# Created       2017-06-06
 # Python:       3.6
 #--------------------------------
 
@@ -224,30 +224,28 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         #   otherwise set to None
         if not ini['EXPORT']['mosaic_method']:
             scene_id_list = set([
-                (image_id[9:13], image_id[13:16], image_id[0:3],
-                    image_id[3:6], image_id[6:9])
+                (image_id[12:20], image_id[0:4], image_id[5:8], image_id[8:11])
                 for image_id in scene_id_list])
         else:
             scene_id_list = set([
-                (image_id[9:13], image_id[13:16], image_id[0:3], None, None)
+                (image_id[12:20], image_id[0:4], None, None)
                 for image_id in scene_id_list])
         logging.debug('  Scene Count: {}\n'.format(len(scene_id_list)))
 
         # Process each image in the collection by date
         # Leave scene_id components as strings
-        for year, doy, landsat, path, row in sorted(scene_id_list):
-            scene_dt = datetime.datetime.strptime(
-                '{}_{}'.format(year, doy), '%Y_%j')
-            month = scene_dt.month
-            day = scene_dt.day
+        for date, landsat, path, row in sorted(scene_id_list):
+            scene_dt = datetime.datetime.strptime(date, '%Y%m%d')
+            year = scene_dt.strftime('%Y')
+            doy = scene_dt.strftime('%j')
 
             # If not mosaicing images, include path/row in name
             if not ini['EXPORT']['mosaic_method']:
                 landsat_str = '{}{}{}'.format(landsat, path, row)
             else:
                 landsat_str = '{}'.format(landsat)
-            logging.info('{} {}-{:02d}-{:02d} (DOY {})'.format(
-                landsat.upper(), year, month, day, doy))
+            logging.info('{} {} (DOY {})'.format(
+                landsat.upper(), scene_dt.strftime('%Y-%m-%d'), doy))
 
             zone_year_ws = os.path.join(zone_images_ws, year)
             if not os.path.isdir(zone_year_ws):
@@ -281,11 +279,11 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
                 # Rename to match naming style from getDownloadURL
                 #     image_name.band.tif
-                export_id = '{}_{}{:02d}{:02d}_{}_{}_{}'.format(
-                    ini['INPUTS']['zone_filename'], year, month, day, doy,
+                export_id = '{}_{}_{}_{}_{}'.format(
+                    ini['INPUTS']['zone_filename'], date, doy,
                     landsat_str.lower(), band.lower())
-                output_id = '{}{:02d}{:02d}_{}_{}.{}'.format(
-                    year, month, day, doy, landsat_str.lower(), band)
+                output_id = '{}_{}_{}.{}'.format(
+                    date, doy, landsat_str.lower(), band)
 
                 export_path = os.path.join(
                     ini['EXPORT']['export_ws'], export_id + '.tif')
