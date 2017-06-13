@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-06-05
+# Created       2017-06-13
 # Python:       3.6
 #--------------------------------
 
@@ -105,7 +105,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
     # Merge geometries
-    if ini['IMAGES']['merge_geom_flag']:
+    if ini['INPUTS']['merge_geom_flag']:
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone in zone_geom_list:
             zone_multipolygon = ogr.ForceToMultiPolygon(

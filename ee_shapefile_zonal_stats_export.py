@@ -121,6 +121,20 @@ def ee_zonal_stats(ini_path=None, overwrite_flag=False):
             zone_obj for zone_obj in zone_geom_list
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
+    # Merge geometries
+    if ini['INPUTS']['merge_geom_flag']:
+        merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
+        for zone in zone_geom_list:
+            zone_multipolygon = ogr.ForceToMultiPolygon(
+                ogr.CreateGeometryFromJson(json.dumps(zone[2])))
+            for zone_polygon in zone_multipolygon:
+                merge_geom.AddGeometry(zone_polygon)
+        # merge_json = json.loads(merge_mp.ExportToJson())
+        zone_geom_list = [[
+            0, ini['INPUTS']['zone_filename'],
+            json.loads(merge_geom.ExportToJson())]]
+        ini['INPUTS']['zone_field'] = ''
+
     # Intentionally don't apply scene_id skip/keep lists
     # Compute zonal stats for all available images
     logging.info('  Not applying scene_id keep or skip lists')
