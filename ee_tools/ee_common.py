@@ -2,7 +2,7 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-06-05
+# Created       2017-06-13
 # Python:       3.6
 #--------------------------------
 
@@ -89,8 +89,6 @@ class Landsat():
             landsat8_flag (bool): if True, include Landsat 8 images
 
         """
-
-        self.args = args
         arg_list = [
             'refl_source', 'fmask_source', 'fmask_flag', 'acca_flag',
             'start_date', 'end_date', 'start_year', 'end_year',
@@ -101,12 +99,38 @@ class Landsat():
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag'
         ]
+        int_args = [
+            'start_year', 'end_year', 'start_month', 'end_month',
+            'start_doy', 'end_doy'
+        ]
+        # list_args = ['products']
+
+        if 'products' not in args:
+            args['products'] = []
+
+        # # Set start and end date if they are not set
+        # # This is needed for selecting Landsat collections below
+        # if not args['start_date'] and args['start_year']:
+        #     args['start_date'] = '{}-01-01'.format(args['start_year'])
+        # elif not args['start_date'] and args['start_year']:
+        #     args['start_date'] = '1982-01-01'
+        # if not args['end_date'] and args['end_year']:
+        #     args['end_date'] = '{}-12-31'.format(args['end_year'])
+        # elif not args['end_date'] and args['end_date']:
+        #     args['end_date'] = datetime.datetime.now().strftime('%Y-%m-%d')
 
         # logging.debug('  Init Args')
         for key in arg_list:
             try:
-                value = args[key]
+                if str(key) in int_args:
+                    value = int(args[key])
+                else:
+                    value = args[key]
             except KeyError:
+                # Argument was not passed in or set
+                value = None
+            except TypeError:
+                # Argument is not integer type
                 value = None
             setattr(self, str(key), value)
             # if key not in ['zone_geom']:
@@ -123,8 +147,17 @@ class Landsat():
             landsat_list.append('LE07')
         if self.landsat8_flag:
             landsat_list.append('LC08')
+            landsat_list.append('LC08_PRE')
         self.landsat_list = landsat_list
-        logging.debug('  {}: {}'.format('landsat_list', self.landsat_list))
+
+        today = datetime.date.today().isoformat()
+        self.dates = {
+            'LT04': {'start': '1982-01-01', 'end': '1993-12-31'},
+            'LT05': {'start': '1984-01-01', 'end': '2011-12-31'},
+            'LE07': {'start': '1999-01-01', 'end': today},
+            'LC08_PRE': {'start': '2013-01-01', 'end': '2015-01-01'},
+            'LC08': {'start': '2015-01-01', 'end': today}
+        }
 
     def get_image(self, landsat, year, doy, path=None, row=None):
         """Return a single Landsat image
@@ -173,15 +206,29 @@ class Landsat():
         Returns:
             ee.ImageCollection
         """
+
         # Process each Landsat type and append to the output collection
         output_coll = ee.ImageCollection([])
         for landsat in self.landsat_list:
-            logging.debug('  Landsat: {}'.format(landsat))
+            # Assume ieration will be controlled by changing start_date and end_date
+            # Skip Landsat collections that are outside these date ranges
+            if self.end_date and self.end_date < self.dates[landsat]['start']:
+                continue
+            elif self.start_date and self.start_date > self.dates[landsat]['end']:
+                continue
+            # Is it necessary or helpful to check year also?
+            elif (self.end_year and
+                    self.end_year < int(self.dates[landsat]['start'][:4])):
+                continue
+            elif (self.start_year and
+                    self.start_year > int(self.dates[landsat]['end'][:4])):
+                continue
+            # logging.debug('  Landsat: {}'.format(landsat))
 
             if landsat in ['LE07', 'LC08']:
                 # Collection 1
                 # landsat_sr_name = 'LANDSAT/{}/C01/T1_SR'.format(landsat)
-                landsat_toa_name = 'LANDSAT/{}/C01/T1_TOA'.format(landsat)
+                landsat_toa_name = 'LANDSAT/{}/C01/T1_RT_TOA'.format(landsat)
 
                 # Currently only using TOA collection with Tasumi at-surface
                 #   reflectance is supported
@@ -198,9 +245,9 @@ class Landsat():
                         '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
                             landsat, self.refl_source, self.fmask_source))
                     sys.exit()
-            elif landsat in ['LT04', 'LT05']:
+            elif landsat in ['LT04', 'LT05', 'LC08_PRE']:
                 # Pre-collection
-                landsat_pre = landsat.replace('0', '')
+                landsat_pre = landsat.replace('0', '').replace('_PRE', '')
                 landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat_pre)
                 landsat_toa_name = 'LANDSAT/{}_L1T_TOA'.format(landsat_pre)
                 landsat_fmask_name = 'LANDSAT/{}_L1T_TOA_FMASK'.format(
@@ -238,18 +285,27 @@ class Landsat():
                     sys.exit()
 
             # Exclude 2012 Landsat 5 images
-            if landsat == 'LT05':
+            if landsat in ['LT05']:
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.calendarRange(1984, 2011, 'year'))
-                if landsat in ['LT04', 'LT05']:
-                    fmask_coll = fmask_coll.filter(
-                        ee.Filter.calendarRange(1984, 2011, 'year'))
+                fmask_coll = fmask_coll.filter(
+                    ee.Filter.calendarRange(1984, 2011, 'year'))
+
+            # DEADBEEF - Landsat 8 collection 1 is not fully ingested
+            if landsat in ['LC08_PRE']:
+                landsat_coll = landsat_coll.filter(
+                    ee.Filter.calendarRange(2013, 2015, 'year'))
+                fmask_coll = fmask_coll.filter(
+                    ee.Filter.calendarRange(2013, 2015, 'year'))
+            if landsat in ['LC08']:
+                landsat_coll = landsat_coll.filter(
+                    ee.Filter.calendarRange(2015, 2020, 'year'))
 
             # Filter by date
             if self.start_date and self.end_date:
                 landsat_coll = landsat_coll.filterDate(
                     self.start_date, self.end_date)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filterDate(
                         self.start_date, self.end_date)
             # Filter by year
@@ -257,15 +313,15 @@ class Landsat():
                 year_filter = ee.Filter.calendarRange(
                     self.start_year, self.end_year, 'year')
                 landsat_coll = landsat_coll.filter(year_filter)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(year_filter)
             # Filter by month
             if ((self.start_month and self.start_month != 1) and
                     (self.end_month and self.end_month != 12)):
                 month_filter = ee.Filter.calendarRange(
-                    self.args['start_month'], self.end_month, 'month')
+                    self.start_month, self.end_month, 'month')
                 landsat_coll = landsat_coll.filter(month_filter)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(month_filter)
             # Filter by day of year
             if ((self.start_doy and self.start_doy != 1) and
@@ -273,7 +329,7 @@ class Landsat():
                 doy_filter = ee.Filter.calendarRange(
                     self.start_doy, self.end_doy, 'day_of_year')
                 landsat_coll = landsat_coll.filter(doy_filter)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(doy_filter)
 
             if self.path_keep_list:
@@ -284,7 +340,7 @@ class Landsat():
                 #     'wrs_row', path_keep_list[0], path_keep_list[-1]))
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.inList('WRS_PATH', self.path_keep_list))
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(
                         ee.Filter.inList('wrs_path', self.path_keep_list))
             if self.row_keep_list:
@@ -295,63 +351,49 @@ class Landsat():
                 #     'wrs_row', row_keep_list[0], row_keep_list[-1]))
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.inList('WRS_ROW', self.row_keep_list))
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(
                         ee.Filter.inList('wrs_row', self.row_keep_list))
             if self.path_row_geom:
                 landsat_coll = landsat_coll.filterBounds(self.path_row_geom)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filterBounds(self.path_row_geom)
 
             # Filter by geometry
             if self.zone_geom:
                 landsat_coll = landsat_coll.filterBounds(self.zone_geom)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filterBounds(self.zone_geom)
 
             # Set SCENE_ID property for joining and filtering
             if landsat in ['LE07', 'LC08']:
-                def scene_id_func(img):
-                    return img.setMulti({
-                        'SCENE_ID': ee.String(img.get('system:index'))})
-                landsat_coll = landsat_coll.map(scene_id_func)
-            elif landsat in ['LT04', 'LT05']:
-                def scene_id_func(img):
-                    scene_id = ee.String(img.get('system:index'))
-                    scene_id = scene_id.slice(0, 2).cat('0') \
-                        .cat(scene_id.slice(2, 3)).cat('_') \
-                        .cat(scene_id.slice(3, 9)).cat('_') \
-                        .cat(ee.Date(img.get('system:time_start')).format('yyyyMMdd'))
-                    return img.setMulti({'SCENE_ID': scene_id})
-                    # mosaic_id = scene_id.slice(0, 6).cat('XXX').cat(scene_id.slice(9, 16))
-                    # return input_image.setMulti({
-                    #     'SCENE_ID': scene_id, 'MOSAIC_ID': mosaic_id})
-                landsat_coll = landsat_coll.map(scene_id_func)
-                fmask_coll = fmask_coll.map(scene_id_func)
+                landsat_coll = landsat_coll.map(c1_scene_id_func)
+            elif landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                landsat_coll = landsat_coll.map(pre_scene_id_func)
+                fmask_coll = fmask_coll.map(pre_scene_id_func)
 
             # Filter by SCENE_ID
             if self.scene_id_keep_list:
                 scene_id_keep_filter = ee.Filter.inList(
                     'SCENE_ID', self.scene_id_keep_list)
                 landsat_coll = landsat_coll.filter(scene_id_keep_filter)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(scene_id_keep_filter)
             if self.scene_id_skip_list:
                 scene_id_skip_filter = ee.Filter.inList(
                     'SCENE_ID', self.scene_id_skip_list).Not()
                 landsat_coll = landsat_coll.filter(scene_id_skip_filter)
-                if landsat in ['LT04', 'LT05']:
+                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(scene_id_skip_filter)
 
             # Join the at-surface reflectance CFmask collection if necessary
             if (self.fmask_source and self.fmask_source == 'cfmask' and
-                    landsat in ['LT04', 'LT05']):
+                    landsat in ['LT04', 'LT05', 'LC08_PRE']):
                 scene_id_filter = ee.Filter.equals(
                     leftField='SCENE_ID', rightField='SCENE_ID')
                 landsat_coll = ee.ImageCollection(
                     ee.Join.saveFirst('fmask').apply(
                         landsat_coll, fmask_coll, scene_id_filter))
-
                 # Add Fmask band from joined property
                 landsat_coll = landsat_coll.map(landsat_fmask_band_func)
             elif landsat in ['LE07']:
@@ -367,9 +409,9 @@ class Landsat():
             # Modify landsat collections to have same band names
             if landsat in ['LT04', 'LT05']:
                 landsat_coll = landsat_coll.map(landsat5_toa_band_func)
-            elif landsat == 'LE07':
+            elif landsat in ['LE07']:
                 landsat_coll = landsat_coll.map(landsat7_toa_band_func)
-            elif landsat == 'LC08':
+            elif landsat in ['LC08', 'LC08_PRE']:
                 landsat_coll = landsat_coll.map(landsat8_toa_band_func)
 
             # Apply cloud masks
@@ -377,6 +419,16 @@ class Landsat():
                 landsat_coll = landsat_coll.map(landsat_fmask_cloud_mask_func)
             if self.acca_flag:
                 landsat_coll = landsat_coll.map(landsat_acca_cloud_mask_func)
+
+            # # Get the output image URL
+            # output_url = ee.Image(landsat_coll.first()) \
+            #     .select(['red', 'green', 'blue']) \
+            #     .visualize(min=[0, 0, 0], max=[0.4, 0.4, 0.4]) \
+            #     .getThumbUrl({'format': 'png', 'size': '600'})
+            # # This would load the image in your browser
+            # import webbrowser
+            # webbrowser.open(output_url)
+            # # webbrowser.read(output_url)
 
             # # Set properties
             # # These could be combined with SCENE_ID function above?
@@ -389,9 +441,9 @@ class Landsat():
             # Compute derived images
             if landsat in ['LT04', 'LT05']:
                 landsat_coll = landsat_coll.map(self.landsat5_images_func)
-            elif landsat == 'LE07':
+            elif landsat in ['LE07']:
                 landsat_coll = landsat_coll.map(self.landsat7_images_func)
-            elif landsat == 'LC08':
+            elif landsat in ['LC08', 'LC08_PRE']:
                 landsat_coll = landsat_coll.map(self.landsat8_images_func)
 
             # Mosaic overlapping images
@@ -455,7 +507,7 @@ class Landsat():
 
         # Output individual TOA reflectance bands
         for band in refl_bands:
-            if band + '_toa' in self.products:
+            if '{}_toa'.format(band) in self.products:
                 output_images.append(refl_toa.select([band], [band + '_toa']))
 
         # At-surface reflectance
@@ -538,13 +590,15 @@ class Landsat():
             output_images.append(ndwi_swir1_green_sur)
 
         if 'ndwi_toa' in self.products:
-            output_images.append(refl_toa \
+            ndwi_toa = refl_toa \
                 .normalizedDifference(['swir1', 'green']) \
-                .rename(['ndwi_toa']))
+                .rename(['ndwi_toa'])
+            output_images.append(ndwi_toa)
         if 'ndwi_sur' in self.products:
-            output_images.append(refl_sur \
+            ndwi_sur = refl_sur \
                 .normalizedDifference(['swir1', 'green']) \
-                .rename(['ndwi_sur']))
+                .rename(['ndwi_sur'])
+            output_images.append(ndwi_sur)
 
         # LAI (for computing Ts) (Empirical function from Allen et al 2007)
         if 'lai_toa' in self.products or 'ts' in self.products:
@@ -649,6 +703,36 @@ class Landsat():
 
         return ee.Image(output_images) \
             .copyProperties(refl_toa, system_properties + ['SCENE_ID'])
+
+
+def c1_scene_id_func(img):
+    """Construct Collecton 1 short SCENE_ID for collection 1 images
+
+    LT05_PPPRRR_YYYYMMDD
+    Format matches EE collection 1 system:index
+    Split on '_' in case the collection was merged first
+    """
+    scene_id = ee.List(ee.String(
+        img.get('system:index')).split('_')).slice(-3)
+    scene_id = ee.String(scene_id.get(0)).cat('_') \
+        .cat(ee.String(scene_id.get(1))).cat('_') \
+        .cat(ee.String(scene_id.get(2)))
+    return img.setMulti({'SCENE_ID': scene_id})
+
+
+def pre_scene_id_func(img):
+    """Construct Collecton 1 short SCENE_ID for pre-collection images
+
+    LT05_PPPRRR_YYYYMMDD
+    Format matches EE collection 1 system:index
+    Split on '_' in case the collection was merged first"""
+    scene_id = ee.String(ee.List(ee.String(
+        img.get('system:index')).split('_')).slice(-1).get(0))
+    scene_id = scene_id.slice(0, 2).cat('0') \
+        .cat(scene_id.slice(2, 3)).cat('_') \
+        .cat(scene_id.slice(3, 9)).cat('_') \
+        .cat(ee.Date(img.get('system:time_start')).format('yyyyMMdd'))
+    return img.setMulti({'SCENE_ID': scene_id})
 
 
 def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
@@ -1100,13 +1184,13 @@ def landsat_acca_band_func(refl_toa_img):
 def landsat_fmask_band_func(refl_toa_img):
     """Get Fmask band from the joined properties"""
     return refl_toa_img.addBands(
-        ee.Image(refl_toa_img.get('fmask')).select([0], ['fmask']))
+        ee.Image(refl_toa_img.get('fmask')).rename(['fmask']))
 
 
 def landsat_empty_fmask_band_func(refl_toa_img):
     """Add an empty fmask band"""
     return refl_toa_img.addBands(
-        refl_toa_img.select([0]).multiply(0).select([0], ['fmask']))
+        refl_toa_img.select([0]).multiply(0).rename(['fmask']))
 
 
 def landsat_qa_band_func(refl_toa_img):
@@ -1289,7 +1373,6 @@ def common_area_func(img):
     #     .select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'thermal']) \
     #     .mask().reduce(ee.Reducer.And())
     # # common_mask = img.select(['fmask']).mask()
-    # return img.updateMask(common_mask)
     # return img \
     #     .select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'thermal']) \
     #     .updateMask(common_mask) \
@@ -1319,10 +1402,10 @@ def landsat_acca_cloud_mask_func(img):
         removed once the LST issue is resolved
     """
     cloud_mask = img.select(['cloud_score']).unmask(0).lt(50)
-    refl_img = img \
+    return img \
         .select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'thermal']) \
-        .updateMask(cloud_mask)
-    return refl_img.addBands(img.select(['cloud_score', 'fmask'])) \
+        .updateMask(cloud_mask) \
+        .addBands(img.select(['cloud_score', 'fmask'])) \
         .copyProperties(img, system_properties)
 
 
@@ -1340,10 +1423,10 @@ def landsat_fmask_cloud_mask_func(img):
     fmask = ee.Image(img.select(['fmask']))
     cloud_mask = fmask.lt(2)
     # cloud_mask = fmask.eq(2).Or(fmask.eq(3)).Or(fmask.eq(4)).Not()
-    refl_img = img \
+    return img \
         .select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'thermal']) \
-        .updateMask(cloud_mask)
-    return refl_img.addBands(img.select(['cloud_score', 'fmask'])) \
+        .updateMask(cloud_mask) \
+        .addBands(img.select(['cloud_score', 'fmask'])) \
         .copyProperties(img, system_properties)
 
 
@@ -1383,14 +1466,14 @@ def prism_ppt_func(prism_image):
 
     Depends on maps engine assets
     """
-    return prism_image.select([0], ['PPT']).copyProperties(
-        prism_image, system_properties)
+    return prism_image.select([0], ['PPT']) \
+        .copyProperties(prism_image, system_properties)
 
 
 def gridmet_ppt_func(gridmet_image):
     """GRIDMET daily precipitation"""
-    return gridmet_image.select(["pr"], ['PPT']).copyProperties(
-        gridmet_image, system_properties)
+    return gridmet_image.select(['pr'], ['PPT']) \
+        .copyProperties(gridmet_image, system_properties)
 
 
 def gridmet_etr_func(gridmet_image):
