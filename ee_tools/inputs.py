@@ -2,7 +2,7 @@
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-06-05
+# Created       2017-06-13
 # Python:       2.7
 #--------------------------------
 
@@ -62,6 +62,8 @@ def parse_section(ini, section):
     #     parse_tables(ini)
     elif section == 'FIGURES':
         parse_figures(ini)
+    elif section == 'BEAMER':
+        parse_beamer(ini)
 
 
 def get_param(ini, section, input_name, output_name, get_type,
@@ -82,7 +84,7 @@ def get_param(ini, section, input_name, output_name, get_type,
     try:
         if get_type is bool:
             ini[section][output_name] = (
-                ini[section][input_name].lower() == "true")
+                ini[section][input_name].lower() == 'true')
             # ini[section][output_name] = distutils.util.strtobool(
             #     ini[section][input_name])
             # ini[section][output_name] = ini.getboolean(section, input_name)
@@ -159,7 +161,15 @@ def parse_inputs(ini, section='INPUTS'):
         ['path_row_list', 'path_row_list', list, []],
         # FID filtering
         ['fid_skip_list', 'fid_skip_list', list, []],
-        ['fid_keep_list', 'fid_keep_list', list, []]
+        ['fid_keep_list', 'fid_keep_list', list, []],
+        # Cloud masking
+        ['acca_flag', 'acca_flag', bool, False],
+        ['fmask_flag', 'fmask_flag', bool, False],
+        ['fmask_source', 'fmask_source', str, None],
+        #
+        ['mosaic_method', 'mosaic_method', str, 'mean'],
+        ['adjust_method', 'adjust_method', str, None],
+        ['merge_geometries_flag', 'merge_geom_flag', bool, False],
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -250,7 +260,7 @@ def parse_inputs(ini, section='INPUTS'):
             with open(ini[section]['scene_id_keep_path']) as input_f:
                 scene_id_keep_list = input_f.readlines()
             ini[section]['scene_id_keep_list'] = [
-                x.strip()[:16] for x in scene_id_keep_list]
+                x.strip()[:20] for x in scene_id_keep_list]
         except IOError:
             logging.error('\nFileIO Error: {}'.format(
                 ini[section]['scene_id_keep_path']))
@@ -265,13 +275,49 @@ def parse_inputs(ini, section='INPUTS'):
             with open(ini[section]['scene_id_skip_path']) as input_f:
                 scene_id_skip_list = input_f.readlines()
             ini[section]['scene_id_skip_list'] = [
-                x.strip()[:16] for x in scene_id_skip_list]
+                x.strip()[:20] for x in scene_id_skip_list]
         except IOError:
             logging.error('\nFileIO Error: {}'.format(
                 ini[section]['scene_id_skip_path']))
             sys.exit()
         except Exception as e:
             logging.error('\nUnhanded Exception: {}'.format(e))
+
+    # Fmask source type
+    if ini[section]['fmask_flag'] and not ini[section]['fmask_source']:
+        logging.error(
+            '\nERROR: Fmask source type must be set if fmask_flag = True')
+        sys.exit()
+    if ini[section]['fmask_source']:
+        ini[section]['fmask_source'] = ini[section]['fmask_source'].lower()
+        if ini[section]['fmask_source'] not in ['fmask', 'cfmask']:
+            logging.error(
+                '\nERROR: Invalid Fmask source type: {}\n'
+                '  Must be "fmask" or "cfmask"'.format(
+                    ini[section]['fmask_source']))
+            sys.exit()
+
+    # Mosaic method
+    if ini[section]['mosaic_method']:
+        ini[section]['mosaic_method'] = ini[section]['mosaic_method'].lower()
+        mosaic_method_options = ['mean', 'median', 'mosaic', 'min', 'max']
+        if ini[section]['mosaic_method'] not in mosaic_method_options:
+            logging.error(
+                '\nERROR: Invalid mosaic method: {}\n''  Must be: {}'.format(
+                    ini[section]['mosaic_method'],
+                    ', '.join(mosaic_method_options)))
+            sys.exit()
+
+    # Adjust Landsat Red and NIR bands
+    if ini[section]['adjust_method']:
+        ini[section]['adjust_method'] = ini[section]['adjust_method'].lower()
+        adjust_method_options = ['oli_2_etm', 'etm_2_oli']
+        if ini[section]['adjust_method'] not in adjust_method_options:
+            logging.error(
+                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
+                    ini[section]['adjust_method'],
+                    ', '.join(adjust_method_options)))
+            sys.exit()
 
 
 def parse_spatial_reference(ini, section='SPATIAL'):
@@ -409,56 +455,17 @@ def parse_export(ini, section='EXPORT'):
             #         ini[section]['project_name'],
             #         ini[section]['bucket_name'])])
 
+    elif ini[section]['export_dest'] == 'cloud':
+        logging.info('  Local Storage')
+        # Option not fully supported but will attempt to export to a local path
+
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
     param_list = [
-        # Cloud masking
-        ['acca_flag', 'acca_flag', bool, False],
-        ['fmask_flag', 'fmask_flag', bool, False],
-        #
-        ['fmask_source', 'fmask_source', str, None],
-        ['mosaic_method', 'mosaic_method', str, 'mean'],
-        ['adjust_method', 'adjust_method', str, None],
         ['export_only', 'export_only', bool, False]
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
-
-    # Fmask source type
-    if ini[section]['fmask_flag'] and not ini[section]['fmask_source']:
-        logging.error(
-            '\nERROR: Fmask source type must be set if fmask_flag = True')
-        sys.exit()
-    if ini[section]['fmask_source']:
-        ini[section]['fmask_source'] = ini[section]['fmask_source'].lower()
-        if ini[section]['fmask_source'] not in ['fmask', 'cfmask']:
-            logging.error(
-                '\nERROR: Invalid Fmask source type: {}\n'
-                '  Must be "fmask" or "cfmask"'.format(
-                    ini[section]['fmask_source']))
-            sys.exit()
-
-    # Mosaic method
-    if ini[section]['mosaic_method']:
-        ini[section]['mosaic_method'] = ini[section]['mosaic_method'].lower()
-        mosaic_method_options = ['mean', 'median', 'mosaic', 'min', 'max']
-        if ini[section]['mosaic_method'] not in mosaic_method_options:
-            logging.error(
-                '\nERROR: Invalid mosaic method: {}\n''  Must be: {}'.format(
-                    ini[section]['mosaic_method'],
-                    ', '.join(mosaic_method_options)))
-            sys.exit()
-
-    # Adjust Landsat Red and NIR bands
-    if ini[section]['adjust_method']:
-        ini[section]['adjust_method'] = ini[section]['adjust_method'].lower()
-        adjust_method_options = ['oli_2_etm', 'etm_2_oli']
-        if ini[section]['adjust_method'] not in adjust_method_options:
-            logging.error(
-                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
-                    ini[section]['adjust_method'],
-                    ', '.join(adjust_method_options)))
-            sys.exit()
 
 
 def parse_images(ini, section='IMAGES'):
@@ -475,7 +482,6 @@ def parse_images(ini, section='IMAGES'):
     # param_section, input_name, output_name, get_type, default
     param_list = [
         ['output_workspace', 'output_ws', str, os.getcwd()],
-        ['merge_geometries_flag', 'merge_geom_flag', bool, False],
         ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
         ['image_buffer', 'image_buffer', int, 0]
     ]
@@ -643,4 +649,140 @@ def parse_figures(ini, section='FIGURES'):
 
     if ini[section]['ppt_plot_type'].upper() not in ['LINE', 'BAR']:
         logging.error('\nERROR: ppt_plot_type must be "LINE" or "BAR"')
+        sys.exit()
+
+
+def parse_beamer(ini, section='BEAMER'):
+    """"""
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_workspace', 'output_ws', str, os.getcwd()],
+        ['output_name', 'output_name', str, ''],
+        ['month_step', 'month_step', int, 1],
+        ['eto_source', 'eto_source', str, 'GRIDMET'],
+        ['eto_factor', 'eto_factor', float, 1.0],
+        ['ppt_source', 'ppt_source', str, 'GRIDMET'],
+        ['ppt_factor', 'ppt_factor', float, 1.0],
+        ['data_eto_units', 'data_eto_units', str, 'mm'],
+        ['data_ppt_units', 'data_ppt_units', str, 'mm'],
+        ['output_eto_units', 'output_eto_units', str, 'mm'],
+        ['output_ppt_units', 'output_ppt_units', str, 'mm'],
+        ['low_etg_threshold', 'low_etg_threshold', float, 0]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Build output folder if necessary
+    if not os.path.isdir(ini[section]['output_ws']):
+        os.makedirs(ini[section]['output_ws'])
+
+    if (ini[section]['output_name'] and
+            not ini[section]['output_name'].endswith('.csv')):
+        logging.error('\nERROR: BEAMER output name must be a CSV type')
+        sys.exit()
+
+    # Beamer can't compute more than one year per iteration
+    #   since it is dependent of water year ETo & PPT
+    if ini[section]['month_step'] < 1 or ini[section]['month_step'] > 12:
+        logging.error(
+            '\nERROR: BEAMER month_step must be an integer from 1-12')
+        sys.exit()
+
+    if ini[section]['low_etg_threshold'] < 0:
+        logging.error(
+            '\nERROR: BEAMER low_etg_threshold must be >= 0')
+        sys.exit()
+
+    # Force inputs to lower case
+    ini[section]['eto_source'] = ini[section]['eto_source'].lower()
+    ini[section]['ppt_source'] = ini[section]['ppt_source'].lower()
+    ini[section]['data_eto_units'] = ini[section]['data_eto_units'].lower()
+    ini[section]['data_ppt_units'] = ini[section]['data_ppt_units'].lower()
+    ini[section]['output_eto_units'] = ini[section]['output_eto_units'].lower()
+    ini[section]['output_ppt_units'] = ini[section]['output_ppt_units'].lower()
+
+    # ETo and PPT source
+    eto_source_options = ['gridmet', 'file']
+    ppt_source_options = ['gridmet', 'file']
+    # ppt_source_list = ['file', 'gridmet', 'prism']
+
+    if ini[section]['eto_source'] not in eto_source_options:
+        logging.error(
+            '\nERROR: Invalid eto_source: {}\n  Must be {}'.format(
+                ini[section]['eto_source'], ', '.join(eto_source_options)))
+        sys.exit()
+    if ini[section]['ppt_source'] not in ppt_source_options:
+        logging.error(
+            '\nERROR: Invalid ppt_source: {}\n  Must be {}'.format(
+                ini[section]['ppt_source'], ', '.join(ppt_source_options)))
+        sys.exit()
+
+    # Get data file path and fields if reading from file
+    if (ini[section]['eto_source'] == 'file' or
+            ini[section]['ppt_source'] == 'file'):
+        get_param(ini, section, 'data_path', 'data_path', str)
+        if not os.path.isfile(ini[section]['data_path']):
+            logging.error(
+                '\nERROR: The data_path does not exist\n  {}'.format(
+                    ini[section]['data_path']))
+            sys.exit()
+        get_param(ini, section, 'data_zone_field', 'data_zone_field', str)
+        get_param(ini, section, 'data_year_field', 'data_year_field', str)
+
+    # Get ETo/PPT specific fields and input units if reading from file
+    if ini[section]['eto_source'] == 'file':
+        get_param(ini, section, 'data_eto_field', 'data_eto_field', str)
+    if ini[section]['ppt_source'] == 'file':
+        get_param(ini, section, 'data_ppt_field', 'data_ppt_field', str)
+
+    # Overwrite input units if using known gridded data sources
+    if ini[section]['eto_source'] in ['gridmet']:
+        ini[section]['data_eto_units'] = 'mm'
+    if ini[section]['ppt_source'] in ['gridmet']:
+        ini[section]['data_ppt_units'] = 'mm'
+
+    # Standardize unit naming
+    units_remap = {
+        'inches': 'in',
+        'feet': 'ft'
+    }
+    if ini[section]['data_eto_units'] in units_remap.keys():
+        ini[section]['data_eto_units'] = units_remap[
+            ini[section]['data_eto_units']]
+    if ini[section]['data_ppt_units'] in units_remap.keys():
+        ini[section]['data_ppt_units'] = units_remap[
+            ini[section]['data_ppt_units']]
+    if ini[section]['output_eto_units'] in units_remap.keys():
+        ini[section]['output_eto_units'] = units_remap[
+            ini[section]['output_eto_units']]
+    if ini[section]['output_ppt_units'] in units_remap.keys():
+        ini[section]['output_ppt_units'] = units_remap[
+            ini[section]['output_ppt_units']]
+
+    # Check input and output units
+    unit_options = ['mm', 'ft', 'in']
+    if ini[section]['data_eto_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The data ETo units {} are invalid' +
+             '\n  Please set units to: {}').format(
+                ini[section]['data_eto_units'], ', '.join(unit_options)))
+        sys.exit()
+    if ini[section]['data_ppt_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The data PPT units {} are invalid'
+             '\n  Please set units to: {}').format(
+                ini[section]['data_ppt_units'], ', '.join(unit_options)))
+        sys.exit()
+    if ini[section]['output_eto_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The output ETo units {} are invalid'
+             '\n  Please set units to: {}').format(
+                ini[section]['output_eto_units'], ', '.join(unit_options)))
+        sys.exit()
+    if ini[section]['output_ppt_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The output PPT units {} are invalid'
+             '\n  Please set units to: {}').format(
+                ini[section]['output_ppt_units'], ', '.join(unit_options)))
         sys.exit()
