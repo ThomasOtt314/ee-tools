@@ -111,6 +111,7 @@ def get_param(ini, section, input_name, output_name, get_type,
                     input_name))
             sys.exit()
         else:
+            ini[section][input_name] = default
             ini[section][output_name] = default
             logging.debug('  Setting {} = {}'.format(
                 input_name, ini[section][output_name]))
