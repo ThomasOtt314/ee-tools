@@ -2,7 +2,7 @@
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-06-13
+# Created       2017-06-16
 # Python:       2.7
 #--------------------------------
 
@@ -522,8 +522,9 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     if not os.path.isdir(ini[section]['output_ws']):
         os.makedirs(ini[section]['output_ws'])
 
-    if ini[section]['year_step'] < 1 or ini[section]['year_step'] > 40:
-        logging.error('\nERROR: year_step must be an integer from 1-40')
+    # A year step of 60 will start on 1980
+    if ini[section]['year_step'] < 1 or ini[section]['year_step'] > 60:
+        logging.error('\nERROR: year_step must be an integer from 1-60')
         sys.exit()
 
 
