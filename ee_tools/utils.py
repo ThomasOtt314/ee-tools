@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+from time import sleep
 # Python 3 (or 2 with future module)
 import tkinter
 import tkinter.filedialog
@@ -14,6 +15,8 @@ import tkinter.filedialog
 # import tkFileDialog
 
 import ee
+
+import ee_tools.wrs2 as wrs2
 
 ee.Initialize()
 
@@ -130,6 +133,40 @@ def get_ini_path(workspace):
     return ini_path
 
 
+def getinfo(ee_obj):
+    """Make an exponential backoff getInfo call on the Earth Enging object"""
+    output = None
+    for i in range(1, 10):
+        try:
+            output = ee_obj.getInfo()
+        except Exception as e:
+            logging.info('  Resending query ({}/10)'.format(i))
+            logging.debug('  {}'.format(e))
+            sleep(i ** 2)
+        if output:
+            break
+    return output
+
+
+def request(request_obj):
+    """Make an exponential backoff Earth Engine request"""
+    output = None
+    for i in range(1, 10):
+        try:
+            output = request_obj
+        except Exception as e:
+            logging.info('  Resending query ({}/10)'.format(i))
+            logging.debug('  {}'.format(e))
+            sleep(i ** 2)
+        # except Exception as e:
+        #     logging.error('  Unhandled Exception, exiting')
+        #     logging.error('  {}'.format(e))
+        #     sys.exit
+        if output:
+            break
+    return output
+
+
 def parse_int_set(nputstr=""):
     """Return list of numbers given a string of ranges
 
@@ -167,6 +204,15 @@ def parse_int_set(nputstr=""):
     # Report invalid tokens before returning valid selection
     # print "Invalid set: " + str(invalid)
     return selection
+
+
+def path_row_geom_func(path_row_list):
+    path_row_geom_list = [
+        wrs2.path_row_centroids[pr]
+        for pr in path_row_list
+        if pr in wrs2.path_row_centroids.keys()]
+    path_row_geom_list = ee.Geometry.MultiPoint(
+        path_row_geom_list, 'EPSG:4326')
 
 
 def remove_file(file_path):

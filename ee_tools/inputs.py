@@ -2,7 +2,7 @@
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
 # Author:       Charles Morton
-# Created       2017-06-16
+# Created       2017-06-21
 # Python:       2.7
 #--------------------------------
 
@@ -147,6 +147,8 @@ def parse_inputs(ini, section='INPUTS'):
         ['landsat7_flag', 'landsat7_flag', bool, False],
         ['landsat8_flag', 'landsat8_flag', bool, False],
         # Date filtering
+        ['start_date', 'start_date', int, None],
+        ['end_date', 'end_date', int, None],
         ['start_year', 'start_year', int, None],
         ['end_year', 'end_year', int, None],
         ['start_month', 'start_month', int, None],
@@ -253,6 +255,13 @@ def parse_inputs(ini, section='INPUTS'):
     if ini[section]['path_row_list']:
         ini[section]['path_row_list'] = sorted([
             pr.strip() for pr in ini[section]['path_row_list'].split(',')])
+
+    # Get list of path/row strings to centroid coordinates
+    if ini[section]['path_row_list']:
+        ini[section]['path_row_geom'] = utils.path_row_geom_func(
+            ini['INPUTS']['path_row_list'])
+    else:
+        ini[section]['path_row_geom'] = None
 
     # Only process specific Landsat scenes
     ini[section]['scene_id_keep_list'] = []
@@ -497,7 +506,11 @@ def parse_images(ini, section='IMAGES'):
 def parse_zonal_stats(ini, section='ZONAL_STATS'):
     """"""
     # Get the list of Landsat products to compute
-    get_param(ini, section, 'landsat_products', 'landsat_products', list, [])
+    # DEADBEEF - What should the default Landsat products be?
+    get_param(ini, section, 'landsat_products', 'landsat_products', list, '')
+    # get_param(
+    #     ini, section, 'landsat_products', 'landsat_products', list,
+    #     'albedo_sur, ndvi_toa, ts')
     ini[section]['landsat_products'] = utils.unique_keep_order(map(
         lambda x: x.lower().strip(),
         ini[section]['landsat_products'].split(',')))
@@ -545,7 +558,7 @@ def parse_summary(ini, section='SUMMARY'):
         # ['max_fmask_pct', 'max_fmask_pct', float, 100],
         # ['min_slc_off_pct', 'min_slc_off_pct', float, 50],
         ['gridmet_start_month', 'gridmet_start_month', int, 10],
-        ['gridmet_end_month', 'gridmet_end_month', int, 9]
+        ['gridmet_end_month', 'gridmet_end_month', int, 9],
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -618,9 +631,37 @@ def parse_tables(ini, section='TABLES'):
     # param_section, input_name, output_name, get_type, default
     param_list = [
         ['output_ws', 'output_ws', str, os.getcwd()]
+        ['eto_units', 'eto_units', str, 'mm'],
+        ['ppt_units', 'ppt_units', str, 'mm']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Summary ETo/PPT units
+    ini[section]['eto_units'] = ini[section]['eto_units'].lower()
+    ini[section]['ppt_units'] = ini[section]['ppt_units'].lower()
+    # Standardize unit naming
+    units_remap = {'inches': 'in', 'feet': 'ft'}
+    if ini[section]['eto_units'] in units_remap.keys():
+        ini[section]['eto_units'] = units_remap[
+            ini[section]['eto_units']]
+    if ini[section]['ppt_units'] in units_remap.keys():
+        ini[section]['ppt_units'] = units_remap[
+            ini[section]['ppt_units']]
+    # Check input and output units
+    unit_options = ['mm', 'ft', 'in']
+    if ini[section]['eto_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The {} ETo units {} are invalid'
+             '\n  Please set units to: {}').format(
+                section, ini[section]['eto_units'], ', '.join(unit_options)))
+        sys.exit()
+    if ini[section]['ppt_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The {} PPT units {} are invalid'
+             '\n  Please set units to: {}').format(
+                section, ini[section]['ppt_units'], ', '.join(unit_options)))
+        sys.exit()
 
 
 def parse_figures(ini, section='FIGURES'):
@@ -629,6 +670,8 @@ def parse_figures(ini, section='FIGURES'):
     # param_section, input_name, output_name, get_type, default
     param_list = [
         ['output_ws', 'output_ws', str, os.getcwd()],
+        ['eto_units', 'eto_units', str, 'mm'],
+        ['ppt_units', 'ppt_units', str, 'mm'],
         ['ppt_plot_type', 'ppt_plot_type', str, 'LINE'],
         ['best_fit_flag', 'scatter_best_fit', bool, False],
         ['timeseries_bands', 'timeseries_bands', str, 'ndvi_toa'],
@@ -637,6 +680,32 @@ def parse_figures(ini, section='FIGURES'):
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
+
+    # Summary ETo/PPT units
+    ini[section]['eto_units'] = ini[section]['eto_units'].lower()
+    ini[section]['ppt_units'] = ini[section]['ppt_units'].lower()
+    # Standardize unit naming
+    units_remap = {'inches': 'in', 'feet': 'ft'}
+    if ini[section]['eto_units'] in units_remap.keys():
+        ini[section]['eto_units'] = units_remap[
+            ini[section]['eto_units']]
+    if ini[section]['ppt_units'] in units_remap.keys():
+        ini[section]['ppt_units'] = units_remap[
+            ini[section]['ppt_units']]
+    # Check input and output units
+    unit_options = ['mm', 'ft', 'in']
+    if ini[section]['eto_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The {} ETo units {} are invalid'
+             '\n  Please set units to: {}').format(
+                section, ini[section]['eto_units'], ', '.join(unit_options)))
+        sys.exit()
+    if ini[section]['ppt_units'] not in unit_options:
+        logging.error(
+            ('\nERROR: The {} PPT units {} are invalid'
+             '\n  Please set units to: {}').format(
+                section, ini[section]['ppt_units'], ', '.join(unit_options)))
+        sys.exit()
 
     ini[section]['timeseries_bands'] = list(map(
         lambda x: x.strip().lower(),
@@ -668,8 +737,8 @@ def parse_beamer(ini, section='BEAMER'):
         ['ppt_factor', 'ppt_factor', float, 1.0],
         ['data_eto_units', 'data_eto_units', str, 'mm'],
         ['data_ppt_units', 'data_ppt_units', str, 'mm'],
-        ['output_eto_units', 'output_eto_units', str, 'mm'],
-        ['output_ppt_units', 'output_ppt_units', str, 'mm'],
+        ['eto_units', 'eto_units', str, 'mm'],
+        ['ppt_units', 'ppt_units', str, 'mm'],
         ['low_etg_threshold', 'low_etg_threshold', float, 0]
     ]
     for input_name, output_name, get_type, default in param_list:
@@ -701,8 +770,8 @@ def parse_beamer(ini, section='BEAMER'):
     ini[section]['ppt_source'] = ini[section]['ppt_source'].lower()
     ini[section]['data_eto_units'] = ini[section]['data_eto_units'].lower()
     ini[section]['data_ppt_units'] = ini[section]['data_ppt_units'].lower()
-    ini[section]['output_eto_units'] = ini[section]['output_eto_units'].lower()
-    ini[section]['output_ppt_units'] = ini[section]['output_ppt_units'].lower()
+    ini[section]['eto_units'] = ini[section]['eto_units'].lower()
+    ini[section]['ppt_units'] = ini[section]['ppt_units'].lower()
 
     # ETo and PPT source
     eto_source_options = ['gridmet', 'file']
@@ -755,12 +824,12 @@ def parse_beamer(ini, section='BEAMER'):
     if ini[section]['data_ppt_units'] in units_remap.keys():
         ini[section]['data_ppt_units'] = units_remap[
             ini[section]['data_ppt_units']]
-    if ini[section]['output_eto_units'] in units_remap.keys():
-        ini[section]['output_eto_units'] = units_remap[
-            ini[section]['output_eto_units']]
-    if ini[section]['output_ppt_units'] in units_remap.keys():
-        ini[section]['output_ppt_units'] = units_remap[
-            ini[section]['output_ppt_units']]
+    if ini[section]['eto_units'] in units_remap.keys():
+        ini[section]['eto_units'] = units_remap[
+            ini[section]['eto_units']]
+    if ini[section]['ppt_units'] in units_remap.keys():
+        ini[section]['ppt_units'] = units_remap[
+            ini[section]['ppt_units']]
 
     # Check input and output units
     unit_options = ['mm', 'ft', 'in']
@@ -776,15 +845,15 @@ def parse_beamer(ini, section='BEAMER'):
              '\n  Please set units to: {}').format(
                 ini[section]['data_ppt_units'], ', '.join(unit_options)))
         sys.exit()
-    if ini[section]['output_eto_units'] not in unit_options:
+    if ini[section]['eto_units'] not in unit_options:
         logging.error(
-            ('\nERROR: The output ETo units {} are invalid'
+            ('\nERROR: The {} ETo units {} are invalid'
              '\n  Please set units to: {}').format(
-                ini[section]['output_eto_units'], ', '.join(unit_options)))
+                section, ini[section]['eto_units'], ', '.join(unit_options)))
         sys.exit()
-    if ini[section]['output_ppt_units'] not in unit_options:
+    if ini[section]['ppt_units'] not in unit_options:
         logging.error(
-            ('\nERROR: The output PPT units {} are invalid'
+            ('\nERROR: The {} PPT units {} are invalid'
              '\n  Please set units to: {}').format(
-                ini[section]['output_ppt_units'], ', '.join(unit_options)))
+                section, ini[section]['ppt_units'], ', '.join(unit_options)))
         sys.exit()

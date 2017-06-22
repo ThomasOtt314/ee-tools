@@ -2,7 +2,7 @@
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
 # Author:       Charles Morton
-# Created       2017-06-13
+# Created       2017-06-21
 # Python:       3.6
 #--------------------------------
 
@@ -43,6 +43,9 @@ def show_thumbnail(ee_image):
 
 
 class Landsat():
+    mosaic_options = ['min', 'max', 'median', 'mean', 'mosaic']
+    cellsize = 30
+
     def __init__(self, args):
         """Initialize the class with the user specified arguments
 
@@ -107,6 +110,11 @@ class Landsat():
 
         if 'products' not in args:
             args['products'] = []
+
+        # Currently only using TOA collections and comput Tasumi at-surface
+        #   reflectance is supported
+        if 'refl_type' not in args:
+            args['refl_type'] = 'toa'
 
         # # Set start and end date if they are not set
         # # This is needed for selecting Landsat collections below
@@ -245,6 +253,7 @@ class Landsat():
                         '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
                             landsat, self.refl_source, self.fmask_source))
                     sys.exit()
+
             elif landsat in ['LT04', 'LT05', 'LC08_PRE']:
                 # Pre-collection
                 landsat_pre = landsat.replace('0', '').replace('_PRE', '')
@@ -283,6 +292,18 @@ class Landsat():
                         '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
                             landsat, self.refl_source, self.fmask_source))
                     sys.exit()
+
+            # Filter non-L1T/L1TP images
+            # There are a couple of non-L1TP images in LE07 collection 1
+            if landsat in ['LE07']:
+                landsat_coll = landsat_coll.filterMetadata(
+                    'DATA_TYPE', 'equals', 'L1TP')
+            # if landsat in ['LE07', 'LC08']:
+            #     landsat_coll = landsat_coll.filterMetadata(
+            #         'DATA_TYPE', 'equals', 'L1TP')
+            # if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+            #     landsat_coll = landsat_coll.filterMetadata(
+            #         'DATA_TYPE', 'equals', 'L1T')
 
             # Exclude 2012 Landsat 5 images
             if landsat in ['LT05']:
@@ -447,7 +468,8 @@ class Landsat():
                 landsat_coll = landsat_coll.map(self.landsat8_images_func)
 
             # Mosaic overlapping images
-            if self.mosaic_method:
+            if (self.mosaic_method and
+                    self.mosaic_method in self.mosaic_options):
                 landsat_coll = mosaic_landsat_images(
                     landsat_coll, self.mosaic_method)
 
@@ -782,7 +804,7 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
         # c4 = ee.Image([0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155])
         # c5 = ee.Image([0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639])
         # cb = ee.Image([0.640, 0.31, 0.286, 0.189, 0.274, -0.186])
-    elif landsat == 'LC08':
+    elif landsat in ['LC08', 'LC08_PRE']:
         c1 = [0.987, 2.148, 0.942, 0.248, 0.260, 0.315]
         c2 = [-0.000727, -0.000199, -0.000261, -0.000410, -0.001084, -0.000975]
         c3 = [0.000037, 0.000058, 0.000406, 0.000563, 0.000675, 0.004012]
@@ -817,7 +839,7 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
             .subtract([0, 0, 0.0024, -0.0003, 0, 0]) \
             .divide([1, 1, 1.0047, 1.0036, 1, 1])
     elif (adjust_method and adjust_method.lower() == 'oli_2_etm' and
-            landsat in ['LC08']):
+            landsat in ['LC08', 'LC08_PRE']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling OLI to ETM+
         refl_sur = ee.Image(refl_sur) \
@@ -946,9 +968,9 @@ def albedo_func(refl_sur, landsat):
     """At-surface albedo"""
     if landsat in ['LT05', 'LT04']:
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-    elif landsat == 'LE07':
+    elif landsat in ['LE07']:
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-    elif landsat == 'LC08':
+    elif landsat in ['LC08', 'LC08_PRE']:
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
     return ee.Image(refl_sur).select(refl_bands).multiply(wb_coef) \
         .reduce(ee.Reducer.sum())
@@ -1053,10 +1075,10 @@ def tc_bright_func(refl_toa, landsat):
     if landsat in ['LT04', 'LT05']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_bright_coef = [0.2043, 0.4158, 0.5524, 0.5741, 0.3124, 0.2303]
-    elif landsat == 'LE07':
+    elif landsat in ['LE07']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_bright_coef = [0.3561, 0.3972, 0.3904, 0.6966, 0.2286, 0.1596]
-    elif landsat == 'LC08':
+    elif landsat in ['LC08', 'LC08_PRE']:
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_bright_coef = [0.3029, 0.2786, 0.4733, 0.5599, 0.5080, 0.1872]
@@ -1069,10 +1091,10 @@ def tc_green_func(refl_toa, landsat):
     if landsat in ['LT04', 'LT05']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_green_coef = [-0.1603, -0.2819, -0.4934, 0.7940, -0.0002, -0.1446]
-    elif landsat == 'LE07':
+    elif landsat in ['LE07']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_green_coef = [-0.3344, -0.3544, -0.4556, 0.6966, -0.0242, -0.2630]
-    elif landsat == 'LC08':
+    elif landsat in ['LC08', 'LC08_PRE']:
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_green_coef = [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608]
@@ -1085,10 +1107,10 @@ def tc_wet_func(refl_toa, landsat):
     if landsat in ['LT04', 'LT05']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_wet_coef = [0.0315, 0.2021, 0.3102, 0.1594, -0.6806, -0.6109]
-    elif landsat == 'LE07':
+    elif landsat in ['LE07']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_wet_coef = [0.2626, 0.2141, 0.0926, 0.0656, -0.7629, -0.5388]
-    elif landsat == 'LC08':
+    elif landsat in ['LC08', 'LC08_PRE']:
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_wet_coef = [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559]
