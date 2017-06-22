@@ -14,14 +14,13 @@ import json
 import logging
 import math
 import os
-# import re
 import requests
 from subprocess import check_output
 import sys
 from time import sleep
 
 import ee
-# import numpy as np
+import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -43,13 +42,6 @@ def main(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine zonal statistics by zone')
 
-    landsat_tables_folder = 'landsat_tables'
-
-    # Regular expression to pull out Landsat scene_id
-    # landsat_re = re.compile('L[ETC][4578]\d{6}\d{4}\d{3}\D{3}\d{2}')
-    # landsat_re = re.compile(
-    #     'L[ETC][4578]\d{6}(?P<YEAR>\d{4})(?P<DOY>\d{3})\D{3}\d{2}')
-
     # Read config file
     ini = inputs.read(ini_path)
     inputs.parse_section(ini, section='INPUTS')
@@ -64,7 +56,6 @@ def main(ini_path=None, overwrite_flag=False):
             '.shp', '.geojson'))
     zone_pr_json = zone_geojson.replace('.geojson', '_path_rows.json')
     pr_scene_json = zone_geojson.replace('.geojson', '_scene_id.json')
-    pr_mosaic_json = zone_geojson.replace('.geojson', '_mosaic_id.json')
 
     # Read in Zonal Stats init files
     # Eventually modify code to run in overwrite mode if these don't exist?
@@ -84,35 +75,13 @@ def main(ini_path=None, overwrite_flag=False):
         logging.error('\nError reading path/row SCENE_ID JSON, exiting')
         logging.debug('  {}'.format(e))
         return False
-    # try:
-    #     with open(pr_mosaic_json, 'r') as f:
-    #         pr_mosaic_dict = json.load(f)
-    # except Exception as e:
-    #     # pr_mosaic_dict = {}
-    #     logging.error('\nError reading path/row mosaic ID JSON, exiting')
-    #     logging.debug('  {}'.format(e))
-    #     return False
-
-    # Adjust zonal_stats init files based on path/row filtering
-    # If mosaic method is set but path/row filtering is applied
-    #   zone_pr_dict needs values need to be modified
-    if ini['INPUTS']['path_row_list']:
-        zone_pr_dict = {
-            z: list(set(pr_list) & set(ini['INPUTS']['path_row_list']))
-            for z, pr_list in zone_pr_dict.items()}
-    if ini['INPUTS']['row_keep_list']:
-        zone_pr_dict = {
-            z: [pr for pr in pr_list
-                if int(pr[5:8]) in ini['INPUTS']['row_keep_list']]
-            for z, pr_list in zone_pr_dict.items()}
 
     # Set all zone specific parameters into a dictionary
     zone = {}
 
     # These may eventually be set in the INI file
-
     landsat_daily_fields = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'LANDSAT',
+        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM',
         'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'AREA', 'PIXEL_SIZE', 'PIXEL_COUNT', 'PIXEL_TOTAL',
         'FMASK_COUNT', 'FMASK_TOTAL', 'FMASK_PCT', 'CLOUD_SCORE', 'QA']
@@ -183,14 +152,6 @@ def main(ini_path=None, overwrite_flag=False):
             0, ini['INPUTS']['zone_filename'],
             json.loads(merge_geom.ExportToJson())]]
         ini['INPUTS']['zone_field'] = ''
-
-    # # Intentionally don't apply scene_id skip/keep lists
-    # # Compute zonal stats for all available images
-    # logging.info('  Not applying scene_id keep or skip lists')
-    # if ini['INPUTS']['scene_id_keep_list']:
-    #     ini['INPUTS']['scene_id_keep_list'] = []
-    # if ini['INPUTS']['scene_id_keep_list']:
-    #     ini['INPUTS']['scene_id_skip_list'] = []
 
     # Need zone_shp_path projection to build EE geometries
     zone['osr'] = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
@@ -274,13 +235,19 @@ def main(ini_path=None, overwrite_flag=False):
                 scene_id for pr in zone_pr_dict[zone['name']]
                 for scene_id in pr_scene_dict[pr]])
         except KeyError:
-            zone['scene_id_list'] = []
-            logging.warning(
-                '  Zone and/or path/row missing from init JSON files\n'
-                '  Script will attempt to run in overwrite mode')
+            # zone['scene_id_list'] = []
+            logging.info(
+                '  The zone and/or path/row are not present in the JSON init '
+                'files\n  Please try running the zonal stats init script')
+            input('ENTER')
         except Exception as e:
             logging.error('  ERROR: {}'.format(e))
             input('ENTER')
+
+        # if not zone['scene_id_list']:
+        #     logging.info(
+        #         '  Empty zone path/row SCENE_ID list, skipping zone')
+        #     continue
 
         # Build EE geometry object for zonal stats
         zone['geom'] = ee.Geometry(
@@ -317,14 +284,8 @@ def main(ini_path=None, overwrite_flag=False):
         logging.debug('    Output Transform: {}'.format(
             ini['EXPORT']['transform']))
 
-        #
         zone['output_ws'] = os.path.join(
             ini['ZONAL_STATS']['output_ws'], zone['name'])
-        zone['tables_ws'] = os.path.join(
-            ini['ZONAL_STATS']['output_ws'], zone['name'],
-            landsat_tables_folder)
-        if not os.path.isdir(zone['tables_ws']):
-            os.makedirs(zone['tables_ws'])
 
         if ini['ZONAL_STATS']['landsat_flag']:
             landsat_func(
@@ -394,23 +355,50 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # Only add new empty fields when reading in (don't remove any existing)
     try:
         output_df = pd.read_csv(output_path, parse_dates=['DATE'])
+
+        # DEADBEEF - Temporary fixes
+        if 'PLATFORM' not in output_df.columns.values:
+            output_df['PLATFORM'] = output_df['SCENE_ID'].str.slice(0, 4)
+        if 'LANDSAT' in output_df.columns.values:
+            del output_df['LANDSAT']
+        output_df['AREA'] = zone['area']
+        output_df['FMASK_PCT'] = 100.0 * (
+            output_df['FMASK_COUNT'] / output_df['FMASK_TOTAL'])
+        output_df['QA'] = 0
+        output_df['PIXEL_SIZE'] = landsat.cellsize
+
+        # # DEADBEEF - Code to update old style SCENE_IDs
+        # # This should only need to be run once
+        # old_id_mask = ~output_df['SCENE_ID'].str.contains('_')
+        # if any(old_id_mask):
+        #     output_df.loc[old_id_mask, 'SCENE_ID'] = output_df[old_id_mask].apply(
+        #         lambda x: '{}0{}_{}{}_{}'.format(
+        #             x['SCENE_ID'][0:2], x['SCENE_ID'][2:3],
+        #             x['SCENE_ID'][3:6], x['SCENE_ID'][6:9],
+        #             x['DATE'].strftime('%Y%m%d')), axis=1)
+        #     output_df['PLATFORM'] = output_df['SCENE_ID'].str.slice(0, 4)
+        #     output_df.to_csv(output_path, index=False, columns=output_fields)
+        #     return False
+
         # Move any existing columns not in export_fields to end of CSV
         output_fields.extend([
             f for f in output_df.columns.values if f not in export_fields])
         output_df = output_df.reindex(columns=output_fields)
     except Exception as e:
         logging.debug('    Output path doesn\'t exist')
+        logging.debug('    Exception: {}'.format(e))
         output_df = pd.DataFrame(columns=output_fields)
     output_df.set_index('SCENE_ID', inplace=True, drop=True)
 
     # If the existing dataframe is empty, don't subset by SCENE_ID
     if output_df.empty:
-        # logging.debug('    subset_flag = True')
+        logging.debug('    Empty dataframe, subset_flag=False')
         subset_flag = False
 
     # If scene_id_list is not set or empty, assume JSON files from init stage
     #   weren't present or read in and don't subset by SCENE_ID
     if not zone['scene_id_list']:
+        logging.debug('    Empty JSON SCENE_ID list, subset_flag=False')
         subset_flag = False
 
     # Filter the full SCENE_ID list
@@ -468,29 +456,30 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 scene_id_list = [
                     scene_id for scene_id in scene_id_list
                     if int(scene_id[5:8]) in inputs['path_keep_list']]
-            # You can't do row or path/row filtering on the SCENE_ID list if
-            #   the mosaic_method is set
-            if (inputs['row_keep_list'] and
-                    inputs['mosaic_method'] not in landsat.mosaic_options):
+            if inputs['row_keep_list']:
                 scene_id_list = [
                     scene_id for scene_id in scene_id_list
                     if int(scene_id[8:11]) in inputs['row_keep_list']]
-            if (inputs['path_row_list'] and
-                    inputs['mosaic_method'] not in landsat.mosaic_options):
+            if inputs['path_row_list']:
                 scene_id_list = [
                     scene_id for scene_id in scene_id_list
                     if ('p{}r{}'.format(scene_id[5:8], scene_id[8:11]) in
                         inputs['path_row_list'])]
             return scene_id_list
 
-        # SCENE_ID list in existing file
-        #   These may be mosaiced SCENE_IDs
-        output_ids = set(output_df.index.values)
-
         # Full expected SCENE_ID list based on zonal stats init
         #   (These are not mosaiced)
         export_ids = set(scene_id_filter(
             zone['scene_id_list'], inputs=ini['INPUTS']))
+
+        # If export_ids is empty, all SCENE_IDs may have been filtered
+        #   or the original scene_id_list could have been empty because
+        #   the zonal stats init script was not run
+        if not export_ids:
+            logging.info(
+                '    No SCENE_IDs to process after applying INI filters, '
+                'skipping zone')
+            return False
 
         # Compute mosaiced SCENE_IDs after filtering
         if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
@@ -506,7 +495,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         missing_df = missing_df[missing_df.index.isin(export_ids)].isnull()
 
         # List of SCENE_IDs that are entirely missing
-        missing_all_ids = export_ids - output_ids
+        missing_all_ids = export_ids - set(output_df.index.values)
         # List of SCENE_IDs and products with some missing data
         missing_any_ids = set(missing_df[missing_df.any(axis=1)].index.values)
         logging.debug('  SCENE_IDs missing all values: {}'.format(
@@ -541,7 +530,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if not subset_flag:
         logging.debug(
             '    Processing all available SCENE_IDs and products '
-            'based on INI parameters\n')
+            'based on INI parameters')
         # landsat.scene_id_keep_list =
         # landsat.scene_id_skip_list =
         # landsat.products =
@@ -636,7 +625,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             """Set/modify ancillary field values in the export CSV dataframe"""
             data_df.set_index('SCENE_ID', inplace=True, drop=True)
             data_df['ZONE_FID'] = zone['fid']
-            data_df['LANDSAT'] = data_df.index.str.slice(0, 4)
+            data_df['PLATFORM'] = data_df.index.str.slice(0, 4)
             data_df['PATH'] = data_df.index.str.slice(5, 8).astype(int)
             data_df['DATE'] = pd.to_datetime(
                 data_df.index.str.slice(12, 20), format='%Y%m%d')
@@ -686,7 +675,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     output_df = output_df.combine_first(export_df)
 
             logging.debug('    Removing export CSV')
-            os.remove(export_path)
+            # DEADBEEF
+            # os.remove(export_path)
             continue
         elif (ini['EXPORT']['export_dest'] == 'cloud' and
                 export_cloud_name in ini['EXPORT']['cloud_file_list']):
@@ -732,7 +722,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         landsat_coll = landsat.get_collection()
 
         # # DEBUG - Test that the Landsat collection is getting built
-        # print(ee.Image(landsat_coll.first()).getInfo()['properties']['SCENE_ID'])
+        # print('Bands: {}'.format(
+        #     [x['id'] for x in ee.Image(landsat_coll.first()).getInfo()['bands']]))
+        # print('SceneID: {}'.format(
+        #     ee.Image(landsat_coll.first()).getInfo()['properties']['SCENE_ID'])
         # input('ENTER')
         # if ee.Image(landsat_coll.first()).getInfo() is None:
         #     logging.info('    No images, skipping')
@@ -781,7 +774,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 'ZONE_NAME': zone['name'],
                 # 'ZONE_FID': zone['fid'],
                 'SCENE_ID': scene_id.slice(0, 20),
-                # 'LANDSAT': scene_id.slice(0, 4),
+                # 'PLATFORM': scene_id.slice(0, 4),
                 # 'PATH': ee.Number(scene_id.slice(5, 8)),
                 'ROW': ee.Number(input_mean.get('row')),
                 # Compute dominant row
@@ -819,6 +812,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # for k, v in sorted(stats_info['properties'].items()):
         #     logging.info('{:24s}: {}'.format(k, v))
         # input('ENTER')
+
         # return False
 
         # # DEBUG - Print the stats info to the screen
@@ -830,7 +824,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # raw_input('ENTER')
         # return False
 
-        logging.debug('  Building export task')
+        logging.debug('    Building export task')
         if ini['EXPORT']['export_dest'] == 'gdrive':
             task = ee.batch.Export.table.toDrive(
                 collection=stats_coll,
@@ -848,17 +842,26 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 fileFormat='CSV')
 
         # Download the CSV to your Google Drive
-        logging.debug('  Starting export task')
+        logging.debug('    Starting export task')
         utils.request(task.start())
 
     # Save updated CSV
     if output_df is not None and not output_df.empty:
         output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
         output_df.reset_index(drop=False, inplace=True)
+
+        # Set output types before saving
+        if output_df['ZONE_NAME'].dtype == np.float64:
+            output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(int).astype(str)
+        for field in [
+                'ZONE_FID', 'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY', 'QA',
+                'PIXEL_TOTAL', 'PIXEL_COUNT', 'FMASK_TOTAL', 'FMASK_COUNT']:
+            output_df[field] = output_df[field].astype(int)
         output_df.to_csv(output_path, index=False, columns=output_fields)
     else:
         logging.info(
-            '  Empty output dataframe, the CSV files may not be ready')
+            '  Empty output dataframe\n'
+            '  The exported CSV files may not be ready')
 
 
 def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):

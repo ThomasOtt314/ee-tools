@@ -511,9 +511,9 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # get_param(
     #     ini, section, 'landsat_products', 'landsat_products', list,
     #     'albedo_sur, ndvi_toa, ts')
-    ini[section]['landsat_products'] = utils.unique_keep_order(map(
-        lambda x: x.lower().strip(),
-        ini[section]['landsat_products'].split(',')))
+    ini[section]['landsat_products'] = utils.unique_keep_order([
+        x.lower().strip()
+        for x in ini[section]['landsat_products'].split(',') if x.strip()])
     logging.debug('  Output Bands:')
     for band in ini[section]['landsat_products']:
         logging.debug('    {}'.format(band))
