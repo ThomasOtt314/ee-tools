@@ -483,7 +483,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     logging.info('  Resending query')
                     logging.debug('  {}'.format(e))
                     sleep(i ** 2)
+                try:
                     os.remove(zip_path)
+                except Exception as e:
+                    pass
                 # Check if file size is greater than 0?
                 # if os.path.isfile(zip_path):
                 #     break
@@ -495,11 +498,11 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 z.extractall(zone_output_ws)
         except Exception as e:
             logging.warning('    Error: could not extract'.format(i))
-            logging.debug('  {}'.format(e))
-            # try:
-            #     os.remove(zip_path)
-            # except Exception as e:
-            #     pass
+            logging.warning('  {}'.format(e))
+            try:
+                os.remove(zip_path)
+            except Exception as e:
+                pass
 
         logging.info('\nComputing raster statistics')
         for band in median_band_list:

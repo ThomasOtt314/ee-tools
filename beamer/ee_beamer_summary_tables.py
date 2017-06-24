@@ -1,5 +1,5 @@
 #--------------------------------
-# Name:         ee_beamer_timeseries.py
+# Name:         summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
 # Created       2017-06-20
 # Python:       3.6
@@ -35,7 +35,7 @@ import ee_tools.inputs as inputs
 import ee_tools.utils as utils
 
 
-def main(ini_path, show_flag=False, overwrite_flag=True):
+def main(ini_path=None, show_flag=False, overwrite_flag=True):
     """Generate Bokeh figures
 
     Bokeh issues:
@@ -58,63 +58,62 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
     inputs.parse_section(ini, section='INPUTS')
     inputs.parse_section(ini, section='SUMMARY')
 
+    output_path = os.path.join(
+        ini['BEAMER']['output_ws'], ini['BEAMER']['output_name'])
+
     # Eventually read from INI
-    plot_var_list = ['NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_TOA', 'EVI_SUR']
+    plot_var_list = [
+        'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR']
     # plot_var_list = [
-    #     'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_TOA',
+    #     'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_GREEN_SWIR1_SUR',
     #     'CLOUD_SCORE', 'FMASK_PCT']
 
-    year_list = range(
-        ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
+    year_list = list(range(
+        ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1))
     month_list = list(utils.wrapped_range(
         ini['INPUTS']['start_month'], ini['INPUTS']['end_month'], 1, 12))
     doy_list = list(utils.wrapped_range(
         ini['INPUTS']['start_doy'], ini['INPUTS']['end_doy'], 1, 366))
 
-    # Get ee features from shapefile
-    zone_geom_list = gdc.shapefile_2_geom_list_func(
-        ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
-        reverse_flag=False)
+    # Read in the zonal stats CSV
+    logging.debug('  Reading zonal stats CSV file')
+    landsat_df = pd.read_csv(output_path)
+    # logging.debug(landsat_df.head())
 
     # Filter features by FID before merging geometries
     if ini['INPUTS']['fid_keep_list']:
-        zone_geom_list = [
-            zone_obj for zone_obj in zone_geom_list
-            if zone_obj[0] in ini['INPUTS']['fid_keep_list']]
+        landsat_df = landsat_df[landsat_df['ZONE_FID'].isin(
+            ini['INPUTS']['fid_keep_list'])]
     if ini['INPUTS']['fid_skip_list']:
-        zone_geom_list = [
-            zone_obj for zone_obj in zone_geom_list
-            if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
+        landsat_df = landsat_df[~landsat_df['ZONE_FID'].isin(
+            ini['INPUTS']['fid_skip_list'])]
+    zone_name_list = sorted(list(set(landsat_df['ZONE_NAME'].values)))
 
     logging.info('\nProcessing zones')
     zone_list = []
-    for zone_fid, zone_name, zone_json in zone_geom_list:
+    for zone_name in zone_name_list:
         zone_name = zone_name.replace(' ', '_')
         # zone['json'] = zone_json
-        logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        logging.info('ZONE: {}'.format(zone_name))
+        # logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
         zone_list.append(zone_name)
 
         zone_stats_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_name)
-        figures_ws = os.path.join(zone_stats_ws, 'figures')
         if not os.path.isdir(zone_stats_ws):
             logging.debug('Folder {} does not exist, skipping'.format(
                 zone_stats_ws))
             continue
-        if not os.path.isdir(figures_ws):
-            os.makedirs(figures_ws)
 
         # Output file paths
         output_doy_path = os.path.join(
-            ini['SUMMARY']['output_ws'],
+            zone_stats_ws, 'figures',
             '{}_timeseries_doy.html'.format(zone_name))
         output_date_path = os.path.join(
-            ini['SUMMARY']['output_ws'],
+            zone_stats_ws, 'figures',
             '{}_timeseries_date.html'.format(zone_name))
 
         landsat_daily_path = os.path.join(
-            ini['SUMMARY']['output_ws'], 'brady_v5.csv')
-        # landsat_daily_path = os.path.join(
-        #     zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
+            zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
         if not os.path.isfile(landsat_daily_path):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
@@ -123,17 +122,14 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         landsat_df = pd.read_csv(
             landsat_daily_path, parse_dates=['DATE'], index_col='DATE')
 
-        # Filter to the target zone
-        landsat_df = landsat_df[landsat_df['ZONE_NAME'] == zone_name]
-
         # Check for QA field
         if 'QA' not in landsat_df.columns.values:
-            # logging.warning(
-            #     '  WARNING: QA field not present in CSV\n'
-            #     '  To compute QA/QC values, please run "ee_summary_qaqc.py"\n'
-            #     '  Script will continue with no QA/QC values')
+            logging.warning(
+                '  WARNING: QA field not present in CSV\n'
+                '  To compute QA/QC values, please run "ee_summary_qaqc.py"\n'
+                '  Script will continue with no QA/QC values')
             landsat_df['QA'] = 0
-            # raw_input('ENTER')
+            input('ENTER')
             # logging.error(
             #     '\nPlease run the "ee_summary_qaqc.py" script '
             #     'to compute QA/QC values\n')
@@ -433,11 +429,13 @@ if __name__ == '__main__':
     args = arg_parse()
 
     logging.basicConfig(level=args.loglevel, format='%(message)s')
-    logging.info('\n{}'.format('#' * 80))
-    log_f = '{:<20s} {}'
+    logging.info('\n{0}'.format('#' * 80))
+    log_f = '{0:<20s} {1}'
     logging.info(log_f.format(
         'Start Time:', datetime.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
 
     main(ini_path=args.ini, show_flag=args.show)
+    # main(ini_path=args.ini, show_flag=args.show,
+    #      overwrite_flag=args.overwrite)

@@ -1,11 +1,12 @@
 #--------------------------------
 # Name:         ee_beamer_zonal_stats.py
 # Purpose:      Beamer ET using Earth Engine
-# Created       2017-06-13
-# Python:       2.7
+# Created       2017-06-20
+# Python:       3.6
 #--------------------------------
 
 import argparse
+from builtins import input
 from collections import defaultdict
 import datetime as dt
 from dateutil import rrule, relativedelta
@@ -37,7 +38,7 @@ import ee_tools.utils as utils
 import ee_tools.wrs2 as wrs2
 
 
-def ee_beamer_et(ini_path=None, overwrite_flag=True):
+def main(ini_path, overwrite_flag=True):
     """Earth Engine Beamer ET Zonal Stats
 
     Args:
@@ -68,10 +69,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=True):
 
     # First row  of csv is header
     header_list = [
-        'ZONE_FID', 'ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
-        'YEAR', 'MONTH', 'DAY', 'DOY',
-        'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
-        'LOW_ETG_COUNT', 'CLOUD_SCORE',
+        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
+        'YEAR', 'MONTH', 'DAY', 'DOY', 'PIXEL_COUNT', 'PIXEL_TOTAL',
+        'FMASK_COUNT', 'FMASK_TOTAL', 'FMASK_PCT',
+        'LOW_ETG_COUNT', 'CLOUD_SCORE', 'QA',
         'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS',
         'EVI_SUR', 'ETSTAR_MEAN', 'ETG_MEAN',
         'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI', 'WY_ETO', 'WY_PPT']
@@ -169,17 +170,6 @@ def ee_beamer_et(ini_path=None, overwrite_flag=True):
 
     # Initialize Earth Engine API key
     ee.Initialize()
-
-    # Get list of path/row strings to centroid coordinates
-    if ini['INPUTS']['path_row_list']:
-        ini['INPUTS']['path_row_geom'] = [
-            wrs2.path_row_centroids[pr]
-            for pr in ini['INPUTS']['path_row_list']
-            if pr in wrs2.path_row_centroids.keys()]
-        ini['INPUTS']['path_row_geom'] = ee.Geometry.MultiPoint(
-            ini['INPUTS']['path_row_geom'], 'EPSG:4326')
-    else:
-        ini['INPUTS']['path_row_geom'] = None
 
     # Read in ETo and PPT data from file
     if (ini['BEAMER']['eto_source'] == 'file' or
@@ -388,21 +378,21 @@ def ee_beamer_et(ini_path=None, overwrite_flag=True):
             # Convert output units from mm
             wy_eto_output = wy_eto_input
             wy_ppt_output = wy_ppt_input
-            if ini['BEAMER']['output_ppt_units'] == 'mm':
+            if ini['BEAMER']['ppt_units'] == 'mm':
                 pass
-            elif ini['BEAMER']['output_ppt_units'] == 'in':
+            elif ini['BEAMER']['ppt_units'] == 'in':
                 wy_ppt_output /= 25.4
-            elif ini['BEAMER']['output_ppt_units'] == 'ft':
+            elif ini['BEAMER']['ppt_units'] == 'ft':
                 wy_ppt_output /= (25.4 * 12)
-            if ini['BEAMER']['output_eto_units'] == 'mm':
+            if ini['BEAMER']['eto_units'] == 'mm':
                 pass
-            elif ini['BEAMER']['output_eto_units'] == 'in':
+            elif ini['BEAMER']['eto_units'] == 'in':
                 wy_eto_output /= 25.4
-            elif ini['BEAMER']['output_eto_units'] == 'ft':
+            elif ini['BEAMER']['eto_units'] == 'ft':
                 wy_eto_output /= (25.4 * 12)
             logging.debug('  Output ETO: {} {}  PPT: {} {}'.format(
-                wy_eto_output, ini['BEAMER']['output_eto_units'],
-                wy_ppt_output, ini['BEAMER']['output_ppt_units']))
+                wy_eto_output, ini['BEAMER']['eto_units'],
+                wy_ppt_output, ini['BEAMER']['ppt_units']))
 
             # Initialize the Landsat object
             landsat.zone_geom = zone['geom']
@@ -452,7 +442,9 @@ def ee_beamer_et(ini_path=None, overwrite_flag=True):
             # Compute zonal stats of polygon
             def beamer_zonal_stats_func(input_image):
                 """"""
-                bands = len(landsat_args['products']) + 3
+                # Beamer function adds 5 ETg and 1 ET* band
+                # Landsat collection adds 3 ancillary bands
+                bands = len(landsat_args['products']) + 3 + 6
 
                 # .clip(zone['geom']) \
                 input_mean = input_image \
@@ -739,11 +731,10 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
-    log_f = '{0:<20s} {1}'
+    log_f = '{:<20s} {}'
     logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
     logging.info('')
 
-    ee_beamer_et(ini_path=args.ini)
-    # ee_beamer_et(ini_path=args.ini, overwrite_flag=args.overwrite)
+    main(ini_path=args.ini)
