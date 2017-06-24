@@ -211,8 +211,7 @@ def path_row_geom_func(path_row_list):
         wrs2.path_row_centroids[pr]
         for pr in path_row_list
         if pr in wrs2.path_row_centroids.keys()]
-    path_row_geom_list = ee.Geometry.MultiPoint(
-        path_row_geom_list, 'EPSG:4326')
+    return ee.Geometry.MultiPoint(path_row_geom_list, 'EPSG:4326')
 
 
 def remove_file(file_path):
