@@ -252,16 +252,6 @@ def main(ini_path=None, overwrite_flag=False):
             ftr for ftr in zones['features']
             if ftr['id'] not in ini['INPUTS']['fid_skip_list']]
 
-    # # Filter features by FID
-    # if ini['INPUTS']['fid_keep_list']:
-    #     zone_geom_list = [
-    #         zone_obj for zone_obj in zone_geom_list
-    #         if zone_obj[0] in ini['INPUTS']['fid_keep_list']]
-    # if ini['INPUTS']['fid_skip_list']:
-    #     zone_geom_list = [
-    #         zone_obj for zone_obj in zone_geom_list
-    #         if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
-
     # Merge geometries
     # Merge after filtering by FID
     if ini['INPUTS']['merge_geom_flag']:
@@ -276,20 +266,6 @@ def main(ini_path=None, overwrite_flag=False):
             'id': 0,
             'properties': {ini['INPUTS']['zone_field']: zones['name']},
             'geometry': json.loads(merge_geom.ExportToJson())}]
-
-    # # Merge geometries
-    # if ini['INPUTS']['merge_geom_flag']:
-    #     merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
-    #     for zone in zone_geom_list:
-    #         zone_multipolygon = ogr.ForceToMultiPolygon(
-    #             ogr.CreateGeometryFromJson(json.dumps(zone[2])))
-    #         for zone_polygon in zone_multipolygon:
-    #             merge_geom.AddGeometry(zone_polygon)
-    #     # merge_json = json.loads(merge_mp.ExportToJson())
-    #     zone_geom_list = [[
-    #         0, ini['INPUTS']['zone_filename'],
-    #         json.loads(merge_geom.ExportToJson())]]
-    #     ini['INPUTS']['zone_field'] = ''
 
     # Get list of existing images/files
     if ini['EXPORT']['export_dest'] == 'cloud':
@@ -470,10 +446,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     try:
         output_df = pd.read_csv(output_path, parse_dates=['DATE'])
 
-        # DEADBEEF - Read from the backup folder
-        # output_df = pd.read_csv(
-        #     output_path.replace('stats', 'stats_backup'), parse_dates=['DATE'])
-
         # DEADBEEF - Code to update old style SCENE_IDs
         # This should only need to be run once
         old_id_mask = ~output_df['SCENE_ID'].str.contains('_')
@@ -523,10 +495,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             '    Processing all available SCENE_IDs and products '
             'based on INI parameters')
         landsat.products = ini['ZONAL_STATS']['landsat_products']
-        # DEADBEEF
-        return True
-    # else:
-    #     return True
     else:
         # Filter based on the pre-computed SCENE_ID lists from the init
         # Get the list of possible SCENE_IDs for each zone tile
@@ -625,10 +593,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         logging.info('    Missing ID count: {}'.format(
             len(missing_scene_ids)))
 
-        # # DEADBEEF
-        # if len(missing_scene_ids) >= 10:
-        #     return True
-
         # Evaluate whether a subset of SCENE_IDs or products can be exported
         # The SCENE_ID skip and keep lists cannot be mosaiced SCENE_IDs
         if not missing_scene_ids and not missing_products:
@@ -637,54 +601,18 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         elif missing_scene_ids:
             logging.info('    Exporting all products for specific SCENE_IDs')
             landsat.update_scene_id_keep(missing_scene_ids)
-            # landsat.scene_id_keep_list = list(missing_scene_ids)
             landsat.products = ini['ZONAL_STATS']['landsat_products']
         elif missing_all_products:
             logging.info('    Exporting all products for specific SCENE_IDs')
             landsat.update_scene_id_keep(missing_scene_ids)
-            # landsat.scene_id_keep_list = list(missing_scene_ids)
             landsat.products = list(missing_all_products)
         elif missing_products or missing_scene_ids:
             logging.info('    Exporting specific missing products/SCENE_IDs')
             landsat.update_scene_id_keep(missing_scene_ids)
-            # landsat.scene_id_keep_list = list(missing_scene_ids)
             landsat.products = list(missing_products)
         else:
             logging.error('Unhandled conditional')
             input('ENTER')
-        # input('ENTER')
-
-        # # Add all missing SCENE_IDs to the output dataframe
-        # if missing_ids:
-        #     logging.debug('    Appending missing SCENE_IDs')
-        #     # logging.debug(missing_ids)
-
-        #     # DEADBEEF - This section could probably use the 
-        #     #   export_update function defined below
-        #     missing_df = pd.DataFrame(
-        #         index=missing_ids, columns=output_df.columns)
-        #     missing_df.index.name = 'SCENE_ID'
-        #     missing_df['ZONE_NAME'] = zone['name']
-        #     missing_df['ZONE_FID'] = zone['fid']
-        #     missing_df['AREA'] = zone['area']
-        #     missing_df['PLATFORM'] = missing_df.index.str.slice(0, 4)
-        #     missing_df['PATH'] = missing_df.index.str.slice(5, 8).astype(int)
-        #     missing_df['DATE'] = pd.to_datetime(
-        #         missing_df.index.str.slice(12, 20), format='%Y%m%d')
-        #     missing_df['YEAR'] = missing_df['DATE'].dt.year
-        #     missing_df['MONTH'] = missing_df['DATE'].dt.month
-        #     missing_df['DAY'] = missing_df['DATE'].dt.day
-        #     missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
-        #     missing_df['ROW'] = None
-        #     missing_df['QA'] = 0
-        #     missing_df['PIXEL_TOTAL'] = 0
-        #     # Set missing integer values to -9999
-        #     # for f in ['ROW', 'CLOUD_SCORE', 'QA', 'PIXEL_COUNT', 'PIXEL_TOTAL',
-        #     #           'FMASK_COUNT', 'FMASK_TOTAL', 'FMASK_PCT']:
-        #     #     missing_df[f] = -9999
-        #     #     missing_df[f] = missing_df[f].astype(int)
-        #     output_df = output_df.append(missing_df)
-        #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
 
 
     # Reset the Landsat collection args
@@ -700,10 +628,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # First remove any extra rows that were added for exporting
         data_df.drop(
             data_df[data_df.SCENE_ID == 'DEADBEEF'].index, inplace=True)
-
-        # DEADBEEF - For now, ignore all empty rows
-        # data_df.drop(
-        #     data_df[data_df['NDVI_TOA'].isnull()].index, inplace=True)
 
         # Add additional fields to the export data frame
         data_df.set_index('SCENE_ID', inplace=True, drop=True)
@@ -1063,11 +987,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # Set output types before saving
         if output_df['ZONE_NAME'].dtype == np.float64:
             output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(int).astype(str)
+        # DEADBEEF - I can't set these to int since they contain NaN
         # 'QA', 'PIXEL_TOTAL', 'PIXEL_COUNT', 'FMASK_TOTAL', 'FMASK_COUNT']:
         for field in ['ZONE_FID', 'PATH', 'YEAR', 'MONTH', 'DAY', 'DOY']:
             output_df[field] = output_df[field].astype(int)
-        # print(output_df[output_df['SCENE_ID'] == 'LC08_041XXX_20160809'].iloc[0])
-        # input('ENTER')
         output_df.to_csv(output_path, index=False, columns=output_fields)
     else:
         logging.info(
