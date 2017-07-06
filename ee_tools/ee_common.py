@@ -1,8 +1,7 @@
 #--------------------------------
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
-# Author:       Charles Morton
-# Created       2017-06-21
+# Modified:     2017-07-06
 # Python:       3.6
 #--------------------------------
 
@@ -79,7 +78,7 @@ class Landsat():
                 Example: "LT05_041032_1984214"
             path_keep_list (list): Landsat path numbers (as int)
             row_keep_list (list): Landsat row numbers (as int)
-            path_row_geom (ee.Geometry):
+            tile_geom (ee.Geometry):
             adjust_method (str): Adjust Landsat red and NIR bands.
                 Choices: 'etm_2_oli' or 'oli_2_etm'.
                 This could probably be simplifed to a flag.
@@ -97,7 +96,7 @@ class Landsat():
             'start_date', 'end_date', 'start_year', 'end_year',
             'start_month', 'end_month', 'start_doy', 'end_doy',
             'zone_geom', 'scene_id_keep_list', 'scene_id_skip_list',
-            'path_keep_list', 'row_keep_list', 'path_row_geom',
+            'path_keep_list', 'row_keep_list', 'tile_geom',
             'adjust_method', 'mosaic_method', 'products',
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag'
@@ -106,8 +105,11 @@ class Landsat():
             'start_year', 'end_year', 'start_month', 'end_month',
             'start_doy', 'end_doy'
         ]
-        # list_args = ['products']
+        # list_args = [
+        #     'products', 'scene_id_keep_list', 'scene_id_skip_list',
+        #     'path_keep_list', 'row_keep_list']
 
+        # Set default products list if it was not set
         if 'products' not in args:
             args['products'] = []
 
@@ -158,6 +160,7 @@ class Landsat():
             landsat_list.append('LC08_PRE')
         self.landsat_list = landsat_list
 
+
         today = datetime.date.today().isoformat()
         self.dates = {
             'LT04': {'start': '1982-01-01', 'end': '1993-12-31'},
@@ -166,6 +169,31 @@ class Landsat():
             'LC08_PRE': {'start': '2013-01-01', 'end': '2015-01-01'},
             'LC08': {'start': '2015-01-01', 'end': today}
         }
+
+    def update_scene_id_keep(self, scene_id_keep_list):
+        """Update SCENE_ID keep list and flags"""
+        self.scene_id_keep_list = scene_id_keep_list
+
+        # Modify the Landsat types based on SCENE_ID keep list
+        landsat_list = []
+        if scene_id_keep_list:
+            landsat_list = set([
+                'LC08_PRE' if str(x[:4]) == 'LC08' and int(x[12:16]) < 2015 
+                else str(x[:4])
+                for x in scene_id_keep_list])
+            # landsat_list = set(str(x[:4]) for x in scene_id_keep_list)
+            self.landsat_list = list(
+                set(self.landsat_list) & landsat_list)
+
+        # Clear flags if possible/necessary
+        if 'LT04' not in landsat_list:
+            self.landsat4_flag = False
+        if 'LT05' not in landsat_list:
+            self.landsat5_flag = False
+        if 'LE07' not in landsat_list:
+            self.landsat7_flag = False
+        if 'LC08' not in landsat_list and 'LC08_PRE' not in landsat_list:
+            self.landsat8_flag = False
 
     def get_image(self, landsat, year, doy, path=None, row=None):
         """Return a single Landsat image
@@ -315,10 +343,10 @@ class Landsat():
             # DEADBEEF - Landsat 8 collection 1 is not fully ingested
             if landsat in ['LC08_PRE']:
                 landsat_coll = landsat_coll.filter(
-                    ee.Filter.calendarRange(2013, 2015, 'year'))
+                    ee.Filter.calendarRange(2013, 2014, 'year'))
                 fmask_coll = fmask_coll.filter(
-                    ee.Filter.calendarRange(2013, 2015, 'year'))
-            if landsat in ['LC08']:
+                    ee.Filter.calendarRange(2013, 2014, 'year'))
+            elif landsat in ['LC08']:
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.calendarRange(2015, 2020, 'year'))
 
@@ -337,7 +365,7 @@ class Landsat():
                 if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(year_filter)
             # Filter by month
-            if ((self.start_month and self.start_month != 1) and
+            if ((self.start_month and self.start_month != 1) or
                     (self.end_month and self.end_month != 12)):
                 month_filter = ee.Filter.calendarRange(
                     self.start_month, self.end_month, 'month')
@@ -345,7 +373,7 @@ class Landsat():
                 if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(month_filter)
             # Filter by day of year
-            if ((self.start_doy and self.start_doy != 1) and
+            if ((self.start_doy and self.start_doy != 1) or
                     (self.end_doy and self.end_doy != 365)):
                 doy_filter = ee.Filter.calendarRange(
                     self.start_doy, self.end_doy, 'day_of_year')
@@ -375,10 +403,10 @@ class Landsat():
                 if landsat in ['LT04', 'LT05', 'LC08_PRE']:
                     fmask_coll = fmask_coll.filter(
                         ee.Filter.inList('wrs_row', self.row_keep_list))
-            if self.path_row_geom:
-                landsat_coll = landsat_coll.filterBounds(self.path_row_geom)
+            if self.tile_geom:
+                landsat_coll = landsat_coll.filterBounds(self.tile_geom)
                 if landsat in ['LT04', 'LT05', 'LC08_PRE']:
-                    fmask_coll = fmask_coll.filterBounds(self.path_row_geom)
+                    fmask_coll = fmask_coll.filterBounds(self.tile_geom)
 
             # Filter by geometry
             if self.zone_geom:

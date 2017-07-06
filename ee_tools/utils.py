@@ -1,5 +1,5 @@
 import argparse
-# import datetime
+import datetime
 import glob
 import logging
 import os
@@ -41,6 +41,14 @@ def arg_valid_file(file_path):
         # return file_path
     else:
         raise argparse.ArgumentTypeError('{} does not exist'.format(file_path))
+
+
+def date_range(start_date, end_date):
+    """Yield datetimes within a date range"""
+    start_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+    for n in range(int((end_dt + datetime.timedelta(1) - start_dt).days)):
+        yield (start_dt + datetime.timedelta(n)).strftime('%Y-%m-%d')
 
 
 def get_buckets(project_name):
@@ -134,14 +142,14 @@ def get_ini_path(workspace):
 
 
 def getinfo(ee_obj):
-    """Make an exponential backoff getInfo call on the Earth Enging object"""
+    """Make an exponential backoff getInfo call on the Earth Engine object"""
     output = None
     for i in range(1, 10):
         try:
             output = ee_obj.getInfo()
         except Exception as e:
-            logging.info('  Resending query ({}/10)'.format(i))
-            logging.debug('  {}'.format(e))
+            logging.info('    Resending query ({}/10)'.format(i))
+            logging.debug('    {}'.format(e))
             sleep(i ** 2)
         if output:
             break
@@ -155,13 +163,9 @@ def request(request_obj):
         try:
             output = request_obj
         except Exception as e:
-            logging.info('  Resending query ({}/10)'.format(i))
-            logging.debug('  {}'.format(e))
+            logging.info('    Resending query ({}/10)'.format(i))
+            logging.debug('    {}'.format(e))
             sleep(i ** 2)
-        # except Exception as e:
-        #     logging.error('  Unhandled Exception, exiting')
-        #     logging.error('  {}'.format(e))
-        #     sys.exit
         if output:
             break
     return output
@@ -206,12 +210,13 @@ def parse_int_set(nputstr=""):
     return selection
 
 
-def path_row_geom_func(path_row_list):
-    path_row_geom_list = [
-        wrs2.path_row_centroids[pr]
-        for pr in path_row_list
-        if pr in wrs2.path_row_centroids.keys()]
-    return ee.Geometry.MultiPoint(path_row_geom_list, 'EPSG:4326')
+def wrs2_tile_geom_func(tile_list):
+    """"""
+    geom_list = [
+        wrs2.tile_centroids[tile]
+        for tile in tile_list
+        if tile in wrs2.tile_centroids.keys()]
+    return ee.Geometry.MultiPoint(geom_list, 'EPSG:4326')
 
 
 def remove_file(file_path):

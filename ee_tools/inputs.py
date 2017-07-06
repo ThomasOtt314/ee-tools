@@ -1,13 +1,13 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Author:       Charles Morton
-# Created       2017-06-21
-# Python:       2.7
+# Modified:     2017-07-06
+# Python:       3.6
 #--------------------------------
 
 from builtins import input
 import datetime
+# import json
 import logging
 import os
 import sys
@@ -158,10 +158,10 @@ def parse_inputs(ini, section='INPUTS'):
         # Scene ID filtering
         ['scene_id_keep_path', 'scene_id_keep_path', str, ''],
         ['scene_id_skip_path', 'scene_id_skip_path', str, ''],
-        # Path/row filtering
+        # Tile filtering
         ['path_keep_list', 'path_keep_list', list, []],
         ['row_keep_list', 'row_keep_list', list, []],
-        ['path_row_list', 'path_row_list', list, []],
+        ['tile_keep_list', 'tile_keep_list', list, []],
         # FID filtering
         ['fid_skip_list', 'fid_skip_list', list, []],
         ['fid_keep_list', 'fid_keep_list', list, []],
@@ -252,16 +252,17 @@ def parse_inputs(ini, section='INPUTS'):
     if ini[section]['row_keep_list']:
         ini[section]['row_keep_list'] = sorted(list(
             utils.parse_int_set(ini[section]['row_keep_list'])))
-    if ini[section]['path_row_list']:
-        ini[section]['path_row_list'] = sorted([
-            pr.strip() for pr in ini[section]['path_row_list'].split(',')])
+    if ini[section]['tile_keep_list']:
+        ini[section]['tile_keep_list'] = sorted([
+            tile.strip()
+            for tile in ini[section]['tile_keep_list'].split(',')])
 
     # Get list of path/row strings to centroid coordinates
-    if ini[section]['path_row_list']:
-        ini[section]['path_row_geom'] = utils.path_row_geom_func(
-            ini['INPUTS']['path_row_list'])
+    if ini[section]['tile_keep_list']:
+        ini[section]['tile_geom'] = utils.wrs2_tile_geom_func(
+            ini['INPUTS']['tile_keep_list'])
     else:
-        ini[section]['path_row_geom'] = None
+        ini[section]['tile_geom'] = None
 
     # Only process specific Landsat scenes
     ini[section]['scene_id_keep_list'] = []
@@ -387,7 +388,7 @@ def parse_export(ini, section='EXPORT'):
         get_param(ini, section, input_name, output_name, get_type, default)
 
     # DEADBEEF - CLOUD export options are still experimental
-    export_dest_options = ['gdrive', 'cloud']
+    export_dest_options = ['gdrive', 'cloud', 'getinfo']
     ini[section]['export_dest'] = ini[section]['export_dest'].lower()
     if ini[section]['export_dest'] not in export_dest_options:
         logging.error(
@@ -397,7 +398,7 @@ def parse_export(ini, section='EXPORT'):
 
     # DEADBEEF - This might be better in an export module or separate function
     # Export destination specific options
-    if ini[section]['export_dest'] == 'gdrive':
+    if ini[section]['export_dest'] in ['gdrive', 'getinfo']:
         logging.info('  Google Drive Export')
         get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
         get_param(ini, section, 'export_folder', 'export_folder', str, '')
@@ -465,10 +466,6 @@ def parse_export(ini, section='EXPORT'):
             #         ini[section]['project_name'],
             #         ini[section]['bucket_name'])])
 
-    elif ini[section]['export_dest'] == 'cloud':
-        logging.info('  Local Storage')
-        # Option not fully supported but will attempt to export to a local path
-
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
     param_list = [
@@ -526,7 +523,10 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
         ['gridmet_daily_flag', 'gridmet_daily_flag', bool, False],
         ['gridmet_monthly_flag', 'gridmet_monthly_flag', bool, False],
         ['pdsi_flag', 'pdsi_flag', bool, False],
-        ['year_step', 'year_step', int, 1]
+        ['year_step', 'year_step', int, 1],
+        ['zone_geojson', 'zone_geojson', str, ''],
+        ['zone_tile_path', 'zone_tile_path', str, ''],
+        # ['tile_scene_path', 'tile_scene_path', str, '']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -539,6 +539,45 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     if ini[section]['year_step'] < 1 or ini[section]['year_step'] > 60:
         logging.error('\nERROR: year_step must be an integer from 1-60')
         sys.exit()
+
+    # Name zone-path/row-scene ID JSONs using the shapefile name if not set
+    if not ini[section]['zone_geojson']:
+        ini[section]['zone_geojson'] = ini['INPUTS']['zone_shp_path'] \
+            .replace('.shp', '.geojson')
+        logging.debug('  Setting {} = {}'.format(
+            'zone_geojson', ini[section]['zone_geojson']))
+    if not ini[section]['zone_tile_path']:
+        ini[section]['zone_tile_path'] = ini['INPUTS']['zone_shp_path'] \
+            .replace('.shp', '_tiles.json')
+        logging.debug('  Setting {} = {}'.format(
+            'zone_tile_path', ini[section]['zone_tile_path']))
+    # if not ini[section]['tile_scene_path']:
+    #     ini[section]['tile_scene_path'] = ini['INPUTS']['zone_shp_path'] \
+    #         .replace('.shp', '_tiles.json')
+    #     logging.debug('  Setting {} = {}'.format(
+    #         'tile_scene_path', ini[section]['tile_scene_path']))
+
+    # # Read in pre-computed path/row
+    # if ini[section]['zone_tile_json']:
+    #     try:
+    #         with open(ini[section]['zone_tile_json']) as input_f:
+    #             ini[section]['zone_tile_json'] = json.load(input_f)
+    #     except IOError:
+    #         logging.error('\nFileIO Error: {}'.format(
+    #             ini[section]['zone_tile_json']))
+    #         sys.exit()
+    #     except Exception as e:
+    #         logging.error('\nUnhanded Exception: {}'.format(e))
+    # if ini[section]['tile_scene_json']:
+    #     try:
+    #         with open(ini[section]['tile_scene_json']) as input_f:
+    #             ini[section]['tile_scene_json'] = json.load(input_f)
+    #     except IOError:
+    #         logging.error('\nFileIO Error: {}'.format(
+    #             ini[section]['tile_scene_json']))
+    #         sys.exit()
+    #     except Exception as e:
+    #         logging.error('\nUnhanded Exception: {}'.format(e))
 
 
 def parse_summary(ini, section='SUMMARY'):
