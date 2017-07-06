@@ -588,8 +588,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 for scene_id in mosaic_id_dict[mosaic_id]]
         else:
             missing_scene_ids = set(missing_ids)
-        logging.debug('  SCENE_IDs missing: {}'.format(
-            ', '.join(sorted(missing_scene_ids))))
+        # logging.debug('  SCENE_IDs missing: {}'.format(
+        #     ', '.join(sorted(missing_scene_ids))))
         logging.info('    Missing ID count: {}'.format(
             len(missing_scene_ids)))
 
@@ -759,9 +759,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     # Combine_first() doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
 
-            # DEADBEEF
-            # logging.debug('    Removing export CSV')
-            # os.remove(export_path)
+            logging.debug('    Removing export CSV')
+            os.remove(export_path)
             continue
         elif (ini['EXPORT']['export_dest'] == 'cloud' and
                 export_cloud_name in ini['EXPORT']['cloud_file_list']):
