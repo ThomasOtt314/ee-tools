@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-06
+# Modified:     2017-07-07
 # Python:       3.6
 #--------------------------------
 
@@ -429,9 +429,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']
-    landsat.zone_geom = None
-    landsat.products = []
-    landsat.mosaic_method = 'none'
 
     # Make copy of export field list in order to retain existing columns
     output_fields = export_fields[:]
@@ -489,158 +486,245 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         logging.debug('    Removing duplicate SCENE_IDs')
         output_df = output_df[output_df.duplicated(['SCENE_ID'], False)]
 
-    # DEADBEEF - Remove entries with PIXEL_COUNT > 0 but nodata
-    drop_mask = (
-        output_df['NDVI_TOA'].isnull() & (output_df['PIXEL_COUNT'] > 0))
-    if not output_df.empty and drop_mask.any():
-        logging.info('    Removing bad PIXEL_COUNT entries')
-        # logging.info('    {}'.format(output_df[drop_mask]['SCENE_ID'].values))
-        output_df.drop(output_df[drop_mask].index, inplace=True)
-        output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-        output_df.to_csv(output_path, index=False, columns=output_fields)
+    # # # DEADBEEF - Remove entries with nodata (but PIXEL_COUNT > 0)
+    # # drop_mask = (
+    # #     output_df['NDVI_TOA'].isnull() & (output_df['PIXEL_COUNT'] > 0))
+    # # if not output_df.empty and drop_mask.any():
+    # #     logging.info('    Removing bad PIXEL_COUNT entries')
+    # #     # logging.info('    {}'.format(output_df[drop_mask]['SCENE_ID'].values))
+    # #     output_df.drop(output_df[drop_mask].index, inplace=True)
+    # #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+    # #     output_df.to_csv(output_path, index=False, columns=output_fields)
 
-    # # DEADBEEF - Remove all empty entries
-    # if not output_df.empty and output_df['NDVI_TOA'].isnull().any():
-    #     logging.debug('    Removing empty entries')
-    #     output_df.drop(
-    #         output_df[output_df['NDVI_TOA'].isnull()].index, inplace=True)
-    #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-    #     output_df.to_csv(output_path, index=False, columns=output_fields)
-    #     input('ENTER')
+    # # # DEADBEEF - Remove all old style empty entries
+    # # drop_mask = (
+    # #     output_df['NDVI_TOA'].isnull() & (output_df['PIXEL_TOTAL'] > 0))
+    # # if not output_df.empty and drop_mask.any():
+    # #     logging.debug('    Removing old empty entries')
+    # #     output_df.drop(output_df[drop_mask].index, inplace=True)
+    # #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+    # #     output_df.to_csv(output_path, index=False, columns=output_fields)
+
+    # # # DEADBEEF - Remove all empty entries (for testing filling code)
+    # # drop_mask = output_df['NDVI_TOA'].isnull()
+    # # if not output_df.empty and drop_mask.any():
+    # #     logging.debug('    Removing all empty entries')
+    # #     output_df.drop(output_df[drop_mask].index, inplace=True)
+    # #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+    # #     output_df.to_csv(output_path, index=False, columns=output_fields)
+    # #     input('ENTER')
 
     # Use the SCENE_ID as the index  
     output_df.set_index('SCENE_ID', inplace=True, drop=True)
+    # output_df.index.name = 'SCENE_ID'
 
-    if output_df.empty:
-        # If output DF is empty, skip filtering by SCENE_ID or product
+    # Filter based on the pre-computed SCENE_ID lists from the init
+    # Get the list of possible SCENE_IDs for each zone tile
+    logging.debug('    Getting SCENE_ID lists')
+    export_ids = set()
+    for tile in zone_tile_list:
+        if tile in ini['ZONAL_STATS']['tile_scene_json'].keys():
+            # Read the previously computed tile SCENE_ID list
+            export_ids.update(
+                ini['ZONAL_STATS']['tile_scene_json'][tile])
+        else:
+            # Compute the SCENE_ID list for each tile if needed
+            logging.debug('      {}'.format(tile))
+            path_row_re = re.compile('p(?P<PATH>\d{1,3})r(?P<ROW>\d{1,3})')
+            path, row = list(map(int, path_row_re.match(tile).groups()))
+
+            # Filter the Landsat collection down to a single tile
+            landsat.zone_geom = None
+            landsat.products = []
+            landsat.mosaic_method = 'none'
+            landsat.path_keep_list = [path]
+            landsat.row_keep_list = [row]
+            landsat_coll = landsat.get_collection()
+
+            # Get new scene ID list
+            ini['ZONAL_STATS']['tile_scene_json'][tile] = utils.getinfo(
+                landsat_coll.aggregate_histogram('SCENE_ID'))
+            export_ids.update(ini['ZONAL_STATS']['tile_scene_json'][tile])
+
+    # If export_ids is empty, all SCENE_IDs may have been filtered
+    if not export_ids:
         logging.info(
-            '    Processing all available SCENE_IDs and products '
-            'based on INI parameters')
-        landsat.products = ini['ZONAL_STATS']['landsat_products']
+            '    No SCENE_IDs to process after applying INI filters, '
+            'skipping zone')
+        return False
+
+    # Compute mosaiced SCENE_IDs after filtering
+    if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
+        mosaic_id_dict = defaultdict(list)
+        for scene_id in export_ids:
+            mosaic_id = '{}XXX{}'.format(scene_id[:8], scene_id[11:])
+            mosaic_id_dict[mosaic_id].append(scene_id)
+        export_ids = set(mosaic_id_dict.keys())
+
+    # List of SCENE_IDs that are entirely missing
+    # This may include scenes that don't intersect the zone
+    missing_all_ids = export_ids - set(output_df.index.values)
+    # logging.info('  Missing All: {}'.format(
+    #     ', '.join(sorted(missing_all_ids))))
+
+    # If there are any fully missing scenes, identify whether they
+    #   intersect the zone or not
+    # Exclude non-intersecting SCENE_IDs from export_ids set
+    # Add non-intersecting SCENE_IDs directly to the output dataframe    
+    if missing_all_ids:
+        # Get SCENE_ID list mimicking a full extract below 
+        #   (but without products)
+        landsat.products = []
+        landsat.path_keep_list = landsat_args['path_keep_list']
+        landsat.row_keep_list = landsat_args['row_keep_list']
+        landsat.zone_geom = zone['geom']
+        landsat.mosaic_method = landsat_args['mosaic_method']
+        # SCENE_ID keep list must be non-mosaiced IDs
+        if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
+            landsat.update_scene_id_keep([
+                scene_id for mosaic_id in missing_all_ids 
+                for scene_id in mosaic_id_dict[mosaic_id]])
+        else:
+            landsat.update_scene_id_keep(missing_all_ids)
+        landsat_coll = landsat.get_collection()
+        # Get the SCENE_IDs that intersect the zone
+        missing_zone_ids = set(utils.getinfo(
+            landsat_coll.aggregate_histogram('SCENE_ID')))
+        # Difference of sets are SCENE_IDs that don't intersect
+        missing_skip_ids = missing_all_ids - missing_zone_ids
+        # Updating missing all SCENE_ID list to not include 
+        #   non-intersecting scenes
+        missing_all_ids = set(missing_zone_ids)
+        # Remove skipped/empty SCENE_IDs from possible SCENE_ID list
+        export_ids = export_ids - missing_skip_ids
+        # logging.debug('  Missing Include: {}'.format(
+        #     ', '.join(sorted(missing_zone_ids))))
+        # logging.debug('  Missing Exclude: {}'.format(
+        #     ', '.join(sorted(missing_skip_ids))))
+        logging.info('    Include ID count: {}'.format(
+            len(missing_zone_ids)))
+        logging.info('    Exclude ID count: {}'.format(
+            len(missing_skip_ids)))
+
+        if missing_skip_ids:
+            logging.debug('    Appending empty non-intersecting SCENE_IDs')
+            missing_df = pd.DataFrame(
+                index=missing_skip_ids, columns=output_df.columns)
+            missing_df.index.name = 'SCENE_ID'
+            missing_df['ZONE_NAME'] = zone['name']
+            missing_df['ZONE_FID'] = zone['fid']
+            missing_df['AREA'] = zone['area']
+            missing_df['PLATFORM'] = missing_df.index.str.slice(0, 4)
+            missing_df['PATH'] = missing_df.index.str.slice(5, 8).astype(int)
+            missing_df['DATE'] = pd.to_datetime(
+                missing_df.index.str.slice(12, 20), format='%Y%m%d')
+            missing_df['YEAR'] = missing_df['DATE'].dt.year
+            missing_df['MONTH'] = missing_df['DATE'].dt.month
+            missing_df['DAY'] = missing_df['DATE'].dt.day
+            missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
+            missing_df['ROW'] = None
+            missing_df['QA'] = None
+            # missing_df['QA'] = 0
+            missing_df['PIXEL_SIZE'] = landsat.cellsize
+            missing_df['PIXEL_COUNT'] = 0
+            missing_df['PIXEL_TOTAL'] = 0
+            missing_df['FMASK_COUNT'] = 0
+            missing_df['FMASK_TOTAL'] = 0
+            missing_df['FMASK_PCT'] = None
+            missing_df['CLOUD_SCORE'] = None
+            # missing_df[f] = missing_df[f].astype(int)
+
+            # Remove the overlapping missing entries
+            # Then append the new missing entries
+            output_df.drop(
+                output_df.index.intersection(missing_df.index), inplace=True)
+            output_df = output_df.append(missing_df)
+            output_df.reset_index(drop=False, inplace=True)
+            output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+            output_df.to_csv(
+                output_path, index=False, columns=output_fields)
+            output_df.set_index('SCENE_ID', inplace=True, drop=True)
+
+    # Identify SCENE_IDs that are missing any data
+    # Filter based on product and SCENE_ID lists
+    # Check for missing data as long as PIXEL_COUNT > 0
+    missing_fields = [
+        f.upper() for f in ini['ZONAL_STATS']['landsat_products']]
+    missing_id_mask = (
+        (output_df['PIXEL_COUNT'] > 0) & 
+        output_df.index.isin(export_ids))
+    missing_df = output_df.loc[missing_id_mask, missing_fields].isnull()
+
+    # List of SCENE_IDs and products with some missing data
+    missing_any_ids = set(missing_df[missing_df.any(axis=1)].index.values)
+    # logging.debug('  SCENE_IDs missing all values: {}'.format(
+    #     ', '.join(sorted(missing_all_ids))))
+    # logging.debug('  SCENE_IDs missing any values: {}'.format(
+    #     ', '.join(sorted(missing_any_ids))))
+
+    # Check for fields that are entirely empty or not present
+    #   These may have been added but not filled
+    # Additional logic is to handle condition where 
+    #   calling all on an empty dataframe returns True
+    if not missing_df.empty:
+        missing_all_products = set(
+            f.lower()
+            for f in missing_df.columns[missing_df.all(axis=0)])
+        missing_any_products = set(
+            f.lower()
+            for f in missing_df.columns[missing_df.any(axis=0)])
     else:
-        # Filter based on the pre-computed SCENE_ID lists from the init
-        # Get the list of possible SCENE_IDs for each zone tile
-        logging.debug('    Getting SCENE_ID lists')
-        export_ids = set()
-        for tile in zone_tile_list:
-            if tile in ini['ZONAL_STATS']['tile_scene_json'].keys():
-                # Read the previously computed tile SCENE_ID list
-                export_ids.update(
-                    ini['ZONAL_STATS']['tile_scene_json'][tile])
-            else:
-                # Compute the SCENE_ID list for each tile if needed
-                logging.debug('      {}'.format(tile))
-                path_row_re = re.compile('p(?P<PATH>\d{1,3})r(?P<ROW>\d{1,3})')
-                path, row = list(map(int, path_row_re.match(tile).groups()))
+        missing_all_products = set()
+        missing_any_products = set()
+    if missing_all_products:
+        logging.debug('    Products missing all values: {}'.format(
+            ', '.join(sorted(missing_all_products))))
+    if missing_any_products:
+        logging.debug('    Products missing any values: {}'.format(
+            ', '.join(sorted(missing_any_products))))
 
-                # Filter the Landsat collection down to a single tile
-                landsat.path_keep_list = [path]
-                landsat.row_keep_list = [row]
-                landsat_coll = landsat.get_collection()
+    missing_ids = missing_all_ids | missing_any_ids
+    missing_products = missing_all_products | missing_any_products
 
-                # Get new scene ID list
-                ini['ZONAL_STATS']['tile_scene_json'][tile] = utils.getinfo(
-                    landsat_coll.aggregate_histogram('SCENE_ID'))
-                export_ids.update(ini['ZONAL_STATS']['tile_scene_json'][tile])
+    # If mosaic flag is set, switch IDs back to non-mosaiced
+    if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
+        missing_scene_ids = [
+            scene_id for mosaic_id in missing_ids
+            for scene_id in mosaic_id_dict[mosaic_id]]
+    else:
+        missing_scene_ids = set(missing_ids)
+    # logging.debug('  SCENE_IDs missing: {}'.format(
+    #     ', '.join(sorted(missing_scene_ids))))
+    logging.info('    Missing ID count: {}'.format(
+        len(missing_scene_ids)))
 
-        # If export_ids is empty, all SCENE_IDs may have been filtered
-        if not export_ids:
-            logging.info(
-                '    No SCENE_IDs to process after applying INI filters, '
-                'skipping zone')
-            return False
-
-        # Compute mosaiced SCENE_IDs after filtering
-        if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
-            mosaic_id_dict = defaultdict(list)
-            for scene_id in export_ids:
-                mosaic_id = '{}XXX{}'.format(scene_id[:8], scene_id[11:])
-                mosaic_id_dict[mosaic_id].append(scene_id)
-            export_ids = set(mosaic_id_dict.keys())
-
-        # List of SCENE_IDs that are entirely missing
-        missing_all_ids = export_ids - set(output_df.index.values)
-
-        # Identify SCENE_IDs that are missing any data
-        # Filter based on product and SCENE_ID lists
-        # Check for missing data as long as PIXEL_COUNT > 0
-        #   (Null has not been requested/export)
-        missing_fields = [
-            f.upper() for f in ini['ZONAL_STATS']['landsat_products']]
-        missing_id_mask = (
-            (output_df['PIXEL_COUNT'] > 0) & 
-            output_df.index.isin(export_ids))
-        missing_df = output_df.loc[missing_id_mask, missing_fields].isnull()
-
-        # List of SCENE_IDs and products with some missing data
-        missing_any_ids = set(missing_df[missing_df.any(axis=1)].index.values)
-        # logging.debug('  SCENE_IDs missing all values: {}'.format(
-        #     ', '.join(sorted(missing_all_ids))))
-        # logging.debug('  SCENE_IDs missing any values: {}'.format(
-        #     ', '.join(sorted(missing_any_ids))))
-
-        # Check for fields that are entirely empty or not present
-        #   These may have been added but not filled
-        # Additional logic is to handle condition where 
-        #   calling all on an empty dataframe returns True
-        if not missing_df.empty:
-            missing_all_products = set(
-                f.lower()
-                for f in missing_df.columns[missing_df.all(axis=0)])
-            missing_any_products = set(
-                f.lower()
-                for f in missing_df.columns[missing_df.any(axis=0)])
-        else:
-            missing_all_products = set()
-            missing_any_products = set()
-        if missing_all_products:
-            logging.debug('    Products missing all values: {}'.format(
-                ', '.join(sorted(missing_all_products))))
-        if missing_any_products:
-            logging.debug('    Products missing any values: {}'.format(
-                ', '.join(sorted(missing_any_products))))
-
-        missing_ids = missing_all_ids | missing_any_ids
-        missing_products = missing_all_products | missing_any_products
-
-        # If mosaic flag is set, switch IDs back to non-mosaiced
-        if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
-            missing_scene_ids = [
-                scene_id for mosaic_id in missing_ids
-                for scene_id in mosaic_id_dict[mosaic_id]]
-        else:
-            missing_scene_ids = set(missing_ids)
-        logging.info('    Missing ID count: {}'.format(
-            len(missing_scene_ids)))
-        logging.debug('  SCENE_IDs missing: {}'.format(
-            ', '.join(sorted(missing_scene_ids))))
-
-        # Evaluate whether a subset of SCENE_IDs or products can be exported
-        # The SCENE_ID skip and keep lists cannot be mosaiced SCENE_IDs
-        if not missing_scene_ids and not missing_products:
-            logging.info('    No missing data or products, skipping zone')
-            return True
-        elif missing_scene_ids:
-            logging.info('    Exporting all products for specific SCENE_IDs')
-            landsat.update_scene_id_keep(missing_scene_ids)
-            landsat.products = ini['ZONAL_STATS']['landsat_products']
-        elif missing_all_products:
-            logging.info('    Exporting all products for specific SCENE_IDs')
-            landsat.update_scene_id_keep(missing_scene_ids)
-            landsat.products = list(missing_all_products)
-        elif missing_products or missing_scene_ids:
-            logging.info('    Exporting specific missing products/SCENE_IDs')
-            landsat.update_scene_id_keep(missing_scene_ids)
-            landsat.products = list(missing_products)
-        else:
-            logging.error('Unhandled conditional')
-            input('ENTER')
+    # Evaluate whether a subset of SCENE_IDs or products can be exported
+    # The SCENE_ID skip and keep lists cannot be mosaiced SCENE_IDs
+    if not missing_scene_ids and not missing_products:
+        logging.info('    No missing data or products, skipping zone')
+        return True
+    elif missing_scene_ids:
+        logging.info('    Exporting all products for specific SCENE_IDs')
+        landsat.update_scene_id_keep(missing_scene_ids)
+        landsat.products = ini['ZONAL_STATS']['landsat_products']
+    elif missing_all_products:
+        logging.info('    Exporting all products for specific SCENE_IDs')
+        landsat.update_scene_id_keep(missing_scene_ids)
+        landsat.products = list(missing_all_products)
+    elif missing_products or missing_scene_ids:
+        logging.info('    Exporting specific missing products/SCENE_IDs')
+        landsat.update_scene_id_keep(missing_scene_ids)
+        landsat.products = list(missing_products)
+    else:
+        logging.error('Unhandled conditional')
+        input('ENTER')
 
 
     # Reset the Landsat collection args
     landsat.path_keep_list = landsat_args['path_keep_list']
     landsat.row_keep_list = landsat_args['row_keep_list']
     landsat.mosaic_method = landsat_args['mosaic_method']
+    landsat.zone_geom = None
     # landsat.zone_geom = zone['geom']
     # pp.pprint(vars(landsat))
     # input('ENTER')
@@ -742,9 +826,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             export_id += '_' + ini['INPUTS']['mosaic_method'].lower()
             # output_id += '_' + ini['INPUTS']['mosaic_method'].lower()
 
-        export_path = os.path.join(
-            ini['EXPORT']['export_ws'], export_id + '.csv')
-        logging.debug('    Export: {}'.format(export_id + '.csv'))
+        if ini['EXPORT']['export_dest'] in ['cloud', 'gdrive']:
+            export_path = os.path.join(
+                ini['EXPORT']['export_ws'], export_id + '.csv')
+            logging.debug('    Export: {}'.format(export_id + '.csv'))
 
         # There is an EE bug that appends "ee_export" to the end of CSV
         #   file names when exporting to cloud storage
@@ -1003,14 +1088,15 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if 'LANDSAT' in output_df.columns.values:
             del output_df['LANDSAT']
         output_df['AREA'] = zone['area']
+        output_df['PIXEL_SIZE'] = landsat.cellsize
+        # if output_df['QA'].isnull().any():
+        #     output_df.loc[output_df['QA'].isnull(), 'QA'] = 0
+
         fmask_mask = output_df['FMASK_TOTAL'] > 0
         if fmask_mask.any():
             output_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
                 output_df.loc[fmask_mask, 'FMASK_COUNT'] /
                 output_df.loc[fmask_mask, 'FMASK_TOTAL'])
-        if output_df['QA'].isnull().any():
-            output_df.loc[output_df['QA'].isnull(), 'QA'] = 0
-        output_df['PIXEL_SIZE'] = landsat.cellsize
 
         # Set output types before saving
         if output_df['ZONE_NAME'].dtype == np.float64:
@@ -1045,11 +1131,12 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         zone['name'].lower())
     output_id = '{}_gridmet_daily'.format(zone['name'])
 
-    export_path = os.path.join(
-        ini['EXPORT']['export_ws'], export_id + '.csv')
-    output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-    logging.debug('    Export: {}'.format(export_id + '.csv'))
-    logging.debug('    Output: {}'.format(output_path))
+    if ini['EXPORT']['export_dest'] in ['cloud', 'gdrive']:
+        export_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_id + '.csv')
+        output_path = os.path.join(zone['output_ws'], output_id + '.csv')
+        logging.debug('    Export: {}'.format(export_id + '.csv'))
+        logging.debug('    Output: {}'.format(output_path))
 
     # Get INI date range
     # Insert one additional year the beginning for water year totals
@@ -1269,11 +1356,12 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         zone['name'].lower())
     output_id = '{}_gridmet_monthly'.format(zone['name'])
 
-    export_path = os.path.join(
-        ini['EXPORT']['export_ws'], export_id + '.csv')
-    output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-    logging.debug('    Export: {}'.format(export_id + '.csv'))
-    logging.debug('    Output: {}'.format(output_path))
+    if ini['EXPORT']['export_dest'] in ['cloud', 'gdrive']:
+        export_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_id + '.csv')
+        output_path = os.path.join(zone['output_ws'], output_id + '.csv')
+        logging.debug('    Export: {}'.format(export_id + '.csv'))
+        logging.debug('    Output: {}'.format(output_path))
 
     # Read in existing data if possible
     try:
@@ -1521,11 +1609,12 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         zone['name'].lower())
     output_id = '{}_pdsi_dekad'.format(zone['name'])
 
-    export_path = os.path.join(
-        ini['EXPORT']['export_ws'], export_id + '.csv')
-    output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-    logging.debug('    Export: {}'.format(export_id + '.csv'))
-    logging.debug('    Output: {}'.format(output_path))
+    if ini['EXPORT']['export_dest'] in ['cloud', 'gdrive']:
+        export_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_id + '.csv')
+        output_path = os.path.join(zone['output_ws'], output_id + '.csv')
+        logging.debug('    Export: {}'.format(export_id + '.csv'))
+        logging.debug('    Output: {}'.format(output_path))
 
     # There is an EE bug that appends "ee_export" to the end of CSV
     #   file names when exporting to cloud storage

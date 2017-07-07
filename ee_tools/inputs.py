@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-06
+# Modified:     2017-07-07
 # Python:       3.6
 #--------------------------------
 
@@ -382,7 +382,7 @@ def parse_export(ini, section='EXPORT'):
 
     # DEADBEEF - Eventually switch this back to being a mandatory parameter
     param_list = [
-        ['export_dest', 'export_dest', str, 'gdrive']
+        ['export_dest', 'export_dest', str, 'getinfo']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -398,7 +398,9 @@ def parse_export(ini, section='EXPORT'):
 
     # DEADBEEF - This might be better in an export module or separate function
     # Export destination specific options
-    if ini[section]['export_dest'] in ['gdrive', 'getinfo']:
+    if ini[section]['export_dest'] in ['getinfo']:
+        logging.info('  GetInfo Direct Export') 
+    elif ini[section]['export_dest'] in ['gdrive']:
         logging.info('  Google Drive Export')
         get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
         get_param(ini, section, 'export_folder', 'export_folder', str, '')
@@ -418,7 +420,6 @@ def parse_export(ini, section='EXPORT'):
             os.makedirs(ini[section]['export_ws'])
         logging.debug('  {:16s} {}'.format(
             'GDrive Workspace:', ini['EXPORT']['export_ws']))
-
     elif ini[section]['export_dest'] == 'cloud':
         logging.info('  Cloud Storage')
         get_param(ini, section, 'project_name', 'project_name', str, 'steel-melody-531')

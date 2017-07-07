@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
-# Modified:     2017-07-06
+# Modified:     2017-07-07
 # Python:       3.6
 #--------------------------------
 
@@ -170,13 +170,13 @@ class Landsat():
 
     def update_scene_id_keep(self, scene_id_keep_list):
         """Update SCENE_ID keep list and flags"""
-        self.scene_id_keep_list = scene_id_keep_list
+        self.scene_id_keep_list = sorted(list(scene_id_keep_list))
 
         # Modify the Landsat types based on SCENE_ID keep list
         if scene_id_keep_list:
-            self.landsat_list = list(
+            self.landsat_list = sorted(list(
                 set(self.landsat_list) & 
-                set(str(x[:4]) for x in scene_id_keep_list))
+                set([str(x[:4]) for x in scene_id_keep_list])))
 
         # Clear flags if possible/necessary
         if 'LT04' not in self.landsat_list:
@@ -354,7 +354,6 @@ class Landsat():
             # Filter by month
             if ((self.start_month and self.start_month != 1) or
                     (self.end_month and self.end_month != 12)):
-                print('MONTH FILTER')
                 month_filter = ee.Filter.calendarRange(
                     self.start_month, self.end_month, 'month')
                 landsat_coll = landsat_coll.filter(month_filter)
@@ -363,7 +362,6 @@ class Landsat():
             # Filter by day of year
             if ((self.start_doy and self.start_doy != 1) or
                     (self.end_doy and self.end_doy != 365)):
-                print('DOY FILTER')
                 doy_filter = ee.Filter.calendarRange(
                     self.start_doy, self.end_doy, 'day_of_year')
                 landsat_coll = landsat_coll.filter(doy_filter)
