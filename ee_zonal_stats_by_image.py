@@ -595,110 +595,104 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
             # doy = ee.Number(date.getRelative('day', 'year')).add(1)
             bands = len(landsat.products) + 3
 
+            def product_extract(ftr):
+                """Extract values and remove geometry from zs output"""
+                product_dict = {
+                    'ZONE_NAME': ftr.get('ZONE_NAME'),
+                    'SCENE_ID': scene_id.slice(0, 20),
+                    'ROW': ee.Number(ftr.get('row')),
+                    'CLOUD_SCORE': ftr.get('cloud_score')
+                }
+                product_dict = product_dict.update({
+                    p.upper(): ftr.get(p.lower())
+                    for p in landsat.products})
+                return ee.Feature(None, product_dict)
+
             # Using zone['geom'] as the geomtry should make it
             #   unnecessary to clip also
-            input_mean = ee.Image(image) \
-                .select(landsat.products + ['cloud_score', 'row']) \
-                .reduceRegions(
-                    collection=zone_coll,
-                    reducer=ee.Reducer.mean(),
-                    # geometry=zone['geom'],
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    # bestEffort=False,
-                    # maxPixels=zone['max_pixels'] * bands,
-                    tileScale=1)
+            input_mean = ee.FeatureCollection(
+                ee.Image(image) \
+                    .select(landsat.products + ['cloud_score', 'row']) \
+                    .reduceRegions(
+                        collection=zone_coll,
+                        reducer=ee.Reducer.mean(),
+                        # geometry=zone['geom'],
+                        crs=ini['SPATIAL']['crs'],
+                        crsTransform=ini['EXPORT']['transform'],
+                        # bestEffort=False,
+                        # maxPixels=zone['max_pixels'] * bands,
+                        tileScale=1) \
+                    .map(product_extract))
+
+            def count_extract(ftr):
+                """Extract counts and remove geometry from zs output"""
+                return ee.Feature(None, {
+                    'ZONE_NAME': ftr.get('ZONE_NAME'),
+                    'SCENE_ID': scene_id.slice(0, 20),
+                    'PIXEL_COUNT': ftr.get('pixel_sum'),
+                    'PIXEL_TOTAL': ftr.get('pixel_count'),
+                    'FMASK_COUNT': ftr.get('fmask_sum'),
+                    'FMASK_TOTAL': ftr.get('fmask_count'),
+                })
 
             # Count unmasked Fmask pixels to get pixel count
             # Count Fmask > 1 to get Fmask count (0 is clear and 1 is water)
             fmask_img = ee.Image(image).select(['fmask'])
-            input_count = ee.Image([
-                    fmask_img.gte(0).unmask().rename(['pixel']),
-                    fmask_img.gt(1).rename(['fmask'])]) \
-                .reduceRegions(
-                    collection=zone_coll,
-                    reducer=ee.Reducer.sum().combine(
-                        ee.Reducer.count(), '', True),
-                    # geometry=zone['geom'],
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    # bestEffort=False,
-                    # maxPixels=zone['max_pixels'] * bands,
-                    tileScale=1)
+            input_count = ee.FeatureCollection(
+                ee.Image([
+                        fmask_img.gte(0).unmask().rename(['pixel']),
+                        fmask_img.gt(1).rename(['fmask'])]) \
+                    .reduceRegions(
+                        collection=zone_coll,
+                        reducer=ee.Reducer.sum().combine(
+                            ee.Reducer.count(), '', True),
+                        # geometry=zone['geom'],
+                        crs=ini['SPATIAL']['crs'],
+                        crsTransform=ini['EXPORT']['transform'],
+                        # bestEffort=False,
+                        # maxPixels=zone['max_pixels'] * bands,
+                        tileScale=1) \
+                    .map(count_extract))
 
-            print(input_mean.first().getInfo())
-            print(input_count.first().getInfo())
-
-            # # Standard output
-            # zs_dict = {
-            #     # 'ZONE_NAME': zone['name'],
-            #     # 'ZONE_FID': zone['fid'],
-            #     'SCENE_ID': scene_id.slice(0, 20),
-            #     # 'PLATFORM': scene_id.slice(0, 4),
-            #     # 'PATH': ee.Number(scene_id.slice(5, 8)),
-            #     'ROW': ee.Number(input_mean.get('row')),
-            #     # Compute dominant row
-            #     # 'ROW': ee.Number(scene_id.slice(8, 11)),
-            #     # 'DATE': date.format('YYYY-MM-dd'),
-            #     # 'YEAR': date.get('year'),
-            #     # 'MONTH': date.get('month'),
-            #     # 'DAY': date.get('day'),
-            #     # 'DOY': doy,
-            #     # 'AREA': zone['area'],
-            #     # 'PIXEL_SIZE': landsat.cellsize,
-            #     'PIXEL_COUNT': input_count.get('pixel_sum'),
-            #     'PIXEL_TOTAL': input_count.get('pixel_count'),
-            #     'FMASK_COUNT': input_count.get('fmask_sum'),
-            #     'FMASK_TOTAL': input_count.get('fmask_count'),
-            #     # 'FMASK_PCT': ee.Number(input_count.get('fmask_sum')) \
-            #     #     .divide(ee.Number(input_count.get('fmask_count'))) \
-            #     #     .multiply(100),
-            #     'CLOUD_SCORE': input_mean.get('cloud_score'),
-            #     # 'QA': ee.Number(0)
-            # }
-            # # Product specific output
-            # zs_dict.update({
-            #     p.upper(): input_mean.get(p.lower()) for p in landsat.products
-            # })
-            # return ee.Feature(None, zs_dict)
+            # print(input_mean.first().getInfo())
+            # print(ee.Feature(input_count.first()).getInfo())
+            return input_count
 
         stats_coll = zonal_stats_func(ee.Image(landsat_coll.first()))
 
-        # DEBUG - Test the function for a single image
-        stats_info = zonal_stats_func(
-            ee.Image(landsat_coll.first())).getInfo()
-        pp.pprint(stats_info['properties'])
+        # # DEBUG - Test the function for a single image
+        # print(stats_coll.getInfo())
+        # # pp.pprint(stats_coll.getInfo()['properties'])
+        # input('ENTER')
+
+        # DEBUG - Print the stats info to the screen
+        stats_info = stats_coll.getInfo()
+        for ftr in stats_info['features']:
+            pp.pprint(ftr)
         input('ENTER')
+
+        # Add a dummy entry to the stats collection 
+        format_dict = {
+            'ZONE_NAME': 'DEADBEEF',
+            'SCENE_ID': 'DEADBEEF',
+            'ROW': -9999,
+            'PIXEL_COUNT': -9999,
+            'PIXEL_TOTAL': -9999,
+            'FMASK_COUNT': -9999,
+            'FMASK_TOTAL': -9999,
+            'CLOUD_SCORE': -9999,
+        }
+        format_dict.update({p.upper(): -9999 for p in landsat.products})
+        stats_coll = ee.FeatureCollection(ee.Feature(None, format_dict)) \
+            .merge(stats_coll)
 
         # # DEBUG - Print the stats info to the screen
         # stats_info = stats_coll.getInfo()
         # for ftr in stats_info['features']:
         #     pp.pprint(ftr)
         # input('ENTER')
-        # return False
 
-        # # Add a dummy entry to the stats collection 
-        # format_dict = {
-        #     'ZONE_NAME': 'DEADBEEF',
-        #     'SCENE_ID': 'DEADBEEF',
-        #     'ROW': -9999,
-        #     'PIXEL_COUNT': -9999,
-        #     'PIXEL_TOTAL': -9999,
-        #     'FMASK_COUNT': -9999,
-        #     'FMASK_TOTAL': -9999,
-        #     'CLOUD_SCORE': -9999,
-        # }
-        # format_dict.update({p.upper(): -9999 for p in landsat.products})
-        # stats_coll = ee.FeatureCollection(ee.Feature(None, format_dict)) \
-        #     .merge(stats_coll)
-
-        # # # DEBUG - Print the stats info to the screen
-        # # stats_info = stats_coll.getInfo()
-        # # for ftr in stats_info['features']:
-        # #     pp.pprint(ftr)
-        # # input('ENTER')
-
-        # input('ENTER')
+        input('ENTER')
 
 
 

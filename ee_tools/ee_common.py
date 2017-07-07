@@ -157,7 +157,6 @@ class Landsat():
             landsat_list.append('LE07')
         if self.landsat8_flag:
             landsat_list.append('LC08')
-            landsat_list.append('LC08_PRE')
         self.landsat_list = landsat_list
 
 
@@ -166,8 +165,7 @@ class Landsat():
             'LT04': {'start': '1982-01-01', 'end': '1993-12-31'},
             'LT05': {'start': '1984-01-01', 'end': '2011-12-31'},
             'LE07': {'start': '1999-01-01', 'end': today},
-            'LC08_PRE': {'start': '2013-01-01', 'end': '2015-01-01'},
-            'LC08': {'start': '2015-01-01', 'end': today}
+            'LC08': {'start': '2013-01-01', 'end': today}
         }
 
     def update_scene_id_keep(self, scene_id_keep_list):
@@ -175,24 +173,19 @@ class Landsat():
         self.scene_id_keep_list = scene_id_keep_list
 
         # Modify the Landsat types based on SCENE_ID keep list
-        landsat_list = []
         if scene_id_keep_list:
-            landsat_list = set([
-                'LC08_PRE' if str(x[:4]) == 'LC08' and int(x[12:16]) < 2015 
-                else str(x[:4])
-                for x in scene_id_keep_list])
-            # landsat_list = set(str(x[:4]) for x in scene_id_keep_list)
             self.landsat_list = list(
-                set(self.landsat_list) & landsat_list)
+                set(self.landsat_list) & 
+                set(str(x[:4]) for x in scene_id_keep_list))
 
         # Clear flags if possible/necessary
-        if 'LT04' not in landsat_list:
+        if 'LT04' not in self.landsat_list:
             self.landsat4_flag = False
-        if 'LT05' not in landsat_list:
+        if 'LT05' not in self.landsat_list:
             self.landsat5_flag = False
-        if 'LE07' not in landsat_list:
+        if 'LE07' not in self.landsat_list:
             self.landsat7_flag = False
-        if 'LC08' not in landsat_list and 'LC08_PRE' not in landsat_list:
+        if 'LC08' not in self.landsat_list:
             self.landsat8_flag = False
 
     def get_image(self, landsat, year, doy, path=None, row=None):
@@ -282,7 +275,7 @@ class Landsat():
                             landsat, self.refl_source, self.fmask_source))
                     sys.exit()
 
-            elif landsat in ['LT04', 'LT05', 'LC08_PRE']:
+            elif landsat in ['LT04', 'LT05']:
                 # Pre-collection
                 landsat_pre = landsat.replace('0', '').replace('_PRE', '')
                 landsat_sr_name = 'LANDSAT/{}_SR'.format(landsat_pre)
@@ -329,7 +322,7 @@ class Landsat():
             # if landsat in ['LE07', 'LC08']:
             #     landsat_coll = landsat_coll.filterMetadata(
             #         'DATA_TYPE', 'equals', 'L1TP')
-            # if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+            # if landsat in ['LT04', 'LT05']:
             #     landsat_coll = landsat_coll.filterMetadata(
             #         'DATA_TYPE', 'equals', 'L1T')
 
@@ -340,45 +333,41 @@ class Landsat():
                 fmask_coll = fmask_coll.filter(
                     ee.Filter.calendarRange(1984, 2011, 'year'))
 
-            # DEADBEEF - Landsat 8 collection 1 is not fully ingested
-            if landsat in ['LC08_PRE']:
-                landsat_coll = landsat_coll.filter(
-                    ee.Filter.calendarRange(2013, 2014, 'year'))
-                fmask_coll = fmask_coll.filter(
-                    ee.Filter.calendarRange(2013, 2014, 'year'))
-            elif landsat in ['LC08']:
-                landsat_coll = landsat_coll.filter(
-                    ee.Filter.calendarRange(2015, 2020, 'year'))
-
             # Filter by date
             if self.start_date and self.end_date:
+                # End date is inclusive but filterDate is exclusive
+                end_date = (
+                    datetime.datetime.strptime(self.end_date, '%Y-%m-%d') + 
+                    datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                 landsat_coll = landsat_coll.filterDate(
-                    self.start_date, self.end_date)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                    self.start_date, end_date)
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filterDate(
-                        self.start_date, self.end_date)
+                        self.start_date, end_date)
             # Filter by year
             if self.start_year and self.end_year:
                 year_filter = ee.Filter.calendarRange(
                     self.start_year, self.end_year, 'year')
                 landsat_coll = landsat_coll.filter(year_filter)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(year_filter)
             # Filter by month
             if ((self.start_month and self.start_month != 1) or
                     (self.end_month and self.end_month != 12)):
+                print('MONTH FILTER')
                 month_filter = ee.Filter.calendarRange(
                     self.start_month, self.end_month, 'month')
                 landsat_coll = landsat_coll.filter(month_filter)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(month_filter)
             # Filter by day of year
             if ((self.start_doy and self.start_doy != 1) or
                     (self.end_doy and self.end_doy != 365)):
+                print('DOY FILTER')
                 doy_filter = ee.Filter.calendarRange(
                     self.start_doy, self.end_doy, 'day_of_year')
                 landsat_coll = landsat_coll.filter(doy_filter)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(doy_filter)
 
             if self.path_keep_list:
@@ -389,7 +378,7 @@ class Landsat():
                 #     'wrs_row', path_keep_list[0], path_keep_list[-1]))
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.inList('WRS_PATH', self.path_keep_list))
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(
                         ee.Filter.inList('wrs_path', self.path_keep_list))
             if self.row_keep_list:
@@ -400,24 +389,24 @@ class Landsat():
                 #     'wrs_row', row_keep_list[0], row_keep_list[-1]))
                 landsat_coll = landsat_coll.filter(
                     ee.Filter.inList('WRS_ROW', self.row_keep_list))
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(
                         ee.Filter.inList('wrs_row', self.row_keep_list))
             if self.tile_geom:
                 landsat_coll = landsat_coll.filterBounds(self.tile_geom)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filterBounds(self.tile_geom)
 
             # Filter by geometry
             if self.zone_geom:
                 landsat_coll = landsat_coll.filterBounds(self.zone_geom)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filterBounds(self.zone_geom)
 
             # Set SCENE_ID property for joining and filtering
             if landsat in ['LE07', 'LC08']:
                 landsat_coll = landsat_coll.map(c1_scene_id_func)
-            elif landsat in ['LT04', 'LT05', 'LC08_PRE']:
+            elif landsat in ['LT04', 'LT05']:
                 landsat_coll = landsat_coll.map(pre_scene_id_func)
                 fmask_coll = fmask_coll.map(pre_scene_id_func)
 
@@ -426,18 +415,18 @@ class Landsat():
                 scene_id_keep_filter = ee.Filter.inList(
                     'SCENE_ID', self.scene_id_keep_list)
                 landsat_coll = landsat_coll.filter(scene_id_keep_filter)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(scene_id_keep_filter)
             if self.scene_id_skip_list:
                 scene_id_skip_filter = ee.Filter.inList(
                     'SCENE_ID', self.scene_id_skip_list).Not()
                 landsat_coll = landsat_coll.filter(scene_id_skip_filter)
-                if landsat in ['LT04', 'LT05', 'LC08_PRE']:
+                if landsat in ['LT04', 'LT05']:
                     fmask_coll = fmask_coll.filter(scene_id_skip_filter)
 
             # Join the at-surface reflectance CFmask collection if necessary
             if (self.fmask_source and self.fmask_source == 'cfmask' and
-                    landsat in ['LT04', 'LT05', 'LC08_PRE']):
+                    landsat in ['LT04', 'LT05']):
                 scene_id_filter = ee.Filter.equals(
                     leftField='SCENE_ID', rightField='SCENE_ID')
                 landsat_coll = ee.ImageCollection(
@@ -460,7 +449,7 @@ class Landsat():
                 landsat_coll = landsat_coll.map(landsat5_toa_band_func)
             elif landsat in ['LE07']:
                 landsat_coll = landsat_coll.map(landsat7_toa_band_func)
-            elif landsat in ['LC08', 'LC08_PRE']:
+            elif landsat in ['LC08']:
                 landsat_coll = landsat_coll.map(landsat8_toa_band_func)
 
             # Apply cloud masks
@@ -492,7 +481,7 @@ class Landsat():
                 landsat_coll = landsat_coll.map(self.landsat5_images_func)
             elif landsat in ['LE07']:
                 landsat_coll = landsat_coll.map(self.landsat7_images_func)
-            elif landsat in ['LC08', 'LC08_PRE']:
+            elif landsat in ['LC08']:
                 landsat_coll = landsat_coll.map(self.landsat8_images_func)
 
             # Mosaic overlapping images
@@ -509,6 +498,7 @@ class Landsat():
             #     for f in output_coll.getInfo()['features']]))
             # raw_input('ENTER')
 
+        # print(sorted(output_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))
         return output_coll
 
     def landsat5_images_func(self, refl_toa):
@@ -832,7 +822,7 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
         # c4 = ee.Image([0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155])
         # c5 = ee.Image([0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639])
         # cb = ee.Image([0.640, 0.31, 0.286, 0.189, 0.274, -0.186])
-    elif landsat in ['LC08', 'LC08_PRE']:
+    elif landsat in ['LC08']:
         c1 = [0.987, 2.148, 0.942, 0.248, 0.260, 0.315]
         c2 = [-0.000727, -0.000199, -0.000261, -0.000410, -0.001084, -0.000975]
         c3 = [0.000037, 0.000058, 0.000406, 0.000563, 0.000675, 0.004012]
@@ -867,7 +857,7 @@ def refl_sur_tasumi_func(refl_toa, landsat, adjust_method=None):
             .subtract([0, 0, 0.0024, -0.0003, 0, 0]) \
             .divide([1, 1, 1.0047, 1.0036, 1, 1])
     elif (adjust_method and adjust_method.lower() == 'oli_2_etm' and
-            landsat in ['LC08', 'LC08_PRE']):
+            landsat in ['LC08']):
         # http://www.sciencedirect.com/science/article/pii/S0034425716302619
         # Coefficients for scaling OLI to ETM+
         refl_sur = ee.Image(refl_sur) \
@@ -998,7 +988,7 @@ def albedo_func(refl_sur, landsat):
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
     elif landsat in ['LE07']:
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-    elif landsat in ['LC08', 'LC08_PRE']:
+    elif landsat in ['LC08']:
         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
     return ee.Image(refl_sur).select(refl_bands).multiply(wb_coef) \
         .reduce(ee.Reducer.sum())
@@ -1106,7 +1096,7 @@ def tc_bright_func(refl_toa, landsat):
     elif landsat in ['LE07']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_bright_coef = [0.3561, 0.3972, 0.3904, 0.6966, 0.2286, 0.1596]
-    elif landsat in ['LC08', 'LC08_PRE']:
+    elif landsat in ['LC08']:
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_bright_coef = [0.3029, 0.2786, 0.4733, 0.5599, 0.5080, 0.1872]
@@ -1122,7 +1112,7 @@ def tc_green_func(refl_toa, landsat):
     elif landsat in ['LE07']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_green_coef = [-0.3344, -0.3544, -0.4556, 0.6966, -0.0242, -0.2630]
-    elif landsat in ['LC08', 'LC08_PRE']:
+    elif landsat in ['LC08']:
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_green_coef = [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608]
@@ -1138,7 +1128,7 @@ def tc_wet_func(refl_toa, landsat):
     elif landsat in ['LE07']:
         refl_toa_sub = refl_toa.select(refl_bands)
         tc_wet_coef = [0.2626, 0.2141, 0.0926, 0.0656, -0.7629, -0.5388]
-    elif landsat in ['LC08', 'LC08_PRE']:
+    elif landsat in ['LC08']:
         refl_toa_sub = refl_toa.select(refl_bands)
         # refl_toa_sub = refl_toa_sub.multiply(0.0001)
         tc_wet_coef = [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559]

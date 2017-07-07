@@ -472,10 +472,32 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
 
+    # # # DEADBEEF - Remove old Landsat 8 data
+    # # l8_pre_mask = (
+    # #     (output_df['PLATFORM'] == 'LC08') & (output_df['YEAR'] >= 2013) & 
+    # #     (output_df['YEAR'] <= 2014))
+    # # if not output_df.empty and l8_pre_mask.any():
+    # #     logging.info('    Removing old Landsat 8 entries')
+    # #     # logging.info('    {}'.format(output_df[drop_mask]['SCENE_ID'].values))
+    # #     output_df.drop(output_df[l8_pre_mask].index, inplace=True)
+    # #     output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+    # #     output_df.to_csv(output_path, index=False, columns=output_fields)
+    # #     # input('ENTER')
+
     # DEADBEEF - Look for duplicate SCENE_IDs
     if not output_df.empty and output_df.duplicated(['SCENE_ID']).any():
         logging.debug('    Removing duplicate SCENE_IDs')
         output_df = output_df[output_df.duplicated(['SCENE_ID'], False)]
+
+    # DEADBEEF - Remove entries with PIXEL_COUNT > 0 but nodata
+    drop_mask = (
+        output_df['NDVI_TOA'].isnull() & (output_df['PIXEL_COUNT'] > 0))
+    if not output_df.empty and drop_mask.any():
+        logging.info('    Removing bad PIXEL_COUNT entries')
+        # logging.info('    {}'.format(output_df[drop_mask]['SCENE_ID'].values))
+        output_df.drop(output_df[drop_mask].index, inplace=True)
+        output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+        output_df.to_csv(output_path, index=False, columns=output_fields)
 
     # # DEADBEEF - Remove all empty entries
     # if not output_df.empty and output_df['NDVI_TOA'].isnull().any():
@@ -588,10 +610,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 for scene_id in mosaic_id_dict[mosaic_id]]
         else:
             missing_scene_ids = set(missing_ids)
-        # logging.debug('  SCENE_IDs missing: {}'.format(
-        #     ', '.join(sorted(missing_scene_ids))))
         logging.info('    Missing ID count: {}'.format(
             len(missing_scene_ids)))
+        logging.debug('  SCENE_IDs missing: {}'.format(
+            ', '.join(sorted(missing_scene_ids))))
 
         # Evaluate whether a subset of SCENE_IDs or products can be exported
         # The SCENE_ID skip and keep lists cannot be mosaiced SCENE_IDs
@@ -628,6 +650,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # First remove any extra rows that were added for exporting
         data_df.drop(
             data_df[data_df.SCENE_ID == 'DEADBEEF'].index, inplace=True)
+
+        # With old Fmask data, PIXEL_COUNT can be > 0 even if all data is NaN
+        drop_mask = (
+            data_df['NDVI_TOA'].isnull() & data_df['TS'].isnull() &
+            (data_df['PIXEL_COUNT'] > 0))
+        if not data_df.empty and drop_mask.any():
+            data_df.loc[drop_mask, ['PIXEL_COUNT']] = 0
 
         # Add additional fields to the export data frame
         data_df.set_index('SCENE_ID', inplace=True, drop=True)
@@ -949,7 +978,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         elif ini['EXPORT']['export_dest'] == 'getinfo':
             logging.debug('    Requesting data')
             export_info = utils.getinfo(stats_coll)['features']
-            export_df = pd.DataFrame([ftr['properties'] for ftr in export_info])
+            export_df = pd.DataFrame([f['properties'] for f in export_info])
             export_df = export_update(export_df)
 
             # Save data to main dataframe
