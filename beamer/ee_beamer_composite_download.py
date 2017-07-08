@@ -1,5 +1,5 @@
 #--------------------------------
-# Name:         ee_beamer_annual_mean_download.py
+# Name:         ee_beamer_composite_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
 # Created       2017-07-08
 # Python:       3.6
@@ -8,7 +8,6 @@
 import argparse
 from collections import defaultdict
 import datetime as dt
-from dateutil import rrule, relativedelta
 import json
 import logging
 import os
@@ -41,9 +40,6 @@ import ee_tools.inputs as inputs
 import ee_tools.utils as utils
 import ee_tools.wrs2 as wrs2
 
-# ArcPy must be imported after OGR
-import arcpy
-
 
 def ee_beamer_et(ini_path=None, overwrite_flag=False):
     """Earth Engine Beamer ET Image Download
@@ -55,13 +51,11 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     Returns:
         None
     """
-    logging.info('\nEarth Engine Beamer Annual Mean ETg Image Download')
+    logging.info('\nEarth Engine Beamer Median/Mean ETg Image Download')
 
-    stat_list = ['mean', 'median']
+    stat_list = ['median', 'mean']
     band_list = ['etg_mean', 'etg_lci', 'etg_uci', 'etg_lpi', 'etg_upi']
     nodata_value = -9999
-    zips_folder = 'zips'
-    annuals_folder = 'annuals'
 
     # Regular expression to pull out Landsat scene_id
     # landsat_re = re.compile('L[ETC]0[4578]_\d{3}XXX_\d{4}\d{2}\d{2}')
@@ -147,10 +141,6 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             ini['SPATIAL']['osr'].ExportToWkt()))
         logging.debug('  Output Cellsize: {}'.format(
             ini['SPATIAL']['cellsize']))
-
-    # Use ArcPy to compute the median
-    arcpy.CheckOutExtension('Spatial')
-    arcpy.env.overwriteOutput = True
 
     # Initialize Earth Engine API key
     ee.Initialize()
@@ -251,52 +241,20 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         logging.debug('  Image Shape: {}'.format(output_shape))
 
         zone_output_ws = os.path.join(ini['BEAMER']['output_ws'], zone_name)
-        zone_zips_ws = os.path.join(zone_output_ws, zips_folder)
-        zone_annuals_ws = os.path.join(zone_output_ws, annuals_folder)
-        if not os.path.isdir(zone_zips_ws):
-            os.makedirs(zone_zips_ws)
-        if not os.path.isdir(zone_annuals_ws):
-            os.makedirs(zone_annuals_ws)
+        if not os.path.isdir(zone_output_ws):
+            os.makedirs(zone_output_ws)
 
-        # Process date range by year
-        interval_cnt = 1
-        start_dt = dt.datetime(ini['INPUTS']['start_year'], 1, 1)
-        end_dt = dt.datetime(
-            ini['INPUTS']['end_year'] + 1, 1, 1) - dt.timedelta(0, 1)
-        for i, iter_start_dt in enumerate(rrule.rrule(
-                rrule.YEARLY, interval=interval_cnt,
-                dtstart=start_dt, until=end_dt)):
-            iter_end_dt = (
-                iter_start_dt +
-                relativedelta.relativedelta(years=interval_cnt) -
-                dt.timedelta(0, 1))
-            if ((ini['INPUTS']['start_month'] and
-                    iter_end_dt.month < ini['INPUTS']['start_month']) or
-                (ini['INPUTS']['end_month'] and
-                    iter_start_dt.month > ini['INPUTS']['end_month'])):
-                logging.debug('  {}  {}  skipping'.format(
-                    iter_start_dt.date(), iter_end_dt.date()))
-                continue
-            elif ((ini['INPUTS']['start_doy'] and
-                    int(iter_end_dt.strftime('%j')) < ini['INPUTS']['start_doy']) or
-                  (ini['INPUTS']['end_doy'] and
-                    int(iter_start_dt.strftime('%j')) > ini['INPUTS']['end_doy'])):
-                logging.debug('  {}  {}  skipping'.format(
-                    iter_start_dt.date(), iter_end_dt.date()))
-                continue
-            else:
-                logging.info('{}  {}'.format(
-                    iter_start_dt.date(), iter_end_dt.date()))
-            year = iter_start_dt.year
-
+        # DEADBEEF - Much of this code could probably be moved outside the
+        #   stat loop.
+        # To avoid making EE calls unnecessarily, the status of the output
+        #   file is checked first which requires the statistic type
+        for stat in stat_list:
+            logging.info('  {}'.format(stat))
             image_id = 'etg_{}_{}'.format(
-                zone_name.lower().replace(' ', '_'), year)
-            zip_path = os.path.join(
-                zone_zips_ws, image_id + '.zip')
-            # median_path = os.path.join(
-            #     zone_output_ws, image_id + '.img')
-            logging.debug('  Zip: {}'.format(zip_path))
+                zone_name.lower().replace(' ', '_'), stat.lower())
+            zip_path = os.path.join(zone_output_ws, image_id + '.zip')
 
+            logging.debug('  Zip: {}'.format(zip_path))
             if os.path.isfile(zip_path) and overwrite_flag:
                 logging.debug('    Output already exists, removing zip')
                 os.remove(zip_path)
@@ -305,47 +263,56 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 try:
                     with zipfile.ZipFile(zip_path, 'r') as z:
                         pass
-                except:
-                    logging.warning('    Zip file error, removing'.format(i))
+                except Exception as e:
+                    logging.warning('    Zip file error, removing')
+                    logging.debug('    {}'.format(e))
                     os.remove(zip_path)
 
-            # Filter the GRIDMET collection
-            wy_start_date = '{}-10-01'.format(year - 1)
-            wy_end_date = '{}-10-01'.format(year)
-            logging.debug('  WY: {} {}'.format(wy_start_date, wy_end_date))
-            gridmet_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
-                .filterDate(wy_start_date, wy_end_date)
-
-            # # PRISM collection was uploaded as an asset
-            # if ini['BEAMER']['ppt_source'] == 'prism':
-            #     def prism_time_start(input_image):
-            #         """Set time_start property on PRISM water year PPT collection"""
-            #         # Assume year is the 4th item separated by "_"
-            #         water_year = ee.String(input_image.get('system:index')).split('_').get(3)
-            #         date_start = ee.Date(ee.String(water_year).cat('-10-01'))
-            #         return input_image.select([0], ['PPT']).set({
-            #             'system:time_start': date_start.millis()
-            #         })
-            #     prism_coll = ee.ImageCollection('users/cgmorton/prism_800m_ppt_wy')
-            #     prism_coll = prism_coll.map(prism_time_start) \
-            #         .filterDate(wy_start_date, wy_end_date)
+            # Pre-compute an ETo/PPT dictionary
+            ee_years = ee.List.sequence(
+                ini['INPUTS']['start_year'], ini['INPUTS']['end_year'], 1)
 
             # Get water year PPT from file
             # Convert all input data to mm to match GRIDMET data
             if ini['BEAMER']['ppt_source'] == 'file':
-                wy_ppt_input = ppt_dict[zone_name][year]
+                wy_ppt_input = ppt_dict[zone_name]
                 if ini['BEAMER']['data_ppt_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_ppt_units'] == 'in':
-                    wy_ppt_input *= 25.4
+                    wy_ppt_input = {y: x * 25.4 for y, x in wy_ppt_input.items()}
                 elif ini['BEAMER']['data_ppt_units'] == 'ft':
-                    wy_ppt_input *= (25.4 * 12)
+                    wy_ppt_input = {
+                        y: x * 25.4 * 12 for y, x in wy_ppt_input.items()}
             elif ini['BEAMER']['ppt_source'] == 'gridmet':
-                # GET GRIDMET value at centroid of geometry
-                wy_ppt_input = float(ee_get_info(ee.ImageCollection(
-                    gridmet_coll.map(ee_common.gridmet_ppt_func).sum()).getRegion(
-                        zone['geom'].centroid(1), 500))[1][4])
-                # Calculate GRIDMET zonal mean of geometry
+                # Compute GRIDMET water year sums
+                def gridmet_wy_ppt(year):
+                    wy_start_dt = ee.Date.fromYMD(
+                        ee.Number(year).subtract(1), 10, 1)
+                    wy_end_dt = ee.Date.fromYMD(ee.Number(year), 10, 1)
+                    wy_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
+                        .filterDate(wy_start_dt, wy_end_dt) \
+                        .map(ee_common.gridmet_ppt_func)
+                    wy_image = ee.Image([
+                        ee.Image(ee.ImageCollection(wy_coll).sum()),
+                        ee.Image.constant(ee.Number(year)).float()])
+                    return wy_image.rename(['PPT', 'YEAR']) \
+                        .setMulti({'system:time_start': wy_start_dt.millis()})
+                wy_ppt_coll = ee.ImageCollection(ee_years.map(gridmet_wy_ppt))
+
+                # Get GRIDMET value at centroid of geometry
+                wy_ppt_input = None
+                for i in range(1, 10):
+                    try:
+                        wy_ppt_input = {
+                            int(x[5]): x[4]
+                            for x in wy_ppt_coll.getRegion(
+                                zone['geom'].centroid(1), 500).getInfo()[1:]}
+                        break
+                    except Exception as e:
+                        logging.info('  Resending query')
+                        logging.debug('  {}'.format(e))
+                        sleep(i ** 2)
+                # # Calculate GRIDMET zonal mean of geometry
                 # wy_ppt_input = float(ee.ImageCollection(
                 #     gridmet_coll.map(gridmet_ppt_func)).reduceRegion(
                 #         reducer=ee.Reducer.sum(),
@@ -368,85 +335,144 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             # Get water year ETo read from file
             # Convert all input data to mm for Beamer Method
             if ini['BEAMER']['eto_source'] == 'file':
-                wy_eto_input = eto_dict[zone_name][year]
+                wy_eto_input = eto_dict[zone_name]
                 if ini['BEAMER']['data_eto_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_eto_units'] == 'in':
-                    wy_eto_input *= 25.4
+                    wy_eto_input = {y: x * 25.4 for y, x in wy_eto_input.items()}
                 elif ini['BEAMER']['data_eto_units'] == 'ft':
-                    wy_eto_input *= (25.4 * 12)
+                    wy_eto_input = {
+                        y: x * 25.4 * 12 for y, x in wy_eto_input.items()}
             # This assumes GRIMET data is in millimeters
             elif ini['BEAMER']['eto_source'] == 'gridmet':
-                wy_eto_input = float(ee_get_info(ee.ImageCollection(
-                    gridmet_coll.map(ee_common.gridmet_eto_func).sum()).getRegion(
-                        zone['geom'].centroid(1), 500))[1][4])
+                # Compute GRIDMET water year sums
+                def gridmet_wy_eto(year):
+                    wy_start_dt = ee.Date.fromYMD(
+                        ee.Number(year).subtract(1), 10, 1)
+                    wy_end_dt = ee.Date.fromYMD(ee.Number(year), 10, 1)
+                    wy_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
+                        .filterDate(wy_start_dt, wy_end_dt) \
+                        .map(ee_common.gridmet_eto_func)
+                    wy_image = ee.Image([
+                        ee.Image(ee.ImageCollection(wy_coll).sum()),
+                        ee.Image.constant(ee.Number(year)).float()])
+                    return wy_image.rename(['ETO', 'YEAR']) \
+                        .setMulti({'system:time_start': wy_start_dt.millis()})
+                wy_eto_coll = ee.ImageCollection(ee_years.map(gridmet_wy_eto))
+
+                # Get GRIDMET value at centroid of geometry
+                wy_eto_input = None
+                for i in range(1, 10):
+                    try:
+                        wy_eto_input = {
+                            int(x[5]): x[4]
+                            for x in wy_eto_coll.getRegion(
+                                zone['geom'].centroid(1), 500).getInfo()[1:]}
+                        break
+                    except Exception as e:
+                        logging.info('  Resending query')
+                        logging.debug('  {}'.format(e))
+                        sleep(i ** 2)
                 # wy_eto_input = float(ee.ImageCollection(
                 #     gridmet_coll.map(gridmet_eto_func)).reduceRegion(
-                #         reducer=ee.Reducer.sum(),
-                #         geometry=zone['geom'],
+                #         ee.Reducer.sum(),
+                #         zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],
                 #         crsTransform=zone['transform'],
                 #         bestEffort=False,
                 #         tileScale=1).getInfo()
-            logging.debug('  Input ETO: {} mm  PPT: {} mm'.format(
-                wy_eto_input, wy_ppt_input))
+            # logging.debug('   Input ETO [{}]  PPT [{}]'.format(
+            #     ini['BEAMER']['output_eto_units'],
+            #     ini['BEAMER']['output_ppt_units']))
+            # for year in sorted(wy_eto_output.keys()):
+            #     logging.debug('      {:>10.4f} {:>10.4f}'.format(
+            #         wy_eto_output[year], wy_ppt_output[year]))
 
             # Scale ETo & PPT
-            wy_eto_input *= ini['BEAMER']['eto_factor']
-            wy_ppt_input *= ini['BEAMER']['ppt_factor']
+            wy_eto_input = {
+                y: p * ini['BEAMER']['eto_factor']
+                for y, p in wy_eto_input.items()}
+            wy_ppt_input = {
+                y: p * ini['BEAMER']['ppt_factor']
+                for y, p in wy_ppt_input.items()}
 
             # Convert output units from mm
-            wy_ppt_output = wy_ppt_input
-            wy_eto_output = wy_eto_input
+            wy_ppt_output = wy_ppt_input.copy()
+            wy_eto_output = wy_eto_input.copy()
             if ini['BEAMER']['output_ppt_units'] == 'mm':
                 pass
             elif ini['BEAMER']['output_ppt_units'] == 'in':
-                wy_ppt_output /= 25.4
+                wy_ppt_output = {y: x / 25.4 for y, x in wy_ppt_output}
             elif ini['BEAMER']['output_ppt_units'] == 'ft':
-                wy_ppt_output /= (25.4 * 12)
+                wy_ppt_output = {y: x / (25.4 * 12) for y, x in wy_ppt_output}
             if ini['BEAMER']['output_eto_units'] == 'mm':
                 pass
             elif ini['BEAMER']['output_eto_units'] == 'in':
-                wy_eto_output /= 25.4
+                wy_eto_output = {y: x / 25.4 for y, x in wy_eto_output}
             elif ini['BEAMER']['output_eto_units'] == 'ft':
-                wy_eto_output /= (25.4 * 12)
-            logging.debug('  Output ETO: {} {} PPT: {} {}'.format(
-                wy_eto_output, ini['BEAMER']['output_eto_units'],
-                wy_ppt_output, ini['BEAMER']['output_ppt_units']))
+                wy_eto_output = {y: x / (25.4 * 12) for y, x in wy_eto_output}
+            logging.debug('  Year  ETo [{}]  PPT [{}]'.format(
+                ini['BEAMER']['output_eto_units'],
+                ini['BEAMER']['output_ppt_units']))
+            for year in sorted(wy_eto_output.keys()):
+                logging.debug('  {}  {:>8.3f}  {:>8.3f}'.format(
+                    year, wy_eto_output[year], wy_ppt_output[year]))
 
-            # Initialize the Landsat object for target zone and iteration
-            landsat.zone_geom = zone['geom']
-            landsat.start_date = iter_start_dt.strftime('%Y-%m-%d')
-            landsat.end_date = iter_end_dt.strftime('%Y-%m-%d')
-            landsat_coll = landsat.get_collection()
-            # print([f['properties']['SCENE_ID'] for f in landsat_coll.getInfo()['features']])
-            # raw_input('ENTER')
+            # Build each image separately
+            etg_images = []
+            for year in range(
+                    ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
+                # Initialize the Landsat object for target zone and iteration
+                landsat.zone_geom = zone['geom']
+                landsat.start_date = dt.date(year, 1, 1).isoformat()
+                landsat.end_date = dt.date(year, 12, 31).isoformat()
+                landsat_coll = landsat.get_collection()
+                # print([f['properties']['SCENE_ID'] for f in landsat_coll.getInfo()['features']])
+                # raw_input('ENTER')
 
-            # Add water year ETo and PPT values to each image
-            def eto_ppt_func(img):
-                """"""
-                return ee.Image(img).setMulti({
-                    'wy_eto': wy_eto_output,
-                    'wy_ppt': wy_ppt_output
-                })
-            landsat_coll = ee.ImageCollection(landsat_coll.map(eto_ppt_func))
+                # Add water year ETo and PPT values to each image
+                def eto_ppt_func(img):
+                    """"""
+                    return ee.Image(img).setMulti({
+                        'wy_eto': wy_eto_output[year],
+                        'wy_ppt': wy_ppt_output[year]
+                    })
+                landsat_coll = ee.ImageCollection(landsat_coll.map(eto_ppt_func))
 
-            # Build each collection separately then merge
-            etg_coll = ee.ImageCollection(landsat_coll.map(landsat_etg_func))
+                # Build each collection separately then merge
+                etg_coll = ee.ImageCollection(landsat_coll.map(landsat_etg_func))
+
+                etg_images.append(ee.Image(etg_coll.mean()).setMulti({
+                    'system:index': str(year),
+                    'system:time_start': ee.Date(landsat.start_date).millis()
+                    # 'year': year,
+                    # 'wy_eto': wy_eto_output[year],
+                    # 'wy_ppt': wy_ppt_output[year]
+                }))
+
+            # Build the collection from the images
+            etg_coll = ee.ImageCollection.fromImages(etg_images)
             # print([float(x[4]) for x in etg_coll.getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
-            # print([float(x[4]) for x in ee.ImageCollection(ee.Image(etg_coll.mean())).getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
             # raw_input('ENTER')
+
+            if stat.lower() == 'median':
+                etg_image = ee.Image(etg_coll.median())
+            elif stat.lower() == 'mean':
+                etg_image = ee.Image(etg_coll.mean())
+            else:
+                logging.error('  Unsupported stat type: {}'.format(stat))
 
             # Clip using the feature geometry
             # Set the masked values to a nodata value
             # so that the TIF can have a nodata value other than 0 set
-            etg_image = ee.Image(etg_coll.mean()) \
+            etg_image = etg_image \
                 .clip(zone['geom']) \
                 .unmask(nodata_value, False)
 
+            # Download the image
             if not os.path.isfile(zip_path):
                 # Get the download URL
-                logging.debug('  Requesting')
+                logging.debug('  Requesting URL')
                 zip_url = None
                 for i in range(1, 10):
                     try:
@@ -463,6 +489,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                         zip_url = None
                     if zip_url:
                         break
+                logging.debug('  {}'.format(zip_url))
 
                 # Try downloading a few times
                 logging.info('  Downloading')
@@ -477,69 +504,40 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                         logging.info('  Resending query')
                         logging.debug('  {}'.format(e))
                         sleep(i ** 2)
+                    try:
                         os.remove(zip_path)
+                    except Exception as e:
+                        pass
+                    # Check if file size is greater than 0?
+                    # if os.path.isfile(zip_path):
+                    #     break
 
             # Try extracting the files
             try:
                 logging.info('  Extracting')
                 with zipfile.ZipFile(zip_path, 'r') as z:
-                    z.extractall(zone_annuals_ws)
+                    z.extractall(zone_output_ws)
             except Exception as e:
                 logging.warning('    Error: could not extract'.format(i))
-                logging.debug('  {}'.format(e))
+                logging.warning('  {}'.format(e))
                 try:
                     os.remove(zip_path)
                 except Exception as e:
                     pass
 
-            # Set nodata value
-            for item in os.listdir(zone_annuals_ws):
-                if item.startswith(image_id) and item.endswith('.tif'):
-                    raster_path_set_nodata(
-                        os.path.join(zone_annuals_ws, item), nodata_value)
-                    raster_statistics(
-                        os.path.join(zone_annuals_ws, item))
-
-        logging.info('\nComputing composite rasters from annual means')
+        logging.info('\nComputing raster statistics')
         for stat in stat_list:
             logging.info('  Stat: {}'.format(stat))
             for band in band_list:
                 logging.info('  {}'.format(band))
-                image_band_list = [
-                    os.path.join(zone_annuals_ws, item)
-                    for item in os.listdir(zone_annuals_ws)
-                    if item.endswith('.{}.tif'.format(band.lower()))]
-                # for image_path in image_band_list:
-                #     raster_path_set_nodata(image_path, nodata_value)
-
-                # Use ArcPy to compute the composite raster
                 output_path = os.path.join(
                     zone_output_ws, 'etg_{}_{}.{}.tif'.format(
                         zone_name.lower().replace(' ', '_'),
                         stat.lower(), band.lower()))
                 logging.debug('  {}'.format(output_path))
-                output_obj = arcpy.sa.CellStatistics(
-                    image_band_list, stat.upper(), 'DATA')
-                output_obj.save(output_path)
-                output_obj = None
 
+                raster_path_set_nodata(output_path, nodata_value)
                 raster_statistics(output_path)
-
-                # # Remove inputs after computing composite
-                # for image_path in image_band_list:
-                #     arcpy.Delete_management(image_path)
-
-
-def ee_get_info(ee_obj):
-    for i in range(1, 10):
-        try:
-            return ee_obj.getInfo()
-            break
-        except Exception as e:
-            logging.info('  Resending query')
-            logging.debug('  {}'.format(e))
-            sleep(i ** 2)
-    return None
 
 
 def landsat_etg_func(img):
@@ -647,7 +645,7 @@ def raster_ds_set_nodata(raster_ds, input_nodata):
 def arg_parse():
     """"""
     parser = argparse.ArgumentParser(
-        description='Earth Engine Beamer Annual Mean ETg Image Download',
+        description='Earth Engine Beamer Median ETg Image Download',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '-i', '--ini', required=True, type=utils.arg_valid_file,

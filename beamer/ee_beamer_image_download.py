@@ -1,9 +1,8 @@
 #--------------------------------
 # Name:         ee_beamer_image_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Author:       Charles Morton
-# Created       2017-06-13
-# Python:       2.7
+# Created       2017-07-08
+# Python:       3.6
 #--------------------------------
 
 import argparse
@@ -14,9 +13,14 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 from time import sleep
-import urllib
+# Python 2/3 support
+try:
+    import urllib.request as urlrequest
+except ImportError:
+    import urllib as urlrequest
 import zipfile
 
 import ee
@@ -53,7 +57,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine Beamer ETg Image Download')
 
-    median_band_list = ['etg_mean', 'etg_lci', 'etg_uci', 'etg_lpi', 'etg_upi']
+    stat_list = ['median', 'mean']
+    band_list = ['etg_mean', 'etg_lci', 'etg_uci', 'etg_lpi', 'etg_upi']
     nodata_value = -9999
     zips_folder = 'zips'
     images_folder = 'images'
@@ -154,15 +159,15 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     ee.Initialize()
 
     # Get list of path/row strings to centroid coordinates
-    if ini['INPUTS']['path_row_list']:
-        ini['INPUTS']['path_row_geom'] = [
-            wrs2.path_row_centroids[pr]
-            for pr in ini['INPUTS']['path_row_list']
-            if pr in wrs2.path_row_centroids.keys()]
-        ini['INPUTS']['path_row_geom'] = ee.Geometry.MultiPoint(
-            ini['INPUTS']['path_row_geom'], 'EPSG:4326')
+    if ini['INPUTS']['tile_keep_list']:
+        ini['INPUTS']['tile_geom'] = [
+            wrs2.tile_centroids[tile]
+            for tile in ini['INPUTS']['tile_keep_list']
+            if tile in wrs2.tile_centroids.keys()]
+        ini['INPUTS']['tile_geom'] = ee.Geometry.MultiPoint(
+            ini['INPUTS']['tile_geom'], 'EPSG:4326')
     else:
-        ini['INPUTS']['path_row_geom'] = None
+        ini['INPUTS']['tile_geom'] = None
 
     # Read in ETo and PPT data from file
     if (ini['BEAMER']['eto_source'] == 'file' or
@@ -192,16 +197,16 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         k: v for section in ['INPUTS']
         for k, v in ini[section].items()
         if k in [
-            'landsat4_flag', 'landsat5_flag', 'landsat7_flag',
-            'landsat8_flag', 'fmask_flag', 'acca_flag', 'fmask_source',
+            'landsat4_flag', 'landsat5_flag',
+            'landsat7_flag', 'landsat8_flag',
+            'fmask_flag', 'acca_flag', 'fmask_source',
             'start_year', 'end_year',
-            'start_month', 'end_month', 'start_doy', 'end_doy',
+            'start_month', 'end_month',
+            'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'path_row_geom']}
-    # Currently only using TOA collections and comput Tasumi at-surface
-    #   reflectance is supported
-    landsat_args['refl_type'] = 'toa'
+            'adjust_method', 'mosaic_method', 'tile_geom']}
+    # landsat_args['products'] = ['evi_sur']
     landsat = ee_common.Landsat(landsat_args)
 
 
@@ -459,7 +464,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             logging.info('  Downloading')
             for i in range(1, 10):
                 try:
-                    urllib.urlretrieve(zip_url, zip_path)
+                    # urllib.urlretrieve(zip_url, zip_path)
+                    response = urlrequest.urlopen(zip_url)
+                    with open(zip_path, 'wb') as output_f:
+                        shutil.copyfileobj(response, output_f)
                     break
                 except Exception as e:
                     logging.info('  Resending query')
@@ -487,7 +495,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             image_band_list = [
                 os.path.join(
                     zone_images_ws, '{}.{}.tif'.format(image_id, band))
-                for band in median_band_list]
+                for band in band_list]
             if (not overwrite_flag and
                     all(os.path.isfile(x) for x in image_band_list)):
                 logging.debug('  all images present, skipping')
@@ -519,7 +527,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                         os.path.join(zone_images_ws, item))
 
         logging.info('\nComputing annual means')
-        for band in median_band_list:
+        for band in band_list:
             logging.info('  {}'.format(band))
             for year in range(
                     ini['INPUTS']['start_year'],
@@ -555,32 +563,34 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 # for image_path in image_band_list:
                 #     arcpy.Delete_management(image_path)
 
-        logging.info('\nComputing median of annual means')
-        for band in median_band_list:
-            # Compute mean annuals first, then compute medians
-            logging.info('  {}'.format(band))
-            image_band_list = [
-                os.path.join(zone_annuals_ws, item)
-                for item in os.listdir(zone_annuals_ws)
-                if item.endswith('.{}.tif'.format(band))]
-            # for image_path in image_band_list:
-            #     raster_path_set_nodata(image_path, nodata_value)
+        logging.info('\nComputing composite rasters from annual means')
+        for stat in stat_list:
+            logging.info('  Stat: {}'.format(stat))
+            for band in band_list:
+                logging.info('  {}'.format(band))
+                image_band_list = [
+                    os.path.join(zone_annuals_ws, item)
+                    for item in os.listdir(zone_annuals_ws)
+                    if item.endswith('.{}.tif'.format(band))]
+                # for image_path in image_band_list:
+                #     raster_path_set_nodata(image_path, nodata_value)
 
-            # Use ArcPy to compute the median
-            median_path = os.path.join(
-                zone_output_ws, 'etg_{}_median.{}.tif'.format(
-                    zone_name.lower().replace(' ', '_'), band.lower()))
-            logging.debug('  {}'.format(median_path))
-            median_obj = arcpy.sa.CellStatistics(
-                image_band_list, 'MEDIAN', 'DATA')
-            median_obj.save(median_path)
-            median_obj = None
+                # Use ArcPy to compute the composite raster
+                output_path = os.path.join(
+                    zone_output_ws, 'etg_{}_{}.{}.tif'.format(
+                        zone_name.lower().replace(' ', '_'),
+                        stat.lower(), band.lower()))
+                logging.debug('  {}'.format(output_path))
+                output_obj = arcpy.sa.CellStatistics(
+                    image_band_list, stat.upper(), 'DATA')
+                output_obj.save(output_path)
+                output_obj = None
 
-            raster_statistics(median_path)
+                raster_statistics(output_path)
 
-            # Remove after computing median
-            # for image_path in image_band_list:
-            #     arcpy.Delete_management(image_path)
+                # Remove after computing median
+                # for image_path in image_band_list:
+                #     arcpy.Delete_management(image_path)
 
 
 def ee_get_info(ee_obj):
