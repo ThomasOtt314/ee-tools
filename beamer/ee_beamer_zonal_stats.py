@@ -35,7 +35,7 @@ import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
 import ee_tools.utils as utils
-import ee_tools.wrs2 as wrs2
+# import ee_tools.wrs2 as wrs2
 
 
 def main(ini_path, overwrite_flag=True):
@@ -199,13 +199,14 @@ def main(ini_path, overwrite_flag=True):
         k: v for section in ['INPUTS']
         for k, v in ini[section].items()
         if k in [
-            'landsat4_flag', 'landsat5_flag', 'landsat7_flag',
-            'landsat8_flag', 'fmask_flag', 'acca_flag', 'fmask_source',
+            'landsat4_flag', 'landsat5_flag',
+            'landsat7_flag', 'landsat8_flag',
+            'fmask_flag', 'acca_flag', 'fmask_source',
             'start_year', 'end_year',
             'start_month', 'end_month', 'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'path_row_geom']}
+            'adjust_method', 'mosaic_method', 'tile_geom']}
     landsat_args['products'] = landsat_products
     # Currently only using TOA collections and comput Tasumi at-surface
     #   reflectance is supported
@@ -322,7 +323,7 @@ def main(ini_path, overwrite_flag=True):
                 elif ini['BEAMER']['data_ppt_units'] == 'ft':
                     wy_ppt_input *= (25.4 * 12)
             elif ini['BEAMER']['ppt_source'] == 'gridmet':
-                wy_ppt_input = float(ee_get_info(ee.ImageCollection(
+                wy_ppt_input = float(utils.getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_ppt_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # Calculate GRIDMET zonal mean of geometry
@@ -336,7 +337,7 @@ def main(ini_path, overwrite_flag=True):
                 #         tileScale=1).getInfo()['PPT']
             # elif ini['BEAMER']['ppt_source'] == 'prism':
             #     # Calculate PRISM zonal mean of geometry
-            #     wy_ppt_input = float(ee_get_info(ee.ImageCollection(
+            #     wy_ppt_input = float(utils.getinfo(ee.ImageCollection(
             #         prism_coll.map(ee_common.prism_ppt_func)).sum().reduceRegion(
             #             reducer=ee.Reducer.mean(),
             #             geometry=zone['geom'],
@@ -357,7 +358,7 @@ def main(ini_path, overwrite_flag=True):
                     wy_eto_input *= (25.4 * 12)
             # This assumes GRIMET data is in millimeters
             elif ini['BEAMER']['eto_source'] == 'gridmet':
-                wy_eto_input = float(ee_get_info(ee.ImageCollection(
+                wy_eto_input = float(utils.getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_eto_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # wy_eto_input = float(ee.ImageCollection(
@@ -533,7 +534,7 @@ def main(ini_path, overwrite_flag=True):
             # # return False
 
             # Get the values from EE
-            stats_desc = ee_get_info(stats_coll)
+            stats_desc = utils.getinfo(stats_coll)
             if stats_desc is None:
                 logging.error('  Timeout error, skipping')
                 continue
@@ -620,16 +621,16 @@ def main(ini_path, overwrite_flag=True):
             del row_list
 
 
-def ee_get_info(ee_obj):
-    for i in range(1, 10):
-        try:
-            return ee_obj.getInfo()
-            break
-        except Exception as e:
-            logging.info('  Resending query')
-            logging.debug('  {}'.format(e))
-            sleep(i ** 2)
-    return None
+# def ee_get_info(ee_obj):
+#     for i in range(1, 10):
+#         try:
+#             return ee_obj.getInfo()
+#             break
+#         except Exception as e:
+#             logging.info('  Resending query')
+#             logging.debug('  {}'.format(e))
+#             sleep(i ** 2)
+#     return None
 
 
 def landsat_etg_func(img):

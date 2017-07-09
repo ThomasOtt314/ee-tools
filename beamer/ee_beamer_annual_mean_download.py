@@ -6,6 +6,7 @@
 #--------------------------------
 
 import argparse
+from builtins import input
 from collections import defaultdict
 import datetime as dt
 from dateutil import rrule, relativedelta
@@ -42,7 +43,7 @@ import ee_tools.utils as utils
 import ee_tools.wrs2 as wrs2
 
 # ArcPy must be imported after OGR
-import arcpy
+# import arcpy
 
 
 def ee_beamer_et(ini_path=None, overwrite_flag=False):
@@ -149,8 +150,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             ini['SPATIAL']['cellsize']))
 
     # Use ArcPy to compute the median
-    arcpy.CheckOutExtension('Spatial')
-    arcpy.env.overwriteOutput = True
+    # arcpy.CheckOutExtension('Spatial')
+    # arcpy.env.overwriteOutput = True
 
     # Initialize Earth Engine API key
     ee.Initialize()
@@ -342,7 +343,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     wy_ppt_input *= (25.4 * 12)
             elif ini['BEAMER']['ppt_source'] == 'gridmet':
                 # GET GRIDMET value at centroid of geometry
-                wy_ppt_input = float(ee_get_info(ee.ImageCollection(
+                wy_ppt_input = float(utils.getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_ppt_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # Calculate GRIDMET zonal mean of geometry
@@ -377,7 +378,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     wy_eto_input *= (25.4 * 12)
             # This assumes GRIMET data is in millimeters
             elif ini['BEAMER']['eto_source'] == 'gridmet':
-                wy_eto_input = float(ee_get_info(ee.ImageCollection(
+                wy_eto_input = float(utils.getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_eto_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # wy_eto_input = float(ee.ImageCollection(
@@ -419,8 +420,9 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             landsat.start_date = iter_start_dt.strftime('%Y-%m-%d')
             landsat.end_date = iter_end_dt.strftime('%Y-%m-%d')
             landsat_coll = landsat.get_collection()
-            # print([f['properties']['SCENE_ID'] for f in landsat_coll.getInfo()['features']])
-            # raw_input('ENTER')
+            # print(sorted(utils.getinfo(
+            #     landsat_coll.aggregate_histogram('SCENE_ID'))))
+            # input('ENTER')
 
             # Add water year ETo and PPT values to each image
             def eto_ppt_func(img):
@@ -435,7 +437,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             etg_coll = ee.ImageCollection(landsat_coll.map(landsat_etg_func))
             # print([float(x[4]) for x in etg_coll.getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
             # print([float(x[4]) for x in ee.ImageCollection(ee.Image(etg_coll.mean())).getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
-            # raw_input('ENTER')
+            # input('ENTER')
 
             # Clip using the feature geometry
             # Set the masked values to a nodata value
@@ -446,29 +448,34 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
             if not os.path.isfile(zip_path):
                 # Get the download URL
-                logging.debug('  Requesting')
-                zip_url = None
-                for i in range(1, 10):
-                    try:
-                        zip_url = etg_image.getDownloadURL({
-                            'name': image_id,
-                            'crs': ini['SPATIAL']['crs'],
-                            'crs_transform': output_transform,
-                            'dimensions': output_shape
-                        })
-                    except Exception as e:
-                        logging.info('  Resending query')
-                        logging.debug('  {}'.format(e))
-                        sleep(i ** 2)
-                        zip_url = None
-                    if zip_url:
-                        break
+                logging.debug('  Requesting URL')
+                zip_url = utils.request(etg_image.getDownloadURL({
+                    'name': image_id,
+                    'crs': ini['SPATIAL']['crs'],
+                    'crs_transform': output_transform,
+                    'dimensions': output_shape
+                }))
+                # zip_url = None
+                # for i in range(1, 10):
+                #     try:
+                #         zip_url = etg_image.getDownloadURL({
+                #             'name': image_id,
+                #             'crs': ini['SPATIAL']['crs'],
+                #             'crs_transform': output_transform,
+                #             'dimensions': output_shape
+                #         })
+                #     except Exception as e:
+                #         logging.info('  Resending query')
+                #         logging.debug('  {}'.format(e))
+                #         sleep(i ** 2)
+                #         zip_url = None
+                #     if zip_url:
+                #         break
 
                 # Try downloading a few times
                 logging.info('  Downloading')
                 for i in range(1, 10):
                     try:
-                        # urllib.urlretrieve(zip_url, zip_path)
                         response = urlrequest.urlopen(zip_url)
                         with open(zip_path, 'wb') as output_f:
                             shutil.copyfileobj(response, output_f)
@@ -512,34 +519,26 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 # for image_path in image_band_list:
                 #     raster_path_set_nodata(image_path, nodata_value)
 
-                # Use ArcPy to compute the composite raster
                 output_path = os.path.join(
                     zone_output_ws, 'etg_{}_{}.{}.tif'.format(
                         zone_name.lower().replace(' ', '_'),
                         stat.lower(), band.lower()))
                 logging.debug('  {}'.format(output_path))
-                output_obj = arcpy.sa.CellStatistics(
-                    image_band_list, stat.upper(), 'DATA')
-                output_obj.save(output_path)
-                output_obj = None
+
+                # Use GDAL to compute the composite raster
+                cell_statistics(image_band_list, output_path, stat.lower())
+
+                # Use ArcPy to compute the composite raster
+                # output_obj = arcpy.sa.CellStatistics(
+                #     image_band_list, stat.upper(), 'DATA')
+                # output_obj.save(output_path)
+                # output_obj = None
 
                 raster_statistics(output_path)
 
                 # # Remove inputs after computing composite
                 # for image_path in image_band_list:
                 #     arcpy.Delete_management(image_path)
-
-
-def ee_get_info(ee_obj):
-    for i in range(1, 10):
-        try:
-            return ee_obj.getInfo()
-            break
-        except Exception as e:
-            logging.info('  Resending query')
-            logging.debug('  {}'.format(e))
-            sleep(i ** 2)
-    return None
 
 
 def landsat_etg_func(img):
@@ -607,7 +606,138 @@ def etg_func(etstar, eto, ppt):
     return etstar.multiply(eto.subtract(ppt))
 
 
-def raster_statistics(input_raster):
+def cell_statistics(image_list, output_path, stat='mean'):
+    """GDAL implementation of the ArcPy CellStatistics tool
+
+    Reduce an image stack for the specified statistic
+    For now this function will blindly assume all images have the same
+        shape, type, extent, etc.
+    """
+    # logging.debug('  Computing composite raster')
+    # logging.debug('    Output: {}'.format(output_path))
+    # logging.debug('    Stat: {}'.format(stat))
+
+    # Use first image in list to define output array
+    input_ds = gdal.Open(image_list[0], 0)
+    input_band = input_ds.GetRasterBand(1)
+    input_geo = input_ds.GetGeoTransform()
+    input_proj = input_ds.GetProjection()
+    input_nodata = input_band.GetNoDataValue()
+    input_gtype = input_band.DataType
+    input_dtype = gdal_to_numpy_type(input_gtype)
+    input_rows, input_cols = input_ds.RasterYSize, input_ds.RasterXSize
+    input_ds = None
+
+    # Initialize the in memory array for storing the images
+    input_array = np.full(
+        (len(image_list), input_rows, input_cols),
+        input_nodata, dtype=input_dtype)
+
+    # Read the images into memory
+    for i, input_path in enumerate(image_list):
+        logging.debug('  {}'.format(input_path))
+        input_ds = gdal.Open(input_path, 0)
+        if (input_rows != input_ds.RasterYSize or
+                input_cols != input_ds.RasterXSize):
+            logging.error('    Non-matching image dimensions, exiting')
+            sys.exit()
+        input_band = input_ds.GetRasterBand(1)
+        input_array[i, :, :] = input_band.ReadAsArray(
+            0, 0, input_cols, input_rows)
+        input_ds = None
+
+    # Compute the composite array
+    if stat.lower() == 'mean':
+        output_array = np.mean(input_array, axis=0)
+    elif stat.lower() == 'median':
+        output_array = np.median(input_array, axis=0)
+    else:
+        logging.error('    Unsupported stat type, exiting')
+        sys.exit()
+
+    # Write the composite array to disk
+    output_driver = raster_driver(output_path)
+    output_ds = output_driver.Create(
+        output_path, input_cols, input_rows, 1, input_gtype)
+    # output_raster_ds = output_driver.Create(
+    #     output_path, input_cols, input_rows, 1, input_gtype,
+    #     ['COMPRESSED=YES', 'BLOCKSIZE={}'.format(output_bs)])
+    output_ds.SetGeoTransform(input_geo)
+    output_ds.SetProjection(input_proj)
+    output_band = output_ds.GetRasterBand(1)
+    output_band.WriteArray(output_array, 0, 0)
+    output_band.SetNoDataValue(input_nodata)
+    # stats = input_band.GetStatistics(0, 1)
+    # # output_band.SetStatistics(*stats)
+    # output_band.GetHistogram(stats[0], stats[1])
+    output_ds = None
+    return True
+
+
+def raster_driver(raster_path):
+    """Return the GDAL driver from a raster path
+
+    Currently supports ERDAS Imagine format, GeoTiff,
+    HDF-EOS (HDF4), BSQ/BIL/BIP, and memory drivers.
+
+    Args:
+        raster_path (str): filepath to a raster
+
+
+    Returns:
+        GDAL driver: GDAL raster driver
+
+    """
+    if raster_path.upper().endswith('IMG'):
+        return gdal.GetDriverByName('HFA')
+    elif raster_path.upper().endswith('TIF'):
+        return gdal.GetDriverByName('GTiff')
+    elif raster_path.upper().endswith('TIFF'):
+        return gdal.GetDriverByName('GTiff')
+    elif raster_path == '':
+        return gdal.GetDriverByName('MEM')
+    else:
+        sys.exit()
+
+
+def gdal_to_numpy_type(gdal_type):
+    """Return the NumPy array data type based on a GDAL type
+
+    Args:
+        gdal_type (:class:`gdal.type`): GDAL data type
+
+    Returns:
+        numpy_type: NumPy datatype (:class:`np.dtype`)
+
+    """
+    if gdal_type == gdal.GDT_Unknown:
+        numpy_type = np.float64
+    elif gdal_type == gdal.GDT_Byte:
+        numpy_type = np.uint8
+    elif gdal_type == gdal.GDT_UInt16:
+        numpy_type = np.uint16
+    elif gdal_type == gdal.GDT_Int16:
+        numpy_type = np.int16
+    elif gdal_type == gdal.GDT_UInt32:
+        numpy_type = np.uint32
+    elif gdal_type == gdal.GDT_Int32:
+        numpy_type = np.int32
+    elif gdal_type == gdal.GDT_Float32:
+        numpy_type = np.float32
+    elif gdal_type == gdal.GDT_Float64:
+        numpy_type = np.float64
+    # elif gdal_type == gdal.GDT_CInt16:
+    #     numpy_type = np.complex64
+    # elif gdal_type == gdal.GDT_CInt32:
+    #     numpy_type = np.complex64
+    # elif gdal_type == gdal.GDT_CFloat32:
+    #     numpy_type = np.complex64
+    # elif gdal_type == gdal.GDT_CFloat64:
+    #     numpy_type = np.complex64
+    return numpy_type
+
+
+def raster_statistics(raster_path):
     """"""
     def band_statistics(input_band):
         """"""
@@ -617,31 +747,31 @@ def raster_statistics(input_raster):
         input_band.GetHistogram(stats[0], stats[1])
         # return stats
 
-    output_raster_ds = gdal.Open(input_raster, 1)
-    for band_i in range(int(output_raster_ds.RasterCount)):
+    raster_ds = gdal.Open(raster_path, 1)
+    for band_i in range(int(raster_ds.RasterCount)):
         try:
-            band = output_raster_ds.GetRasterBand(band_i + 1)
+            band = raster_ds.GetRasterBand(band_i + 1)
             band_statistics(band)
         except RuntimeError:
             logging.debug('  {} - band {} - all cells nodata'.format(
-                input_raster, band_i + 1))
+                raster_path, band_i + 1))
             continue
-    output_raster_ds = None
+    raster_ds = None
 
 
-def raster_path_set_nodata(raster_path, input_nodata):
+def raster_path_set_nodata(raster_path, raster_nodata):
     """Set raster nodata value for all bands"""
     raster_ds = gdal.Open(raster_path, 1)
-    raster_ds_set_nodata(raster_ds, input_nodata)
+    raster_ds_set_nodata(raster_ds, raster_nodata)
     del raster_ds
 
 
-def raster_ds_set_nodata(raster_ds, input_nodata):
+def raster_ds_set_nodata(raster_ds, raster_nodata):
     """Set raster dataset nodata value for all bands"""
     band_cnt = raster_ds.RasterCount
     for band_i in range(band_cnt):
         band = raster_ds.GetRasterBand(band_i + 1)
-        band.SetNoDataValue(input_nodata)
+        band.SetNoDataValue(raster_nodata)
 
 
 def arg_parse():

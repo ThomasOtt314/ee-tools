@@ -6,6 +6,7 @@
 #--------------------------------
 
 import argparse
+from builtins import input
 from collections import defaultdict
 import datetime as dt
 import json
@@ -427,8 +428,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 landsat.start_date = dt.date(year, 1, 1).isoformat()
                 landsat.end_date = dt.date(year, 12, 31).isoformat()
                 landsat_coll = landsat.get_collection()
-                # print([f['properties']['SCENE_ID'] for f in landsat_coll.getInfo()['features']])
-                # raw_input('ENTER')
+                # print(utils.getinfo(landsat_coll.aggregate_histogram('SCENE_ID')))
+                # input('ENTER')
 
                 # Add water year ETo and PPT values to each image
                 def eto_ppt_func(img):
@@ -437,10 +438,12 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                         'wy_eto': wy_eto_output[year],
                         'wy_ppt': wy_ppt_output[year]
                     })
-                landsat_coll = ee.ImageCollection(landsat_coll.map(eto_ppt_func))
+                landsat_coll = ee.ImageCollection(
+                    landsat_coll.map(eto_ppt_func))
 
                 # Build each collection separately then merge
-                etg_coll = ee.ImageCollection(landsat_coll.map(landsat_etg_func))
+                etg_coll = ee.ImageCollection(
+                    landsat_coll.map(landsat_etg_func))
 
                 etg_images.append(ee.Image(etg_coll.mean()).setMulti({
                     'system:index': str(year),
@@ -461,6 +464,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 etg_image = ee.Image(etg_coll.mean())
             else:
                 logging.error('  Unsupported stat type: {}'.format(stat))
+                sys.exit()
 
             # Clip using the feature geometry
             # Set the masked values to a nodata value
@@ -471,31 +475,34 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
             # Download the image
             if not os.path.isfile(zip_path):
-                # Get the download URL
                 logging.debug('  Requesting URL')
-                zip_url = None
-                for i in range(1, 10):
-                    try:
-                        zip_url = etg_image.getDownloadURL({
-                            'name': image_id,
-                            'crs': ini['SPATIAL']['crs'],
-                            'crs_transform': output_transform,
-                            'dimensions': output_shape
-                        })
-                    except Exception as e:
-                        logging.info('  Resending query')
-                        logging.debug('  {}'.format(e))
-                        sleep(i ** 2)
-                        zip_url = None
-                    if zip_url:
-                        break
+                zip_url = utils.request(etg_image.getDownloadURL({
+                    'name': image_id,
+                    'crs': ini['SPATIAL']['crs'],
+                    'crs_transform': output_transform,
+                    'dimensions': output_shape
+                }))
+                # zip_url = None
+                # for i in range(1, 10):
+                #     try:
+                #         zip_url = etg_image.getDownloadURL({
+                #             'name': image_id,
+                #             'crs': ini['SPATIAL']['crs'],
+                #             'crs_transform': output_transform,
+                #             'dimensions': output_shape
+                #         })
+                #     except Exception as e:
+                #         logging.info('  Resending query')
+                #         logging.debug('  {}'.format(e))
+                #         sleep(i ** 2)
+                #         zip_url = None
+                #     if zip_url:
+                #         break
                 logging.debug('  {}'.format(zip_url))
 
-                # Try downloading a few times
                 logging.info('  Downloading')
                 for i in range(1, 10):
                     try:
-                        # urllib.urlretrieve(zip_url, zip_path)
                         response = urlrequest.urlopen(zip_url)
                         with open(zip_path, 'wb') as output_f:
                             shutil.copyfileobj(response, output_f)
@@ -605,7 +612,7 @@ def etg_func(etstar, eto, ppt):
     return etstar.multiply(eto.subtract(ppt))
 
 
-def raster_statistics(input_raster):
+def raster_statistics(raster_path):
     """"""
     def band_statistics(input_band):
         """"""
@@ -615,31 +622,31 @@ def raster_statistics(input_raster):
         input_band.GetHistogram(stats[0], stats[1])
         # return stats
 
-    output_raster_ds = gdal.Open(input_raster, 1)
-    for band_i in range(int(output_raster_ds.RasterCount)):
+    raster_ds = gdal.Open(raster_path, 1)
+    for band_i in range(int(raster_ds.RasterCount)):
         try:
-            band = output_raster_ds.GetRasterBand(band_i + 1)
+            band = raster_ds.GetRasterBand(band_i + 1)
             band_statistics(band)
         except RuntimeError:
             logging.debug('  {} - band {} - all cells nodata'.format(
-                input_raster, band_i + 1))
+                raster_path, band_i + 1))
             continue
-    output_raster_ds = None
+    raster_ds = None
 
 
-def raster_path_set_nodata(raster_path, input_nodata):
+def raster_path_set_nodata(raster_path, raster_nodata):
     """Set raster nodata value for all bands"""
     raster_ds = gdal.Open(raster_path, 1)
-    raster_ds_set_nodata(raster_ds, input_nodata)
+    raster_ds_set_nodata(raster_ds, raster_nodata)
     del raster_ds
 
 
-def raster_ds_set_nodata(raster_ds, input_nodata):
+def raster_ds_set_nodata(raster_ds, raster_nodata):
     """Set raster dataset nodata value for all bands"""
     band_cnt = raster_ds.RasterCount
     for band_i in range(band_cnt):
         band = raster_ds.GetRasterBand(band_i + 1)
-        band.SetNoDataValue(input_nodata)
+        band.SetNoDataValue(raster_nodata)
 
 
 def arg_parse():
