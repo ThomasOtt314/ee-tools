@@ -442,6 +442,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     logging.debug('    {}'.format(output_path))
     try:
         output_df = pd.read_csv(output_path, parse_dates=['DATE'])
+        output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(str)
 
         # DEADBEEF - Code to update old style SCENE_IDs
         # This should only need to be run once
@@ -611,7 +612,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             missing_df = pd.DataFrame(
                 index=missing_skip_ids, columns=output_df.columns)
             missing_df.index.name = 'SCENE_ID'
-            missing_df['ZONE_NAME'] = zone['name']
+            missing_df['ZONE_NAME'] = str(zone['name'])
             missing_df['ZONE_FID'] = zone['fid']
             missing_df['AREA'] = zone['area']
             missing_df['PLATFORM'] = missing_df.index.str.slice(0, 4)
@@ -622,22 +623,24 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             missing_df['MONTH'] = missing_df['DATE'].dt.month
             missing_df['DAY'] = missing_df['DATE'].dt.day
             missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
-            missing_df['ROW'] = None
-            missing_df['QA'] = None
+            missing_df['ROW'] = np.nan
+            missing_df['QA'] = np.nan
             # missing_df['QA'] = 0
             missing_df['PIXEL_SIZE'] = landsat.cellsize
             missing_df['PIXEL_COUNT'] = 0
             missing_df['PIXEL_TOTAL'] = 0
             missing_df['FMASK_COUNT'] = 0
             missing_df['FMASK_TOTAL'] = 0
-            missing_df['FMASK_PCT'] = None
-            missing_df['CLOUD_SCORE'] = None
+            missing_df['FMASK_PCT'] = np.nan
+            missing_df['CLOUD_SCORE'] = np.nan
             # missing_df[f] = missing_df[f].astype(int)
 
             # Remove the overlapping missing entries
             # Then append the new missing entries
-            output_df.drop(
-                output_df.index.intersection(missing_df.index), inplace=True)
+            if output_df.index.intersection(missing_df.index).any():
+                output_df.drop(
+                    output_df.index.intersection(missing_df.index),
+                    inplace=True)
             output_df = output_df.append(missing_df)
             output_df.reset_index(drop=False, inplace=True)
             output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
@@ -972,7 +975,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
             # Standard output
             zs_dict = {
-                'ZONE_NAME': zone['name'],
+                'ZONE_NAME': str(zone['name']),
                 # 'ZONE_FID': zone['fid'],
                 'SCENE_ID': scene_id.slice(0, 20),
                 # 'PLATFORM': scene_id.slice(0, 4),
