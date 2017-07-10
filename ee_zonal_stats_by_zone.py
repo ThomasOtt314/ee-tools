@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-07
+# Modified:     2017-07-09
 # Python:       3.6
 #--------------------------------
 
@@ -308,7 +308,7 @@ def main(ini_path=None, overwrite_flag=False):
         zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
             .replace(' ', '_')
         zone['json'] = zone_ftr['geometry']
-    
+
         logging.info('ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
         logging.debug('  Zone')
 
@@ -420,7 +420,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             'landsat7_flag', 'landsat8_flag',
             'fmask_flag', 'acca_flag', 'fmask_source',
             'start_year', 'end_year',
-            'start_month', 'end_month', 
+            'start_month', 'end_month',
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
@@ -472,7 +472,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
     # # # DEADBEEF - Remove old Landsat 8 data
     # # l8_pre_mask = (
-    # #     (output_df['PLATFORM'] == 'LC08') & (output_df['YEAR'] >= 2013) & 
+    # #     (output_df['PLATFORM'] == 'LC08') & (output_df['YEAR'] >= 2013) &
     # #     (output_df['YEAR'] <= 2014))
     # # if not output_df.empty and l8_pre_mask.any():
     # #     logging.info('    Removing old Landsat 8 entries')
@@ -482,10 +482,21 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # #     output_df.to_csv(output_path, index=False, columns=output_fields)
     # #     # input('ENTER')
 
-    # DEADBEEF - Look for duplicate SCENE_IDs
-    if not output_df.empty and output_df.duplicated(['SCENE_ID']).any():
-        logging.debug('    Removing duplicate SCENE_IDs')
-        output_df = output_df[output_df.duplicated(['SCENE_ID'], False)]
+    # # DEADBEEF - Look for duplicate SCENE_IDs
+    # if not output_df.empty and output_df.duplicated(['SCENE_ID']).any():
+    #     logging.debug('    Removing duplicate SCENE_IDs')
+    #     output_df = output_df[output_df.duplicated(['SCENE_ID'], False)]
+
+    # DEADBEEF - Drop paths that aren't in the full zone_tile_list
+    #   Intentionally using non-filtered zone tile list
+    zone_path_list = sorted(list(set([
+        int(tile[1:4])
+        for tile in ini['ZONAL_STATS']['zone_tile_json'][zone['name']]])))
+    if not output_df.empty and ~output_df['PATH'].isin(zone_path_list).any():
+        logging.info('    Removing invalid path entries')
+        output_df = output_df[output_df['PATH'].isin(zone_path_list)]
+        output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+        output_df.to_csv(output_path, index=False, columns=output_fields)
 
     # # # DEADBEEF - Remove entries with nodata (but PIXEL_COUNT > 0)
     # # drop_mask = (
@@ -515,7 +526,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # #     output_df.to_csv(output_path, index=False, columns=output_fields)
     # #     input('ENTER')
 
-    # Use the SCENE_ID as the index  
+    # Use the SCENE_ID as the index
     output_df.set_index('SCENE_ID', inplace=True, drop=True)
     # output_df.index.name = 'SCENE_ID'
 
@@ -571,9 +582,9 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # If there are any fully missing scenes, identify whether they
     #   intersect the zone or not
     # Exclude non-intersecting SCENE_IDs from export_ids set
-    # Add non-intersecting SCENE_IDs directly to the output dataframe    
+    # Add non-intersecting SCENE_IDs directly to the output dataframe
     if missing_all_ids:
-        # Get SCENE_ID list mimicking a full extract below 
+        # Get SCENE_ID list mimicking a full extract below
         #   (but without products)
         landsat.products = []
         landsat.path_keep_list = landsat_args['path_keep_list']
@@ -583,7 +594,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # SCENE_ID keep list must be non-mosaiced IDs
         if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
             landsat.update_scene_id_keep([
-                scene_id for mosaic_id in missing_all_ids 
+                scene_id for mosaic_id in missing_all_ids
                 for scene_id in mosaic_id_dict[mosaic_id]])
         else:
             landsat.update_scene_id_keep(missing_all_ids)
@@ -593,7 +604,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             landsat_coll.aggregate_histogram('SCENE_ID')))
         # Difference of sets are SCENE_IDs that don't intersect
         missing_skip_ids = missing_all_ids - missing_zone_ids
-        # Updating missing all SCENE_ID list to not include 
+        # Updating missing all SCENE_ID list to not include
         #   non-intersecting scenes
         missing_all_ids = set(missing_zone_ids)
         # Remove skipped/empty SCENE_IDs from possible SCENE_ID list
@@ -654,7 +665,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     missing_fields = [
         f.upper() for f in ini['ZONAL_STATS']['landsat_products']]
     missing_id_mask = (
-        (output_df['PIXEL_COUNT'] > 0) & 
+        (output_df['PIXEL_COUNT'] > 0) &
         output_df.index.isin(export_ids))
     missing_df = output_df.loc[missing_id_mask, missing_fields].isnull()
 
@@ -667,7 +678,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
     # Check for fields that are entirely empty or not present
     #   These may have been added but not filled
-    # Additional logic is to handle condition where 
+    # Additional logic is to handle condition where
     #   calling all on an empty dataframe returns True
     if not missing_df.empty:
         missing_all_products = set(
@@ -1021,7 +1032,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # input('ENTER')
         # return False
 
-        # Add a dummy entry to the stats collection 
+        # Add a dummy entry to the stats collection
         format_dict = {
             'ZONE_NAME': 'DEADBEEF',
             'SCENE_ID': 'DEADBEEF',
@@ -1068,6 +1079,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             export_info = utils.getinfo(stats_coll)['features']
             export_df = pd.DataFrame([f['properties'] for f in export_info])
             export_df = export_update(export_df)
+            # print(output_df.head())
+            # print(export_df)
 
             # Save data to main dataframe
             if not export_df.empty:
