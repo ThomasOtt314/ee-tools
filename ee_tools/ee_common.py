@@ -1,10 +1,11 @@
 #--------------------------------
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
-# Modified:     2017-07-07
+# Modified:     2017-07-10
 # Python:       3.6
 #--------------------------------
 
+from builtins import input
 import datetime
 import logging
 import math
@@ -157,7 +158,7 @@ class Landsat():
             landsat_list.append('LE07')
         if self.landsat8_flag:
             landsat_list.append('LC08')
-        self.landsat_list = landsat_list
+        self.landsat_list = sorted(landsat_list)
 
 
         today = datetime.date.today().isoformat()
@@ -175,7 +176,7 @@ class Landsat():
         # Modify the Landsat types based on SCENE_ID keep list
         if scene_id_keep_list:
             self.landsat_list = sorted(list(
-                set(self.landsat_list) & 
+                set(self.landsat_list) &
                 set([str(x[:4]) for x in scene_id_keep_list])))
 
         # Clear flags if possible/necessary
@@ -337,7 +338,7 @@ class Landsat():
             if self.start_date and self.end_date:
                 # End date is inclusive but filterDate is exclusive
                 end_date = (
-                    datetime.datetime.strptime(self.end_date, '%Y-%m-%d') + 
+                    datetime.datetime.strptime(self.end_date, '%Y-%m-%d') +
                     datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                 landsat_coll = landsat_coll.filterDate(
                     self.start_date, end_date)
@@ -487,16 +488,15 @@ class Landsat():
                     self.mosaic_method in self.mosaic_options):
                 landsat_coll = mosaic_landsat_images(
                     landsat_coll, self.mosaic_method)
+            # logging.info('{}'.format(', '.join(sorted(
+            #     output_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
 
             # Merge Landsat specific collection into output collection
             output_coll = ee.ImageCollection(
                 output_coll.merge(landsat_coll))
-            # logging.info('{}'.format([
-            #     f['properties']['MOSAIC_ID']
-            #     for f in output_coll.getInfo()['features']]))
-            # raw_input('ENTER')
 
-        # print(sorted(output_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))
+        # logging.info('{}'.format(', '.join(sorted(
+        #     output_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
         return output_coll
 
     def landsat5_images_func(self, refl_toa):

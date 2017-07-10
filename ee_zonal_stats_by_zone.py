@@ -492,7 +492,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     zone_path_list = sorted(list(set([
         int(tile[1:4])
         for tile in ini['ZONAL_STATS']['zone_tile_json'][zone['name']]])))
-    if not output_df.empty and ~output_df['PATH'].isin(zone_path_list).any():
+    if not output_df.empty and (~output_df['PATH'].isin(zone_path_list)).any():
         logging.info('    Removing invalid path entries')
         output_df = output_df[output_df['PATH'].isin(zone_path_list)]
         output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
@@ -572,6 +572,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             mosaic_id = '{}XXX{}'.format(scene_id[:8], scene_id[11:])
             mosaic_id_dict[mosaic_id].append(scene_id)
         export_ids = set(mosaic_id_dict.keys())
+
+    # For overwrite, drop all expected entries from existing output DF
+    # if overwrite_flag:
+    #     output_df = output_df[~output['SCENE_ID'].isin(list(export_ids))]
 
     # List of SCENE_IDs that are entirely missing
     # This may include scenes that don't intersect the zone
@@ -671,6 +675,17 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
     # List of SCENE_IDs and products with some missing data
     missing_any_ids = set(missing_df[missing_df.any(axis=1)].index.values)
+
+    # DEADBEEF - For now, skip SCENE_IDs that are only missing Ts
+    missing_ts_ids = set(missing_df[
+        missing_df[['TS']].any(axis=1) &
+        ~missing_df.drop('TS', axis=1).any(axis=1)].index.values)
+    if missing_ts_ids:
+        logging.info('  SCENE_IDs missing Ts only: {}'.format(
+            ', '.join(sorted(missing_ts_ids))))
+        missing_any_ids -= missing_ts_ids
+        # input('ENTER')
+
     # logging.debug('  SCENE_IDs missing all values: {}'.format(
     #     ', '.join(sorted(missing_all_ids))))
     # logging.debug('  SCENE_IDs missing any values: {}'.format(
@@ -717,20 +732,23 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if not missing_scene_ids and not missing_products:
         logging.info('    No missing data or products, skipping zone')
         return True
-    elif missing_scene_ids:
+    elif missing_scene_ids or missing_all_products:
         logging.info('    Exporting all products for specific SCENE_IDs')
         landsat.update_scene_id_keep(missing_scene_ids)
         landsat.products = ini['ZONAL_STATS']['landsat_products']
-    elif missing_all_products:
-        logging.info('    Exporting all products for specific SCENE_IDs')
-        landsat.update_scene_id_keep(missing_scene_ids)
-        landsat.products = list(missing_all_products)
-    elif missing_products or missing_scene_ids:
+    elif missing_scene_ids and missing_products:
         logging.info('    Exporting specific missing products/SCENE_IDs')
         landsat.update_scene_id_keep(missing_scene_ids)
         landsat.products = list(missing_products)
+    elif not missing_scene_ids and missing_products:
+        # This conditional will happen when images are missing Ts only
+        # The SCENE_IDs are skipped but the missing products is not being
+        #   updated also.
+        logging.info(
+            '    Missing products but no missing SCENE_IDs, skipping zone')
+        return True
     else:
-        logging.error('Unhandled conditional')
+        logging.error('    Unhandled conditional')
         input('ENTER')
 
 
