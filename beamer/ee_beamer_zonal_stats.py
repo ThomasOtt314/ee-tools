@@ -1,14 +1,14 @@
 #--------------------------------
 # Name:         ee_beamer_zonal_stats.py
 # Purpose:      Beamer ET using Earth Engine
-# Created       2017-06-20
+# Created       2017-07-13
 # Python:       3.6
 #--------------------------------
 
 import argparse
 from builtins import input
 from collections import defaultdict
-import datetime as dt
+import datetime
 from dateutil import rrule, relativedelta
 import json
 import logging
@@ -16,7 +16,6 @@ import os
 import pprint
 import re
 import sys
-from time import sleep
 
 import ee
 import numpy as np
@@ -66,27 +65,31 @@ def main(ini_path, overwrite_flag=True):
     inputs.parse_section(ini, section='INPUTS')
     inputs.parse_section(ini, section='SPATIAL')
     inputs.parse_section(ini, section='BEAMER')
+    # inputs.parse_section(ini, section='EXPORT')
+    inputs.parse_section(ini, section='ZONAL_STATS')
 
     # First row  of csv is header
     header_list = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
+        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM', 'PATH', 'ROW',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'PIXEL_COUNT', 'PIXEL_TOTAL',
         'FMASK_COUNT', 'FMASK_TOTAL', 'FMASK_PCT',
         'LOW_ETG_COUNT', 'CLOUD_SCORE', 'QA',
         'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS',
-        'EVI_SUR', 'ETSTAR_MEAN', 'ETG_MEAN',
-        'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI', 'WY_ETO', 'WY_PPT']
+        'EVI_SUR', 'ETSTAR_MEAN',
+        'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
+        'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI',
+        'WY_ETO', 'WY_PPT']
     int_fields = [
         'ZONE_FID', 'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
         'LOW_ETG_COUNT']
     float_fields = list(
         set(header_list) - set(int_fields) -
-        set(['ZONE_NAME', 'DATE', 'SCENE_ID', 'LANDSAT']))
+        set(['ZONE_NAME', 'DATE', 'SCENE_ID', 'PLATFORM']))
 
     # Remove the existing CSV
     output_path = os.path.join(
-        ini['BEAMER']['output_ws'], ini['BEAMER']['output_name'])
+        ini['ZONAL_STATS']['output_ws'], ini['BEAMER']['output_name'])
     if overwrite_flag and os.path.isfile(output_path):
         os.remove(output_path)
     # Create an empty CSV
@@ -255,9 +258,9 @@ def main(ini_path, overwrite_flag=True):
 
 
         # Process date range by year
-        start_dt = dt.datetime(ini['INPUTS']['start_year'], 1, 1)
-        end_dt = dt.datetime(
-            ini['INPUTS']['end_year'] + 1, 1, 1) - dt.timedelta(0, 1)
+        start_dt = datetime.datetime(ini['INPUTS']['start_year'], 1, 1)
+        end_dt = datetime.datetime(
+            ini['INPUTS']['end_year'] + 1, 1, 1) - datetime.timedelta(0, 1)
         iter_months = ini['BEAMER']['month_step']
         for i, iter_start_dt in enumerate(rrule.rrule(
                 # rrule.YEARLY, interval=interval_cnt,
@@ -267,7 +270,7 @@ def main(ini_path, overwrite_flag=True):
                 iter_start_dt +
                 # relativedelta.relativedelta(years=interval_cnt) -
                 relativedelta.relativedelta(months=iter_months) -
-                dt.timedelta(0, 1))
+                datetime.timedelta(0, 1))
             if ((ini['INPUTS']['start_month'] and
                     iter_end_dt.month < ini['INPUTS']['start_month']) or
                 (ini['INPUTS']['end_month'] and
@@ -323,7 +326,7 @@ def main(ini_path, overwrite_flag=True):
                 elif ini['BEAMER']['data_ppt_units'] == 'ft':
                     wy_ppt_input *= (25.4 * 12)
             elif ini['BEAMER']['ppt_source'] == 'gridmet':
-                wy_ppt_input = float(utils.getinfo(ee.ImageCollection(
+                wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_ppt_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # Calculate GRIDMET zonal mean of geometry
@@ -337,7 +340,7 @@ def main(ini_path, overwrite_flag=True):
                 #         tileScale=1).getInfo()['PPT']
             # elif ini['BEAMER']['ppt_source'] == 'prism':
             #     # Calculate PRISM zonal mean of geometry
-            #     wy_ppt_input = float(utils.getinfo(ee.ImageCollection(
+            #     wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
             #         prism_coll.map(ee_common.prism_ppt_func)).sum().reduceRegion(
             #             reducer=ee.Reducer.mean(),
             #             geometry=zone['geom'],
@@ -358,7 +361,7 @@ def main(ini_path, overwrite_flag=True):
                     wy_eto_input *= (25.4 * 12)
             # This assumes GRIMET data is in millimeters
             elif ini['BEAMER']['eto_source'] == 'gridmet':
-                wy_eto_input = float(utils.getinfo(ee.ImageCollection(
+                wy_eto_input = float(utils.ee_getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_eto_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # wy_eto_input = float(ee.ImageCollection(
@@ -408,7 +411,7 @@ def main(ini_path, overwrite_flag=True):
             # logging.debug('{}'.format(', '.join([
             #     f['properties']['SCENE_ID']
             #     for f in landsat_coll.getInfo()['features']])))
-            # raw_input('ENTER')
+            # input('ENTER')
 
             # Add water year ETo and PPT values to each image
             def eto_ppt_func(img):
@@ -530,11 +533,11 @@ def main(ini_path, overwrite_flag=True):
             # pp = pprint.PrettyPrinter(indent=4)
             # for ftr in stats_info['features']:
             #     pp.pprint(ftr)
-            # raw_input('ENTER')
+            # input('ENTER')
             # # return False
 
             # Get the values from EE
-            stats_desc = utils.getinfo(stats_coll)
+            stats_desc = utils.ee_getinfo(stats_coll)
             if stats_desc is None:
                 logging.error('  Timeout error, skipping')
                 continue
@@ -555,12 +558,12 @@ def main(ini_path, overwrite_flag=True):
                 try:
                     scene_id = landsat_re.findall(
                         ftr['properties']['scene_id'])[0]
-                    scene_time = dt.datetime.utcfromtimestamp(
+                    scene_time = datetime.datetime.utcfromtimestamp(
                         float(ftr['properties']['time']) / 1000)
                 except:
                     pp = pprint.PrettyPrinter(indent=4)
                     pp.pprint(ftr)
-                    raw_input('ENTER')
+                    input('ENTER')
 
                 # Extract and save other properties
                 try:
@@ -568,7 +571,7 @@ def main(ini_path, overwrite_flag=True):
                         'ZONE_FID': zone_fid,
                         'ZONE_NAME': zone_name,
                         'SCENE_ID': scene_id,
-                        'LANDSAT': scene_id[0:4],
+                        'PLATFORM': scene_id[0:4],
                         'PATH': int(scene_id[5:8]),
                         'ROW': int(ftr['properties']['row']),
                         # 'ROW': int(scene_id[8:11]),
@@ -602,21 +605,51 @@ def main(ini_path, overwrite_flag=True):
                         '  There may not be an SR image to join to\n'
                         '  {}'.format(
                             e, scene_id, ftr['properties']))
-                    # raw_input('ENTER')
+                    # input('ENTER')
 
             # Save all values to the dataframe (and export)
             if row_list:
                 logging.debug('  Appending')
                 data_df = data_df.append(row_list, ignore_index=True)
+
+                # DEADBEEF
+                if data_df['QA'].isnull().any():
+                    data_df.loc[data_df['QA'].isnull(), 'QA'] = 0
+                fmask_mask = data_df['FMASK_TOTAL'] > 0
+                if fmask_mask.any():
+                    data_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
+                        data_df.loc[fmask_mask, 'FMASK_COUNT'] /
+                        data_df.loc[fmask_mask, 'FMASK_TOTAL'])
+
+                # Compute ET from ETg and PPT offline
+                data_df['ET_MEAN'] = data_df['ETG_MEAN'] + data_df['WY_PPT']
+                data_df['ET_LPI'] = data_df['ETG_LPI'] + data_df['WY_PPT']
+                data_df['ET_UPI'] = data_df['ETG_UPI'] + data_df['WY_PPT']
+                data_df['ET_LCI'] = data_df['ETG_LCI'] + data_df['WY_PPT']
+                data_df['ET_UCI'] = data_df['ETG_UCI'] + data_df['WY_PPT']
+
                 logging.debug('  Saving')
                 data_df[int_fields] = data_df[int_fields].astype(np.int64)
                 data_df[float_fields] = data_df[float_fields].astype(np.float32)
+
+                # Convert float fields to objects, set NaN to None
+                for field in data_df.columns.values:
+                    if field.upper() not in float_fields:
+                        continue
+                    data_df[field] = data_df[field].astype(object)
+                    null_mask = data_df[field].isnull()
+                    data_df.loc[null_mask, field] = None
+                    data_df.loc[~null_mask, field] = data_df.loc[~null_mask, field].map(
+                        lambda x: '{0:10.6f}'.format(x).strip())
+                    # data_df.loc[~null_mask, [field]] = data_df.loc[~null_mask, [field]].apply(
+                    #     lambda x: '{0:10.6f}'.format(x[0]).strip(), axis=1)
+
                 data_df = data_df.reindex_axis(header_list, axis=1)
+                # data_df.reset_index(drop=False, inplace=True)
                 data_df.sort_values(
                     ['ZONE_FID', 'DATE', 'ROW'], ascending=True, inplace=True)
                 # data_df.sort(
                 #     ['ZONE_NAME', 'DATE'], ascending=[True, True], inplace=True)
-                # logging.debug(data_df.dtypes)
                 data_df.to_csv(output_path, index=False)
             del row_list
 
@@ -733,7 +766,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
     log_f = '{:<20s} {}'
-    logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
+    logging.info(log_f.format(
+        'Start Time:', datetime.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
     logging.info('')

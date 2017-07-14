@@ -1,5 +1,5 @@
 #--------------------------------
-# Name:         ee_beamer_timeseries.py
+# Name:         ee_beamer_summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
 # Created       2017-06-20
 # Python:       3.6
