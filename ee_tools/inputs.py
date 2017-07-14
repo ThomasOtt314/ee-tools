@@ -7,7 +7,6 @@
 
 from builtins import input
 import datetime
-# import json
 import logging
 import os
 import sys
@@ -58,10 +57,10 @@ def parse_section(ini, section):
         parse_zonal_stats(ini)
     elif section == 'SUMMARY':
         parse_summary(ini)
-    # elif section == 'TABLES':
-    #     parse_tables(ini)
     elif section == 'FIGURES':
         parse_figures(ini)
+    # elif section == 'TABLES':
+    #     parse_tables(ini)
     elif section == 'BEAMER':
         parse_beamer(ini)
 
@@ -506,7 +505,8 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # Get the list of Landsat products to compute
     # DEADBEEF - What should the default Landsat products be?
     get_param(ini, section, 'landsat_products', 'landsat_products', list, '')
-    get_param(ini, section, 'gridmet_products', 'gridmet_products', list, '')
+    get_param(
+        ini, section, 'gridmet_products', 'gridmet_products', list, 'eto, ppt')
 
     # get_param(
     #     ini, section, 'landsat_products', 'landsat_products', list,
@@ -607,7 +607,7 @@ def parse_summary(ini, section='SUMMARY'):
         # ['max_fmask_pct', 'max_fmask_pct', float, 100],
         # ['min_slc_off_pct', 'min_slc_off_pct', float, 50],
         ['gridmet_start_month', 'gridmet_start_month', int, 10],
-        ['gridmet_end_month', 'gridmet_end_month', int, 9],
+        ['gridmet_end_month', 'gridmet_end_month', int, 9]
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -777,7 +777,6 @@ def parse_beamer(ini, section='BEAMER'):
     # OPTIONAL PARAMETERS
     # param_section, input_name, output_name, get_type, default
     param_list = [
-        ['output_workspace', 'output_ws', str, os.getcwd()],
         ['output_name', 'output_name', str, ''],
         ['month_step', 'month_step', int, 1],
         ['eto_source', 'eto_source', str, 'GRIDMET'],
@@ -793,14 +792,10 @@ def parse_beamer(ini, section='BEAMER'):
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
-    # Build output folder if necessary
-    if not os.path.isdir(ini[section]['output_ws']):
-        os.makedirs(ini[section]['output_ws'])
-
-    if (ini[section]['output_name'] and
-            not ini[section]['output_name'].endswith('.csv')):
-        logging.error('\nERROR: BEAMER output name must be a CSV type')
-        sys.exit()
+    # if (ini[section]['output_name'] and
+    #         not ini[section]['output_name'].endswith('.csv')):
+    #     logging.error('\nERROR: BEAMER output name must be a CSV type')
+    #    sys.exit()
 
     # Beamer can't compute more than one year per iteration
     #   since it is dependent of water year ETo & PPT

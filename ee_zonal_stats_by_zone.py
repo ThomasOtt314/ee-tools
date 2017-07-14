@@ -9,7 +9,6 @@ import argparse
 from builtins import input
 from collections import defaultdict
 import datetime
-from dateutil.relativedelta import relativedelta
 from io import StringIO
 import json
 import logging
@@ -751,10 +750,10 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         missing_any_ids -= missing_ts_ids
         # input('ENTER')
 
-    logging.debug('  SCENE_IDs missing all values: {}'.format(
-        ', '.join(sorted(missing_all_ids))))
-    logging.debug('  SCENE_IDs missing any values: {}'.format(
-        ', '.join(sorted(missing_any_ids))))
+    # logging.debug('  SCENE_IDs missing all values: {}'.format(
+    #     ', '.join(sorted(missing_all_ids))))
+    # logging.debug('  SCENE_IDs missing any values: {}'.format(
+    #     ', '.join(sorted(missing_any_ids))))
 
     # Check for fields that are entirely empty or not present
     #   These may have been added but not filled

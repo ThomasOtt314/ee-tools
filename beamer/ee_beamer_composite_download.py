@@ -1,18 +1,17 @@
 #--------------------------------
 # Name:         ee_beamer_composite_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-08
+# Created       2017-07-13
 # Python:       3.6
 #--------------------------------
 
 import argparse
 from builtins import input
 from collections import defaultdict
-import datetime as dt
+import datetime
 import json
 import logging
 import os
-# import re
 import shutil
 import sys
 from time import sleep
@@ -425,8 +424,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1):
                 # Initialize the Landsat object for target zone and iteration
                 landsat.zone_geom = zone['geom']
-                landsat.start_date = dt.date(year, 1, 1).isoformat()
-                landsat.end_date = dt.date(year, 12, 31).isoformat()
+                landsat.start_date = datetime.date(year, 1, 1).isoformat()
+                landsat.end_date = datetime.date(year, 12, 31).isoformat()
                 landsat_coll = landsat.get_collection()
                 # print(utils.getinfo(landsat_coll.aggregate_histogram('SCENE_ID')))
                 # input('ENTER')
@@ -673,7 +672,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
     log_f = '{0:<20s} {1}'
-    logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
+    logging.info(log_f.format(
+        'Start Time:', datetime.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
     logging.info('')

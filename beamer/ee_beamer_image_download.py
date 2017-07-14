@@ -1,14 +1,14 @@
 #--------------------------------
 # Name:         ee_beamer_image_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-08
+# Created       2017-07-13
 # Python:       3.6
 #--------------------------------
 
 import argparse
 from builtins import input
 from collections import defaultdict
-import datetime as dt
+import datetime
 import glob
 import json
 import logging
@@ -306,8 +306,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     os.remove(zip_path)
 
             # Getting the date directly from the SCENE_ID
-            image_start_dt = dt.datetime.strptime(image_id[12:], '%Y%m%d')
-            image_end_dt = image_start_dt + dt.timedelta(days=1)
+            image_start_dt = datetime.datetime.strptime(image_id[12:], '%Y%m%d')
+            image_end_dt = image_start_dt + datetime.timedelta(days=1)
             logging.debug('  {}  {}'.format(
                 image_start_dt.date(), image_end_dt.date()))
             year = image_start_dt.year
@@ -860,7 +860,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
     log_f = '{0:<20s} {1}'
-    logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
+    logging.info(log_f.format('Start Time:', datetime.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
     logging.info('')

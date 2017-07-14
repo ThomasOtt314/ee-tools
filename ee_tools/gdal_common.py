@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-05-15
+# Updated:      2017-07-13
 # Python:       3.6
 #--------------------------------
 
@@ -1071,11 +1071,11 @@ def shapefile_2_geom_list_func(input_path, zone_field=None,
             json_obj['geometry'] = json_reverse_func(json_obj['geometry'])
 
         # Strip Z value from coordinates
+        json_obj['geometry'] = json_strip_z_func(json_obj['geometry'])
         # DEADBEEF - This check is happening inside the function and
         #   is probably redundant here.
         # if ((json_obj['geometry']['type'].lower() in ['polygon', 'multipolygon']) and
         #         (len(json_obj['geometry']['coordinates'][0][0]) == 3)):
-        json_obj['geometry'] = json_strip_z_func(json_obj['geometry'])
 
         # # Reverse the point order from counter-clockwise to clockwise
         # if reverse_flag and input_geom.GetGeometryName() == 'MULTIPOLYGON':

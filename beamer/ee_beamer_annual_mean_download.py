@@ -1,14 +1,14 @@
 #--------------------------------
 # Name:         ee_beamer_annual_mean_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-08
+# Created       2017-07-13
 # Python:       3.6
 #--------------------------------
 
 import argparse
 from builtins import input
 from collections import defaultdict
-import datetime as dt
+import datetime
 from dateutil import rrule, relativedelta
 import json
 import logging
@@ -261,16 +261,16 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
         # Process date range by year
         interval_cnt = 1
-        start_dt = dt.datetime(ini['INPUTS']['start_year'], 1, 1)
-        end_dt = dt.datetime(
-            ini['INPUTS']['end_year'] + 1, 1, 1) - dt.timedelta(0, 1)
+        start_dt = datetime.datetime(ini['INPUTS']['start_year'], 1, 1)
+        end_dt = datetime.datetime(
+            ini['INPUTS']['end_year'] + 1, 1, 1) - datetime.timedelta(0, 1)
         for i, iter_start_dt in enumerate(rrule.rrule(
                 rrule.YEARLY, interval=interval_cnt,
                 dtstart=start_dt, until=end_dt)):
             iter_end_dt = (
                 iter_start_dt +
                 relativedelta.relativedelta(years=interval_cnt) -
-                dt.timedelta(0, 1))
+                datetime.timedelta(0, 1))
             if ((ini['INPUTS']['start_month'] and
                     iter_end_dt.month < ini['INPUTS']['start_month']) or
                 (ini['INPUTS']['end_month'] and
@@ -798,7 +798,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
     log_f = '{0:<20s} {1}'
-    logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
+    logging.info(log_f.format(
+        'Start Time:', datetime.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
     logging.info('')

@@ -24,7 +24,7 @@ ee.Initialize()
 # def arg_valid_date(date_str):
 #     """Argparse specific function for validating date strings"""
 #     try:
-#         datetime.datetime.strptime(date_str, "%Y-%m-%d")
+#         datetime.datetime.strptime(date_str, '%Y-%m-%d')
 #         return date_str
 #     except ValueError:
 #         raise argparse.ArgumentTypeError(
