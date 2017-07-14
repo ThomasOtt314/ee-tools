@@ -171,7 +171,7 @@ def main(ini_path=None, overwrite_flag=False):
     # Initialize Earth Engine API key
     logging.info('\nInitializing Earth Engine')
     ee.Initialize()
-    utils.request(ee.Number(1).getInfo())
+    utils.ee_getinfo(ee.Number(1))
 
     # Get current running tasks before getting file lists
     tasks = utils.get_ee_tasks()
@@ -230,7 +230,7 @@ def main(ini_path=None, overwrite_flag=False):
                     .map(ftr_property))
 
             # Build a list of tiles for each zone
-            for f in utils.getinfo(join_coll)['features']:
+            for f in utils.ee_getinfo(join_coll)['features']:
                 zone_name = str(f['properties'][ini['INPUTS']['zone_field']]) \
                     .replace(' ', '_')
                 ini['ZONAL_STATS']['zone_tile_json'][zone_name] = sorted(list(set(
@@ -283,14 +283,14 @@ def main(ini_path=None, overwrite_flag=False):
     # Get end date of GRIDMET (if needed)
     # This could be moved to inside the INI function
     if ini['ZONAL_STATS']['gridmet_monthly_flag']:
-        gridmet_end_dt = utils.request(ee.Date(ee.Image(
+        gridmet_end_dt = utils.ee_getinfo(ee.Date(ee.Image(
             ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
                 .filterDate(
                     '{}-01-01'.format(ini['INPUTS']['end_year'] - 1),
                     '{}-01-01'.format(ini['INPUTS']['end_year'] + 1)) \
                 .limit(1, 'system:time_start', False) \
                 .first()
-            ).get('system:time_start')).format('YYYY-MM-dd')).getInfo()
+            ).get('system:time_start')).format('YYYY-MM-dd'))
         gridmet_end_dt = datetime.datetime.strptime(
             gridmet_end_dt, '%Y-%m-%d')
         logging.debug('    Last GRIDMET date: {}'.format(gridmet_end_dt))
@@ -311,7 +311,7 @@ def main(ini_path=None, overwrite_flag=False):
     #     pdsi_func(pdsi_dekad_fields, ini, zones, tasks, overwrite_flag)
 
 
-def landsat_func(export_fields, ini, zones, zone_wkt, tasks, 
+def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
                  overwrite_flag=False):
     """
 
@@ -501,7 +501,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
             landsat_coll = landsat.get_collection()
 
             # Get new scene ID list
-            ini['ZONAL_STATS']['tile_scene_json'][tile] = utils.getinfo(
+            ini['ZONAL_STATS']['tile_scene_json'][tile] = utils.ee_getinfo(
                 landsat_coll.aggregate_histogram('SCENE_ID'))
             export_ids.update(ini['ZONAL_STATS']['tile_scene_json'][tile])
 
@@ -671,7 +671,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
             pp.pprint(ftr)
         input('ENTER')
 
-        # Add a dummy entry to the stats collection 
+        # Add a dummy entry to the stats collection
         format_dict = {
             'ZONE_NAME': 'DEADBEEF',
             'SCENE_ID': 'DEADBEEF',
@@ -721,7 +721,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #     #     output_df.to_csv(output_path, index=False, columns=output_fields)
 #     #     input('ENTER')
 
-#     # Use the SCENE_ID as the index  
+#     # Use the SCENE_ID as the index
 #     output_df.set_index('SCENE_ID', inplace=True, drop=True)
 
 #     if output_df.empty:
@@ -756,7 +756,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #                 landsat_coll = landsat.get_collection()
 
 #                 # Get new scene ID list
-#                 ini['ZONAL_STATS']['tile_scene_json'][tile] = utils.getinfo(
+#                 ini['ZONAL_STATS']['tile_scene_json'][tile] = utils.ee_getinfo(
 #                     landsat_coll.aggregate_histogram('SCENE_ID'))
 #                 export_ids.update(ini['ZONAL_STATS']['tile_scene_json'][tile])
 
@@ -785,7 +785,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #         missing_fields = [
 #             f.upper() for f in ini['ZONAL_STATS']['landsat_products']]
 #         missing_id_mask = (
-#             (output_df['PIXEL_COUNT'] > 0) & 
+#             (output_df['PIXEL_COUNT'] > 0) &
 #             output_df.index.isin(export_ids))
 #         missing_df = output_df.loc[missing_id_mask, missing_fields].isnull()
 
@@ -798,7 +798,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 
 #         # Check for fields that are entirely empty or not present
 #         #   These may have been added but not filled
-#         # Additional logic is to handle condition where 
+#         # Additional logic is to handle condition where
 #         #   calling all on an empty dataframe returns True
 #         if not missing_df.empty:
 #             missing_all_products = set(
@@ -1144,7 +1144,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #         # input('ENTER')
 #         # return False
 
-#         # Add a dummy entry to the stats collection 
+#         # Add a dummy entry to the stats collection
 #         format_dict = {
 #             'ZONE_NAME': 'DEADBEEF',
 #             'SCENE_ID': 'DEADBEEF',
@@ -1174,7 +1174,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #                 fileNamePrefix=export_id,
 #                 fileFormat='CSV')
 #             logging.debug('    Starting export task')
-#             utils.request(task.start())
+#             utils.ee_request(task.start())
 #         elif ini['EXPORT']['export_dest'] == 'cloud':
 #             logging.debug('    Building export task')
 #             task = ee.batch.Export.table.toCloudStorage(
@@ -1185,10 +1185,10 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #                 # fileNamePrefix=export_id,
 #                 fileFormat='CSV')
 #             logging.debug('    Starting export task')
-#             utils.request(task.start())
+#             utils.ee_request(task.start())
 #         elif ini['EXPORT']['export_dest'] == 'getinfo':
 #             logging.debug('    Requesting data')
-#             export_info = utils.getinfo(stats_coll)['features']
+#             export_info = utils.ee_getinfo(stats_coll)['features']
 #             export_df = pd.DataFrame([ftr['properties'] for ftr in export_info])
 #             export_df = export_update(export_df)
 
@@ -1424,7 +1424,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #             fileNamePrefix=export_id,
 #             fileFormat='CSV')
 #         logging.debug('    Starting export task')
-#         utils.request(task.start())
+#         utils.ee_request(task.start())
 #     elif ini['EXPORT']['export_dest'] == 'cloud':
 #         logging.debug('    Building export task')
 #         task = ee.batch.Export.table.toCloudStorage(
@@ -1435,10 +1435,10 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #             # fileNamePrefix=export_id,
 #             fileFormat='CSV')
 #         logging.debug('    Starting export task')
-#         utils.request(task.start())
+#         utils.ee_request(task.start())
 #     elif ini['EXPORT']['export_dest'] == 'getinfo':
 #         logging.debug('    Requesting data')
-#         export_info = utils.request(stats_coll.getInfo())['features']
+#         export_info = utils.ee_request(stats_coll.getInfo())['features']
 #         export_df = pd.DataFrame([ftr['properties'] for ftr in export_info])
 #         export_df.set_index('DATE', inplace=True, drop=True)
 
@@ -1672,7 +1672,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #             fileNamePrefix=export_id,
 #             fileFormat='CSV')
 #         logging.debug('    Starting export task')
-#         utils.request(task.start())
+#         utils.ee_request(task.start())
 #     elif ini['EXPORT']['export_dest'] == 'cloud':
 #         logging.debug('    Building export task')
 #         task = ee.batch.Export.table.toCloudStorage(
@@ -1683,10 +1683,10 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 #             # fileNamePrefix=export_id,
 #             fileFormat='CSV')
 #         logging.debug('    Starting export task')
-#         utils.request(task.start())
+#         utils.ee_request(task.start())
 #     elif ini['EXPORT']['export_dest'] == 'getinfo':
 #         logging.debug('    Requesting data')
-#         export_info = utils.request(stats_coll.getInfo())['features']
+#         export_info = utils.ee_getinfo(stats_coll)['features']
 #         export_df = pd.DataFrame([ftr['properties'] for ftr in export_info])
 #         export_df.set_index('DATE', inplace=True, drop=True)
 
@@ -1876,7 +1876,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 
 #     # Download the CSV to your Google Drive
 #     logging.debug('    Starting export task')
-#     utils.request(task.start())
+#     utils.ee_request(task.start())
 
 
 def arg_parse():

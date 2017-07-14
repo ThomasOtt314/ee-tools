@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-07
+# Modified:     2017-07-13
 # Python:       3.6
 #--------------------------------
 
@@ -399,7 +399,7 @@ def parse_export(ini, section='EXPORT'):
     # DEADBEEF - This might be better in an export module or separate function
     # Export destination specific options
     if ini[section]['export_dest'] in ['getinfo']:
-        logging.info('  GetInfo Direct Export') 
+        logging.info('  GetInfo Direct Export')
     elif ini[section]['export_dest'] in ['gdrive']:
         logging.info('  Google Drive Export')
         get_param(ini, section, 'gdrive_workspace', 'gdrive_ws', str)
@@ -506,14 +506,23 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # Get the list of Landsat products to compute
     # DEADBEEF - What should the default Landsat products be?
     get_param(ini, section, 'landsat_products', 'landsat_products', list, '')
+    get_param(ini, section, 'gridmet_products', 'gridmet_products', list, '')
+
     # get_param(
     #     ini, section, 'landsat_products', 'landsat_products', list,
     #     'albedo_sur, ndvi_toa, ts')
     ini[section]['landsat_products'] = utils.unique_keep_order([
         x.lower().strip()
         for x in ini[section]['landsat_products'].split(',') if x.strip()])
-    logging.debug('  Output Bands:')
+    logging.debug('  Landsat Products:')
     for band in ini[section]['landsat_products']:
+        logging.debug('    {}'.format(band))
+
+    ini[section]['gridmet_products'] = utils.unique_keep_order([
+        x.lower().strip()
+        for x in ini[section]['gridmet_products'].split(',') if x.strip()])
+    logging.debug('  GRIDMET Products:')
+    for band in ini[section]['gridmet_products']:
         logging.debug('    {}'.format(band))
 
     # OPTIONAL PARAMETERS

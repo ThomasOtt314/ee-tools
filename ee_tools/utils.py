@@ -141,10 +141,10 @@ def get_ini_path(workspace):
     return ini_path
 
 
-def getinfo(ee_obj):
+def ee_getinfo(ee_obj, n=10):
     """Make an exponential backoff getInfo call on the Earth Engine object"""
     output = None
-    for i in range(1, 10):
+    for i in range(1, n):
         try:
             output = ee_obj.getInfo()
         except Exception as e:
@@ -156,10 +156,10 @@ def getinfo(ee_obj):
     return output
 
 
-def request(request_obj):
+def ee_request(request_obj, n=10):
     """Make an exponential backoff Earth Engine request"""
     output = None
-    for i in range(1, 10):
+    for i in range(1, n):
         try:
             output = request_obj
         except Exception as e:
