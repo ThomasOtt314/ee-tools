@@ -52,12 +52,6 @@ def main(ini_path=None, overwrite_flag=False):
     inputs.parse_section(ini, section='EXPORT')
     inputs.parse_section(ini, section='ZONAL_STATS')
 
-    # Zonal stats init file paths
-    zone_geojson = os.path.join(
-        ini['ZONAL_STATS']['output_ws'],
-        os.path.basename(ini['INPUTS']['zone_shp_path']).replace(
-            '.shp', '.geojson'))
-
     # These may eventually be set in the INI file
     landsat_daily_fields = [
         'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM',
@@ -101,18 +95,20 @@ def main(ini_path=None, overwrite_flag=False):
 
     # Convert the shapefile to geojson
     # if not os.path.isfile(zone_geojson) or overwrite_flag:
-    if not os.path.isfile(zone_geojson):
+    if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']):
         logging.info('\nConverting zone shapefile to GeoJSON')
-        logging.debug('  {}'.format(zone_geojson))
+        logging.debug('  {}'.format(ini['ZONAL_STATS']['zone_geojson']))
         check_output([
             'ogr2ogr', '-f', 'GeoJSON', '-preserve_fid',
             '-select', '{}'.format(ini['INPUTS']['zone_field']),
             # '-lco', 'COORDINATE_PRECISION=2'
-            zone_geojson, ini['INPUTS']['zone_shp_path']])
+            ini['ZONAL_STATS']['zone_geojson'],
+            ini['INPUTS']['zone_shp_path']])
 
     # # Get ee features from shapefile
     # zone_geom_list = gdc.shapefile_2_geom_list_func(
-    #     ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
+    #     ini['INPUTS']['zone_shp_path'],
+    #     zone_field=ini['INPUTS']['zone_field'],
     #     reverse_flag=False)
     # # zone_count = len(zone_geom_list)
     # # output_fmt = '_{0:0%sd}.csv' % str(int(math.log10(zone_count)) + 1)
@@ -120,17 +116,18 @@ def main(ini_path=None, overwrite_flag=False):
     # Read in the zone geojson
     logging.debug('\nReading zone GeoJSON')
     try:
-        with open(zone_geojson, 'r') as f:
+        with open(ini['ZONAL_STATS']['zone_geojson'], 'r') as f:
             zones = json.load(f)
     except Exception as e:
         logging.error('  Error reading zone geojson file, removing')
         logging.debug('  Exception: {}'.format(e))
-        os.remove(zone_geojson)
+        os.remove(ini['ZONAL_STATS']['zone_geojson'])
 
     # Check if the zone_names are unique
     # Eventually support merging common zone_names
     zone_names = [
-        str(z['properties'][ini['INPUTS']['zone_field']]).replace(' ', '_').lower()
+        str(z['properties'][ini['INPUTS']['zone_field']]) \
+            .replace(' ', '_').lower()
         for z in zones['features']]
     if len(set(zone_names)) != len(zones['features']):
         logging.error(
@@ -291,7 +288,8 @@ def main(ini_path=None, overwrite_flag=False):
 
     # Get end date of GRIDMET (if needed)
     # This could be moved to inside the INI function
-    if ini['ZONAL_STATS']['gridmet_monthly_flag']:
+    if (ini['ZONAL_STATS']['gridmet_monthly_flag'] or
+            ini['ZONAL_STATS']['gridmet_daily_flag']):
         gridmet_end_dt = utils.ee_request(ee.Date(ee.Image(
             ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
                 .filterDate(
@@ -741,14 +739,15 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     missing_any_ids = set(missing_df[missing_df.any(axis=1)].index.values)
 
     # DEADBEEF - For now, skip SCENE_IDs that are only missing Ts
-    missing_ts_ids = set(missing_df[
-        missing_df[['TS']].any(axis=1) &
-        ~missing_df.drop('TS', axis=1).any(axis=1)].index.values)
-    if missing_ts_ids:
-        logging.info('  SCENE_IDs missing Ts only: {}'.format(
-            ', '.join(sorted(missing_ts_ids))))
-        missing_any_ids -= missing_ts_ids
-        # input('ENTER')
+    if not missing_df.empty and 'TS' in missing_fields:
+        missing_ts_ids = set(missing_df[
+            missing_df[['TS']].any(axis=1) &
+            ~missing_df.drop('TS', axis=1).any(axis=1)].index.values)
+        if missing_ts_ids:
+            logging.info('  SCENE_IDs missing Ts only: {}'.format(
+                ', '.join(sorted(missing_ts_ids))))
+            missing_any_ids -= missing_ts_ids
+            # input('ENTER')
 
     # logging.debug('  SCENE_IDs missing all values: {}'.format(
     #     ', '.join(sorted(missing_all_ids))))
@@ -832,11 +831,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             data_df[data_df.SCENE_ID == 'DEADBEEF'].index, inplace=True)
 
         # With old Fmask data, PIXEL_COUNT can be > 0 even if all data is NaN
-        drop_mask = (
-            data_df['NDVI_TOA'].isnull() & data_df['TS'].isnull() &
-            (data_df['PIXEL_COUNT'] > 0))
-        if not data_df.empty and drop_mask.any():
-            data_df.loc[drop_mask, ['PIXEL_COUNT']] = 0
+        if ('NDVI_TOA' in data_df.columns.values and
+                'TS' in data_df.columns.values):
+            drop_mask = (
+                data_df['NDVI_TOA'].isnull() & data_df['TS'].isnull() &
+                (data_df['PIXEL_COUNT'] > 0))
+            if not data_df.empty and drop_mask.any():
+                data_df.loc[drop_mask, ['PIXEL_COUNT']] = 0
 
         # Add additional fields to the export data frame
         data_df.set_index('SCENE_ID', inplace=True, drop=True)

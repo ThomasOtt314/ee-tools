@@ -504,9 +504,12 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     """"""
     # Get the list of Landsat products to compute
     # DEADBEEF - What should the default Landsat products be?
-    get_param(ini, section, 'landsat_products', 'landsat_products', list, '')
     get_param(
-        ini, section, 'gridmet_products', 'gridmet_products', list, 'eto, ppt')
+        ini, section, 'landsat_products', 'landsat_products', list,
+        'albedo_sur, evi_sur, ndvi_sur, ndvi_toa, ts')
+    get_param(
+        ini, section, 'gridmet_products', 'gridmet_products', list,
+        'eto, ppt')
 
     # get_param(
     #     ini, section, 'landsat_products', 'landsat_products', list,
