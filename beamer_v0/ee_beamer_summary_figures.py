@@ -211,7 +211,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
                 'FMASK_COUNT': 'mean',
                 'FMASK_TOTAL': 'mean',
                 'CLOUD_SCORE': 'mean',
-                'LOW_ETG_COUNT': 'mean',
+                'ETSTAR_COUNT': 'mean',
                 'NDVI_TOA': 'mean',
                 'NDWI_TOA': 'mean',
                 'ALBEDO_SUR': 'mean',
@@ -242,7 +242,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
         annual_df['PIXEL_TOTAL'] = annual_df['PIXEL_TOTAL'].astype(np.int)
         annual_df['FMASK_COUNT'] = annual_df['FMASK_COUNT'].astype(np.int)
         annual_df['FMASK_TOTAL'] = annual_df['FMASK_TOTAL'].astype(np.int)
-        annual_df['LOW_ETG_COUNT'] = annual_df['LOW_ETG_COUNT'].astype(np.int)
+        annual_df['ETSTAR_COUNT'] = annual_df['ETSTAR_COUNT'].astype(np.int)
         annual_df = annual_df.reset_index()
 
         # Convert ETo units

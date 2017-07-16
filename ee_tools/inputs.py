@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-13
+# Modified:     2017-07-16
 # Python:       3.6
 #--------------------------------
 
@@ -790,7 +790,7 @@ def parse_beamer(ini, section='BEAMER'):
         ['data_ppt_units', 'data_ppt_units', str, 'mm'],
         ['eto_units', 'eto_units', str, 'mm'],
         ['ppt_units', 'ppt_units', str, 'mm'],
-        ['low_etg_threshold', 'low_etg_threshold', float, 0]
+        ['etstar_threshold', 'etstar_threshold', float, 0]
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -807,9 +807,9 @@ def parse_beamer(ini, section='BEAMER'):
             '\nERROR: BEAMER month_step must be an integer from 1-12')
         sys.exit()
 
-    if ini[section]['low_etg_threshold'] < 0:
+    if ini[section]['etstar_threshold'] < 0:
         logging.error(
-            '\nERROR: BEAMER low_etg_threshold must be >= 0')
+            '\nERROR: BEAMER etstar_threshold must be >= 0')
         sys.exit()
 
     # Force inputs to lower case

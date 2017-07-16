@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-13
+# Modified:     2017-07-16
 # Python:       3.6
 #--------------------------------
 
@@ -84,6 +84,12 @@ def main(ini_path=None, overwrite_flag=False):
         ini['ZONAL_STATS']['landsat_products'].remove('tasseled_cap')
     landsat_daily_fields.extend(
         [p.upper() for p in ini['ZONAL_STATS']['landsat_products']])
+
+    # DEADBEEF - Hack to get Beamer ETStar threshold
+    if 'etstar_mean' in ini['ZONAL_STATS']['landsat_products']:
+        inputs.parse_section(ini, section='BEAMER')
+        landsat_daily_fields.insert(
+            landsat_daily_fields.index('CLOUD_SCORE'), 'ETSTAR_COUNT')
 
     # Concert REFL_TOA, REFL_SUR, and TASSELED_CAP products to bands
     # if 'tmean' in ini['ZONAL_STATS']['gridmet_products']:
@@ -713,6 +719,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             missing_df['FMASK_COUNT'] = 0
             missing_df['FMASK_TOTAL'] = 0
             missing_df['FMASK_PCT'] = np.nan
+            if 'etstar_mean' in landsat.products:
+                missing_df['ETSTAR_COUNT'] = np.nan
             missing_df['CLOUD_SCORE'] = np.nan
             # missing_df[f] = missing_df[f].astype(int)
 
@@ -1098,15 +1106,33 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 # 'FMASK_PCT': ee.Number(input_count.get('fmask_sum')) \
                 #     .divide(ee.Number(input_count.get('fmask_count'))) \
                 #     .multiply(100),
-                'CLOUD_SCORE': input_mean.get('cloud_score'),
+                'CLOUD_SCORE': input_mean.get('cloud_score')
                 # 'QA': ee.Number(0)
             }
             # Product specific output
-            zs_dict.update({
-                p.upper(): input_mean.get(p.lower()) for p in landsat.products
-            })
-            return ee.Feature(None, zs_dict)
+            if landsat.products:
+                zs_dict.update({
+                    p.upper(): input_mean.get(p.lower())
+                    for p in landsat.products
+                })
 
+            # Count the number of pixels with ET* == 0
+            if 'etstar_mean' in landsat.products:
+                etstar_count = ee.Image(image) \
+                    .select(['etstar_mean'], ['etstar_count']) \
+                    .lte(ini['BEAMER']['etstar_threshold']) \
+                    .reduceRegion(
+                        reducer=ee.Reducer.sum(),
+                        geometry=zone['geom'],
+                        crs=ini['SPATIAL']['crs'],
+                        crsTransform=ini['EXPORT']['transform'],
+                        bestEffort=False,
+                        tileScale=1,
+                        maxPixels=zone['max_pixels'] * bands)
+                zs_dict.update({
+                    'ETSTAR_COUNT': etstar_count.get('etstar_count')})
+
+            return ee.Feature(None, zs_dict)
         stats_coll = landsat_coll.map(zonal_stats_func, False)
 
         # # DEBUG - Test the function for a single image
@@ -1133,6 +1159,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             'FMASK_TOTAL': -9999,
             'CLOUD_SCORE': -9999,
         }
+        if 'etstar_mean' in landsat.products:
+            format_dict.update({'ETSTAR_COUNT': -9999})
         format_dict.update({p.upper(): -9999 for p in landsat.products})
         stats_coll = ee.FeatureCollection(ee.Feature(None, format_dict)) \
             .merge(stats_coll)
@@ -1216,8 +1244,14 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
 
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
     gridmet_fields = [f.upper() for f in gridmet_products]
-    # Make copy of export field list in order to retain existing columns
-    output_fields = export_fields[:]
+
+    # Get INI date range
+    # Insert one additional year the beginning for water year totals
+    start_date = '{}-01-01'.format(ini['INPUTS']['start_year'] - 1)
+    end_date = min(
+        '{:04d}-01-01'.format(ini['INPUTS']['end_year'] + 1),
+        datetime.datetime.today().strftime('%Y-%m-%d'))
+    export_dates = set(utils.date_range(start_date, end_date))
 
     def csv_writer(output_df, output_path, output_fields):
         """Write the dataframe to CSV with custom formatting"""
@@ -1243,19 +1277,20 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         csv_df.sort_values(by=['DATE'], inplace=True)
         csv_df.to_csv(output_path, index=False, columns=output_fields)
 
-    # Get INI date range
-    # Insert one additional year the beginning for water year totals
-    start_date = '{}-01-01'.format(ini['INPUTS']['start_year'] - 1)
-    end_date = min(
-        '{:04d}-01-01'.format(ini['INPUTS']['end_year'] + 1),
-        datetime.datetime.today().strftime('%Y-%m-%d'))
-    export_dates = set(utils.date_range(start_date, end_date))
+    # Make copy of export field list in order to retain existing columns
+    # output_fields = export_fields[:]
 
     # Read in existing data if possible
     try:
         output_df = pd.read_csv(output_path, parse_dates=False)
         # output_df = pd.read_csv(output_path, parse_dates=['DATE'])
         # output_df = pd.read_csv(output_path, index_col='DATE')
+
+        # # Move any existing columns not in export_fields to end of CSV
+        # output_fields.extend([
+        #     f for f in output_df.columns.values if f not in output_fields])
+        # output_df = output_df.reindex(columns=output_fields)
+        # output_df.sort_values(by=['DATE'], inplace=True)
     except IOError:
         logging.debug(
             '    Output path doesn\'t exist, building empty dataframe')
@@ -1332,7 +1367,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 output_df.index.intersection(missing_df.index),
                 inplace=True)
         output_df = output_df.append(missing_df)
-        csv_writer(output_df, output_path, output_fields)
+        csv_writer(output_df, output_path, export_fields)
 
     # Identify SCENE_IDs that are missing any data
     # Filter based on product and SCENE_ID lists
@@ -1669,8 +1704,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
 
     gridmet_products = ini['ZONAL_STATS']['gridmet_products']
     gridmet_fields = [f.upper() for f in gridmet_products]
-    # Make copy of export field list in order to retain existing columns
-    output_fields = export_fields[:]
 
     def csv_writer(output_df, output_path, output_fields):
         """Write the dataframe to CSV with custom formatting"""
@@ -1696,6 +1729,9 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         csv_df.sort_values(by=['DATE'], inplace=True)
         csv_df.to_csv(output_path, index=False, columns=output_fields)
 
+    # Make copy of export field list in order to retain existing columns
+    # output_fields = export_fields[:]
+
     # Read in existing data if possible
     try:
         output_df = pd.read_csv(output_path, parse_dates=False)
@@ -1704,14 +1740,14 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             output_df['DATE'], format='%Y-%m').dt.strftime('%Y-%m-%d')
 
         # Move any existing columns not in export_fields to end of CSV
-        output_fields.extend([
-            f for f in output_df.columns.values if f not in output_fields])
-        output_df = output_df.reindex(columns=output_fields)
-        output_df.sort_values(by=['DATE'], inplace=True)
+        # output_fields.extend([
+        #     f for f in output_df.columns.values if f not in output_fields])
+        # output_df = output_df.reindex(columns=output_fields)
+        # output_df.sort_values(by=['DATE'], inplace=True)
     except IOError:
         logging.debug(
             '    Output path doesn\'t exist, building empty dataframe')
-        output_df = pd.DataFrame(columns=output_fields)
+        output_df = pd.DataFrame(columns=export_fields)
         # output_df.set_index('DATE', inplace=True, drop=True)
         # output_df.index.name = 'DATE'
     except Exception as e:
@@ -1777,7 +1813,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 output_df.index.intersection(missing_df.index),
                 inplace=True)
         output_df = output_df.append(missing_df)
-        csv_writer(output_df, output_path, output_fields)
+        csv_writer(output_df, output_path, export_fields)
 
     # Identify SCENE_IDs that are missing any data
     # Filter based on product and SCENE_ID lists

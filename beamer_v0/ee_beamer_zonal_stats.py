@@ -69,7 +69,7 @@ def main(ini_path, overwrite_flag=True):
         'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM', 'PATH', 'ROW',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'PIXEL_COUNT', 'PIXEL_TOTAL',
         'FMASK_COUNT', 'FMASK_TOTAL', 'FMASK_PCT',
-        'LOW_ETG_COUNT', 'CLOUD_SCORE', 'QA',
+        'ETSTAR_COUNT', 'CLOUD_SCORE', 'QA',
         'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS',
         'EVI_SUR', 'ETSTAR_MEAN',
         'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
@@ -78,7 +78,7 @@ def main(ini_path, overwrite_flag=True):
     int_fields = [
         'ZONE_FID', 'PATH', 'ROW', 'YEAR', 'MONTH', 'DAY', 'DOY',
         'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
-        'LOW_ETG_COUNT']
+        'ETSTAR_COUNT']
     float_fields = list(
         set(header_list) - set(int_fields) -
         set(['ZONE_NAME', 'DATE', 'SCENE_ID', 'PLATFORM']))
@@ -474,10 +474,9 @@ def main(ini_path, overwrite_flag=True):
                         tileScale=1,
                         maxPixels=zone['max_pixels'] * 3)
 
-                # DEADBEEF
-                low_etg_cnt = input_image \
-                    .select(['etg_mean'], ['low_etg_count']) \
-                    .lte(ini['BEAMER']['low_etg_threshold']) \
+                etstar_count = input_image \
+                    .select(['etstar_mean'], ['etstar_count']) \
+                    .lte(ini['BEAMER']['etstar_threshold']) \
                     .reduceRegion(
                         reducer=ee.Reducer.sum(),
                         geometry=zone['geom'],
@@ -499,7 +498,7 @@ def main(ini_path, overwrite_flag=True):
                         'fmask_count': input_count.get('fmask_sum'),
                         'fmask_total': input_count.get('fmask_count'),
                         'cloud_score': input_mean.get('cloud_score'),
-                        'low_etg_count': low_etg_cnt.get('low_etg_count'),
+                        'etstar_count': etstar_count.get('etstar_count'),
                         'ndvi_toa': input_mean.get('ndvi_toa'),
                         'ndwi_toa': input_mean.get('ndwi_toa'),
                         'albedo_sur': input_mean.get('albedo_sur'),
@@ -584,7 +583,7 @@ def main(ini_path, overwrite_flag=True):
                         'FMASK_COUNT': int(ftr['properties']['fmask_count']),
                         'FMASK_TOTAL': int(ftr['properties']['fmask_total']),
                         'CLOUD_SCORE': float(ftr['properties']['cloud_score']),
-                        'LOW_ETG_COUNT': int(ftr['properties']['low_etg_count']),
+                        'ETSTAR_COUNT': int(ftr['properties']['etstar_count']),
                         'NDVI_TOA': float(ftr['properties']['ndvi_toa']),
                         'NDWI_TOA': float(ftr['properties']['ndwi_toa']),
                         'ALBEDO_SUR': float(ftr['properties']['albedo_sur']),
@@ -620,16 +619,17 @@ def main(ini_path, overwrite_flag=True):
                         data_df.loc[fmask_mask, 'FMASK_COUNT'] /
                         data_df.loc[fmask_mask, 'FMASK_TOTAL'])
 
+                logging.debug('  Saving')
+                data_df[int_fields] = data_df[int_fields].astype(np.int64)
+                data_df[float_fields] = data_df[float_fields].astype(np.float32)
+
                 # Compute ET from ETg and PPT offline
+                # (must be after float conversion above)
                 data_df['ET_MEAN'] = data_df['ETG_MEAN'] + data_df['WY_PPT']
                 data_df['ET_LPI'] = data_df['ETG_LPI'] + data_df['WY_PPT']
                 data_df['ET_UPI'] = data_df['ETG_UPI'] + data_df['WY_PPT']
                 data_df['ET_LCI'] = data_df['ETG_LCI'] + data_df['WY_PPT']
                 data_df['ET_UCI'] = data_df['ETG_UCI'] + data_df['WY_PPT']
-
-                logging.debug('  Saving')
-                data_df[int_fields] = data_df[int_fields].astype(np.int64)
-                data_df[float_fields] = data_df[float_fields].astype(np.float32)
 
                 # Convert float fields to objects, set NaN to None
                 for field in data_df.columns.values:
@@ -651,18 +651,6 @@ def main(ini_path, overwrite_flag=True):
                 #     ['ZONE_NAME', 'DATE'], ascending=[True, True], inplace=True)
                 data_df.to_csv(output_path, index=False)
             del row_list
-
-
-# def ee_get_info(ee_obj):
-#     for i in range(1, 10):
-#         try:
-#             return ee_obj.getInfo()
-#             break
-#         except Exception as e:
-#             logging.info('  Resending query')
-#             logging.debug('  {}'.format(e))
-#             sleep(i ** 2)
-#     return None
 
 
 def landsat_etg_func(img):

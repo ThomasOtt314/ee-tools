@@ -286,9 +286,8 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             'PIXEL_TOTAL': ['mean'],
             'FMASK_COUNT': 'mean',
             'FMASK_TOTAL': 'mean',
-            'CLOUD_SCORE': 'mean'}
-        # DEADBEEF
-        # 'LOW_ETG_COUNT': {'LOW_ETG_COUNT': 'mean'}}
+            'CLOUD_SCORE': 'mean',
+            'ETSTAR_COUNT': 'mean'}
         for field in landsat_df.columns.values:
             if field in landsat_beamer_fields:
                 agg_dict.update({field: 'mean'})
@@ -306,8 +305,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         landsat_df['PIXEL_TOTAL'] = landsat_df['PIXEL_TOTAL'].astype(np.int)
         landsat_df['FMASK_COUNT'] = landsat_df['FMASK_COUNT'].astype(np.int)
         landsat_df['FMASK_TOTAL'] = landsat_df['FMASK_TOTAL'].astype(np.int)
-        # DEADBEEF
-        # landsat_df['LOW_ETG_COUNT'] = landsat_df['LOW_ETG_COUNT'].astype(np.int)
+        landsat_df['ETSTAR_COUNT'] = landsat_df['ETSTAR_COUNT'].astype(np.int)
         landsat_df = landsat_df.reset_index()
 
         # Aggregate GRIDMET (to water year)

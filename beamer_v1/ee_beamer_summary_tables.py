@@ -40,23 +40,23 @@ def main(ini_path, overwrite_flag=False):
 
     logging.info('\nGenerate Beamer ETg summary tables')
 
-    # Eventually get from INI (like ini['BEAMER']['landsat_products'])
-    daily_fields = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM', 'PATH', 'ROW',
-        'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR',
-        'PIXEL_COUNT', 'LOW_ETG_COUNT',
-        'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS', 'EVI_SUR', 'ETSTAR_MEAN',
-        'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
-        'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI',
-        'ETO', 'PPT']
-    annual_fields = [
-        'SCENE_COUNT', 'PIXEL_COUNT', 'LOW_ETG_COUNT',
-        'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS',
-        'EVI_SUR_MEAN', 'EVI_SUR_MEDIAN', 'EVI_SUR_MIN', 'EVI_SUR_MAX',
-        'ETSTAR_MEAN',
-        'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
-        'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI',
-        'ETO', 'PPT']
+    # # Eventually get from INI (like ini['BEAMER']['landsat_products'])
+    # daily_fields = [
+    #     'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM', 'PATH', 'ROW',
+    #     'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR',
+    #     'PIXEL_COUNT', 'ETSTAR_COUNT',
+    #     'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS', 'EVI_SUR', 'ETSTAR_MEAN',
+    #     'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
+    #     'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI',
+    #     'ETO', 'PPT']
+    # annual_fields = [
+    #     'SCENE_COUNT', 'PIXEL_COUNT', 'ETSTAR_COUNT',
+    #     'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS',
+    #     'EVI_SUR_MEAN', 'EVI_SUR_MEDIAN', 'EVI_SUR_MIN', 'EVI_SUR_MAX',
+    #     'ETSTAR_MEAN',
+    #     'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
+    #     'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI',
+    #     'ETO', 'PPT']
 
     # For unit conversion
     eto_fields = [
@@ -394,8 +394,7 @@ def main(ini_path, overwrite_flag=False):
                 'FMASK_COUNT': 'mean',
                 'FMASK_TOTAL': 'mean',
                 'CLOUD_SCORE': 'mean',
-                # DEADBEEF
-                # 'LOW_ETG_COUNT': 'mean',
+                'ETSTAR_COUNT': 'mean',
                 'NDVI_TOA': 'mean',
                 'NDWI_TOA': 'mean',
                 'ALBEDO_SUR': 'mean',
@@ -432,8 +431,7 @@ def main(ini_path, overwrite_flag=False):
         annual_df['PIXEL_TOTAL'] = annual_df['PIXEL_TOTAL'].astype(np.int)
         annual_df['FMASK_COUNT'] = annual_df['FMASK_COUNT'].astype(np.int)
         annual_df['FMASK_TOTAL'] = annual_df['FMASK_TOTAL'].astype(np.int)
-        # DEADBEEF
-        # annual_df['LOW_ETG_COUNT'] = annual_df['LOW_ETG_COUNT'].astype(np.int)
+        annual_df['ETSTAR_COUNT'] = annual_df['ETSTAR_COUNT'].astype(np.int)
         annual_df = annual_df.reset_index()
 
         # Convert ETo units
