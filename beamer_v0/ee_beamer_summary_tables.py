@@ -1,14 +1,13 @@
 #--------------------------------
 # Name:         ee_beamer_summary_tables.py
 # Purpose:      Generate Beamer ETg summary figures
-# Author:       Charles Morton
-# Created       2017-06-20
+# Created       2017-07-16
 # Python:       3.6
 #--------------------------------
 
 import argparse
 from builtins import input
-import datetime as dt
+import datetime
 import logging
 import os
 import sys
@@ -30,52 +29,20 @@ import ee_tools.inputs as inputs
 import ee_tools.utils as utils
 
 
-def main(ini_path, overwrite_flag=False):
+def main(ini_path, overwrite_flag=True):
     """Generate Beamer ETg summary tables
 
     Args:
         ini_path (str):
-        overwrite_flag (bool): if True, overwrite existing tables
+        overwrite_flag (bool): if True, overwrite existing figures
+            Default is True (for now)
     """
 
     logging.info('\nGenerate Beamer ETg summary tables')
 
-    # Read config file
-    ini = inputs.read(ini_path)
-    inputs.parse_section(ini, section='INPUTS')
-    # inputs.parse_section(ini, section='SPATIAL')
-    inputs.parse_section(ini, section='BEAMER')
-    inputs.parse_section(ini, section='SUMMARY')
-    inputs.parse_section(ini, section='TABLES')
-
-    zone_field = ini['INPUTS']['zone_field']
-
-    # Read in config file
-    output_ws = ini['SUMMARY']['output_ws']
-    output_name = ini['BEAMER']['output_name']
-    output_path = os.path.join(
-        ini['BEAMER']['output_ws'], ini['BEAMER']['output_name'])
-
-    daily_path = os.path.join(
-        output_ws, output_name.replace('.csv', '_daily.xlsx'))
-    annual_path = os.path.join(
-        output_ws, output_name.replace('.csv', '_annual.xlsx'))
-
-    # Check if files already exist
-    if overwrite_flag:
-        if os.path.isfile(daily_path):
-            os.remove(daily_path)
-        if os.path.isfile(annual_path):
-            os.remove(annual_path)
-    else:
-        if os.path.isfile(daily_path) and os.path.isfile(annual_path):
-            logging.info('\nOutput files already exist and ' +
-                         'overwrite is False, exiting')
-            return True
-
     # Eventually get from INI (like ini['BEAMER']['landsat_products'])
     daily_fields = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'LANDSAT', 'PATH', 'ROW',
+        'ZONE_NAME', 'ZONE_FID', 'DATE', 'SCENE_ID', 'PLATFORM', 'PATH', 'ROW',
         'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR',
         'PIXEL_COUNT', 'LOW_ETG_COUNT',
         'NDVI_TOA', 'NDWI_TOA', 'ALBEDO_SUR', 'TS', 'EVI_SUR', 'ETSTAR_MEAN',
@@ -98,6 +65,35 @@ def main(ini_path, overwrite_flag=False):
         'WY_ETO']
     ppt_fields = ['WY_PPT']
 
+    # Read config file
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='ZONAL_STATS')
+    inputs.parse_section(ini, section='BEAMER')
+    inputs.parse_section(ini, section='SUMMARY')
+    inputs.parse_section(ini, section='TABLES')
+
+    # Output paths
+    output_daily_path = os.path.join(
+        ini['SUMMARY']['output_ws'],
+        ini['BEAMER']['output_name'].replace('.csv', '_daily.xlsx'))
+    output_annual_path = os.path.join(
+        ini['SUMMARY']['output_ws'],
+        ini['BEAMER']['output_name'].replace('.csv', '_annual.xlsx'))
+
+    # Check if files already exist
+    if overwrite_flag:
+        if os.path.isfile(output_daily_path):
+            os.remove(output_daily_path)
+        if os.path.isfile(output_annual_path):
+            os.remove(output_annual_path)
+    else:
+        if (os.path.isfile(output_daily_path) and
+                os.path.isfile(output_annual_path)):
+            logging.info('\nOutput files already exist and '
+                         'overwrite is False, exiting')
+            return True
+
     # Start/end year
     year_list = list(range(
         ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1))
@@ -116,7 +112,8 @@ def main(ini_path, overwrite_flag=False):
 
     # Read in the zonal stats CSV
     logging.debug('  Reading zonal stats CSV file')
-    landsat_df = pd.read_csv(output_path)
+    landsat_df = pd.read_csv(os.path.join(
+        ini['ZONAL_STATS']['output_ws'], ini['BEAMER']['output_name']))
 
     logging.debug('  Filtering Landsat dataframe')
     landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
@@ -152,13 +149,13 @@ def main(ini_path, overwrite_flag=False):
 
     # Assume the default is for these to be True and only filter if False
     if not ini['INPUTS']['landsat4_flag']:
-        landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT04']
+        landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LT04']
     if not ini['INPUTS']['landsat5_flag']:
-        landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT05']
+        landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LT05']
     if not ini['INPUTS']['landsat7_flag']:
-        landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LE07']
+        landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LE07']
     if not ini['INPUTS']['landsat8_flag']:
-        landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LC08']
+        landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LC08']
 
     if ini['INPUTS']['scene_id_keep_list']:
         landsat_df = landsat_df[landsat_df['SCENE_ID'].isin(
@@ -196,7 +193,7 @@ def main(ini_path, overwrite_flag=False):
         # logging.debug('    Maximum pixel count: {}'.format(
         #     max_pixel_count))
         slc_off_mask = (
-            (landsat_df['LANDSAT'] == 'LE7') &
+            (landsat_df['PLATFORM'] == 'LE07') &
             ((landsat_df['YEAR'] >= 2004) |
              ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
         slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
@@ -205,14 +202,13 @@ def main(ini_path, overwrite_flag=False):
             ((slc_off_pct >= ini['SUMMARY']['min_slc_off_pct']) & slc_off_mask) |
             (~slc_off_mask)]
 
-    if landsat_df.empty():
+    if landsat_df.empty:
         logging.error('  Empty dataframe after filtering, exiting')
         return False
 
-
-    if not os.path.isfile(daily_path):
+    if not os.path.isfile(output_daily_path):
         logging.info('\nWriting daily values to Excel')
-        excel_f = ExcelWriter(daily_path)
+        excel_f = ExcelWriter(output_daily_path)
         for zone_name in sorted(zone_name_list):
             logging.info('  {}'.format(zone_name))
             zone_df = landsat_df[landsat_df['ZONE_NAME'] == zone_name]
@@ -222,46 +218,48 @@ def main(ini_path, overwrite_flag=False):
             del zone_df
         excel_f.save()
 
-    if not os.path.isfile(annual_path):
+    if not os.path.isfile(output_annual_path):
         logging.info('\nComputing annual summaries')
-        # annual_df = output_df.groupby(['UNIT', 'YEAR']).mean()
-        # annual_df = annual_df.drop(['PATH', 'ROW', 'MONTH', 'DAY', 'DOY'], 1)
-        # print(output_df.head())
         annual_df = landsat_df \
             .groupby(['ZONE_NAME', 'YEAR']) \
             .agg({
-                'PIXEL_COUNT': {
-                    'PIXEL_COUNT': 'mean',
-                    'SCENE_COUNT': 'count'},
-                'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
-                'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-                'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
-                'LOW_ETG_COUNT': {'LOW_ETG_COUNT': 'mean'},
-                'NDVI_TOA': {'NDVI_TOA': 'mean'},
-                'NDWI_TOA': {'NDWI_TOA': 'mean'},
-                'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
-                'TS': {'TS': 'mean'},
-                'EVI_SUR': {
-                    'EVI_SUR_MEAN': 'mean',
-                    'EVI_SUR_MEDIAN': 'median',
-                    'EVI_SUR_MAX': 'max',
-                    'EVI_SUR_MIN': 'min'},
-                'ETSTAR_MEAN': {'ETSTAR_MEAN': 'mean'},
-                'ETG_MEAN': {'ETG_MEAN': 'mean'},
-                'ETG_LPI': {'ETG_LPI': 'mean'},
-                'ETG_UPI': {'ETG_UPI': 'mean'},
-                'ETG_LCI': {'ETG_LCI': 'mean'},
-                'ETG_UCI': {'ETG_UCI': 'mean'},
-                'ET_MEAN': {'ET_MEAN': 'mean'},
-                'ET_LPI': {'ET_LPI': 'mean'},
-                'ET_UPI': {'ET_UPI': 'mean'},
-                'ET_LCI': {'ET_LCI': 'mean'},
-                'ET_UCI': {'ET_UCI': 'mean'},
-                'WY_ETO': {'WY_ETO': 'mean'},
-                'WY_PPT': {'WY_PPT': 'mean'}
+                'PIXEL_COUNT': ['count', 'mean'],
+                'PIXEL_TOTAL': ['mean'],
+                'FMASK_COUNT': 'mean',
+                'FMASK_TOTAL': 'mean',
+                'CLOUD_SCORE': 'mean',
+                'LOW_ETG_COUNT': 'mean',
+                'NDVI_TOA': 'mean',
+                'NDWI_TOA': 'mean',
+                'ALBEDO_SUR': 'mean',
+                'TS': 'mean',
+                # 'EVI_SUR': 'mean',
+                'EVI_SUR': ['mean', 'median', 'min', 'max'],
+                'ETSTAR_MEAN': 'mean',
+                'ETG_MEAN': 'mean',
+                'ETG_LPI': 'mean',
+                'ETG_UPI': 'mean',
+                'ETG_LCI': 'mean',
+                'ETG_UCI': 'mean',
+                'ET_MEAN': 'mean',
+                'ET_LPI': 'mean',
+                'ET_UPI': 'mean',
+                'ET_LCI': 'mean',
+                'ET_UCI': 'mean',
+                'WY_ETO': 'mean',
+                'WY_PPT': 'mean'
             })
-        annual_df.columns = annual_df.columns.droplevel(0)
-        annual_df = annual_df[annual_fields]
+        annual_df.columns = annual_df.columns.map('_'.join)
+        annual_df = annual_df.rename(columns={
+            'PIXEL_COUNT_count': 'SCENE_COUNT',
+            'PIXEL_COUNT_mean': 'PIXEL_COUNT'})
+        annual_df = annual_df.rename(columns={
+            'EVI_SUR_mean': 'EVI_SUR_MEAN',
+            'EVI_SUR_median': 'EVI_SUR_MEDIAN',
+            'EVI_SUR_min': 'EVI_SUR_MIN',
+            'EVI_SUR_max': 'EVI_SUR_MAX'})
+        annual_df.rename(
+            columns=lambda x: str(x).replace('_mean', ''), inplace=True)
         annual_df['SCENE_COUNT'] = annual_df['SCENE_COUNT'].astype(np.int)
         annual_df['PIXEL_COUNT'] = annual_df['PIXEL_COUNT'].astype(np.int)
         annual_df['PIXEL_TOTAL'] = annual_df['PIXEL_TOTAL'].astype(np.int)
@@ -305,10 +303,10 @@ def main(ini_path, overwrite_flag=False):
             sys.exit()
 
         logging.info('\nWriting annual values to Excel')
-        excel_f = ExcelWriter(annual_path)
+        excel_f = ExcelWriter(output_annual_path)
         for zone_name in sorted(zone_name_list):
             logging.info('  {}'.format(zone_name))
-            zone_df = annual_df[annual_df[zone_field] == zone_name]
+            zone_df = annual_df[annual_df['ZONE_NAME'] == zone_name]
             zone_df.to_excel(
                 excel_f, zone_name, index=False, float_format='%.4f')
             del zone_df
@@ -326,9 +324,10 @@ def arg_parse():
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
         help='Debug level logging', action='store_const', dest='loglevel')
-    parser.add_argument(
-        '-o', '--overwrite', default=False, action='store_true',
-        help='Force overwrite of existing files')
+    # parser.add_argument(
+    #     '-o', '--overwrite', default=False, action='store_true',
+    #     help='Force overwrite of existing files')
+    args = parser.parse_args()
 
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
         args.ini = os.path.abspath(args.ini)
@@ -343,8 +342,9 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
     log_f = '{:<20s} {}'
-    logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
+    logging.info(log_f.format(
+        'Start Time:', datetime.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
 
-    main(ini_path=args.ini, overwrite_flag=args.overwrite)
+    main(ini_path=args.ini)

@@ -13,7 +13,7 @@ example/stats*
 example/images
 example/images*
 example/quicklooks*
-beamer/annual*
-beamer/composite*
-beamer/images*
-beamer/stats*
+beamer_v*/annual*
+beamer_v*/composite*
+beamer_v*/images*
+beamer_v*/stats*

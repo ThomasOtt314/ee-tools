@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_summary_figures.py
 # Purpose:      Generate Beamer ETg summary figures
-# Created       2017-07-13
+# Created       2017-07-16
 # Python:       3.6
 #--------------------------------
 
@@ -11,7 +11,6 @@ import datetime
 import logging
 import math
 import os
-# import re
 import sys
 
 import matplotlib.pyplot as plt
@@ -40,38 +39,21 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
         show_flag (bool): if True, show the figures in the browser.
             Default is False.
         overwrite_flag (bool): if True, overwrite existing figures
-            Default is False
+            Default is True (for now)
     """
 
     logging.info('\nGenerate Beamer ETg summary figures')
 
-    # Read config file
-    ini = inputs.read(ini_path)
-    inputs.parse_section(ini, section='INPUTS')
-    # inputs.parse_section(ini, section='SPATIAL')
-    inputs.parse_section(ini, section='ZONAL_STATS')
-    inputs.parse_section(ini, section='SUMMARY')
-    inputs.parse_section(ini, section='FIGURES')
-    inputs.parse_section(ini, section='BEAMER')
-
-    # Read in config file
-    input_ws = ini['ZONAL_STATS']['output_ws']
-    output_ws = ini['SUMMARY']['output_ws']
-    input_name = ini['BEAMER']['output_name']
-    input_path = os.path.join(input_ws, input_name)
-
-    figures_ws = os.path.join(output_ws, 'figures')
-
     ncolors = [
         '#348ABD', '#7A68A6', '#A60628', '#467821',
         '#CF4457', '#188487', '#E24A33']
-
     xtick_fs = 8
     ytick_fs = 8
     xlabel_fs = 8
     ylabel_fs = 8
     ms = 2
     figsize = (3.0, 2.5)
+    output_folder = 'figures'
 
     # For unit conversion
     eto_fields = [
@@ -80,8 +62,19 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
         'WY_ETO']
     ppt_fields = ['WY_PPT']
 
-    if not os.path.isdir(figures_ws):
-        os.makedirs(figures_ws)
+    # Read config file
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='ZONAL_STATS')
+    inputs.parse_section(ini, section='SUMMARY')
+    inputs.parse_section(ini, section='FIGURES')
+    inputs.parse_section(ini, section='BEAMER')
+
+    # Output paths
+    output_ws = os.path.join(
+        ini['SUMMARY']['output_ws'], output_folder)
+    if not os.path.isdir(output_ws):
+        os.makedirs(output_ws)
 
     # Start/end year
     year_list = list(range(
@@ -101,7 +94,8 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
     # Read in the zonal stats CSV
     logging.debug('  Reading zonal stats CSV file')
-    input_df = pd.read_csv(input_path)
+    input_df = pd.read_csv(os.path.join(
+        ini['ZONAL_STATS']['output_ws'], ini['BEAMER']['output_name']))
     logging.debug(input_df.head())
 
     logging.debug('  Filtering Landsat dataframe')
@@ -196,44 +190,53 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
 
     # Process each zone separately
-    zone_name_list = sorted(list(set(input_df['ZONE_NAME'].values)))
     logging.debug(input_df.head())
+    zone_name_list = sorted(list(set(input_df['ZONE_NAME'].values)))
     for zone_name in zone_name_list:
-        logging.info('{}'.format(zone_name))
+        logging.info('ZONE: {}'.format(zone_name))
+        # The names are currently stored in the CSV with spaces
+        zone_output_name = zone_name.replace(' ', '_')
         zone_df = input_df[input_df['ZONE_NAME'] == zone_name]
+        if zone_df.empty:
+            logging.info('  Empty zone dataframe, skipping zone')
+            continue
+
 
         logging.debug('  Computing annual summaries')
         annual_df = zone_df \
             .groupby(['ZONE_NAME', 'YEAR']) \
             .agg({
-                'PIXEL_COUNT': {
-                    'PIXEL_COUNT': 'mean',
-                    'SCENE_COUNT': 'count'},
-                'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
-                'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-                'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
-                'LOW_ETG_COUNT': {'LOW_ETG_COUNT': 'mean'},
-                'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
-                'NDVI_TOA': {'NDVI_TOA': 'mean'},
-                'NDWI_TOA': {'NDWI_TOA': 'mean'},
-                'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
-                'TS': {'TS': 'mean'},
-                'EVI_SUR': {'EVI_SUR': 'mean'},
-                'ETSTAR_MEAN': {'ETSTAR_MEAN': 'mean'},
-                'ETG_MEAN': {'ETG_MEAN': 'mean'},
-                'ETG_LPI': {'ETG_LPI': 'mean'},
-                'ETG_UPI': {'ETG_UPI': 'mean'},
-                'ETG_LCI': {'ETG_LCI': 'mean'},
-                'ETG_UCI': {'ETG_UCI': 'mean'},
-                'ET_MEAN': {'ET_MEAN': 'mean'},
-                'ET_LPI': {'ET_LPI': 'mean'},
-                'ET_UPI': {'ET_UPI': 'mean'},
-                'ET_LCI': {'ET_LCI': 'mean'},
-                'ET_UCI': {'ET_UCI': 'mean'},
-                'WY_ETO': {'WY_ETO': 'mean'},
-                'WY_PPT': {'WY_PPT': 'mean'}
+                'PIXEL_COUNT': ['count', 'mean'],
+                'PIXEL_TOTAL': ['mean'],
+                'FMASK_COUNT': 'mean',
+                'FMASK_TOTAL': 'mean',
+                'CLOUD_SCORE': 'mean',
+                'LOW_ETG_COUNT': 'mean',
+                'NDVI_TOA': 'mean',
+                'NDWI_TOA': 'mean',
+                'ALBEDO_SUR': 'mean',
+                'TS': 'mean',
+                'EVI_SUR': 'mean',
+                'ETSTAR_MEAN': 'mean',
+                'ETG_MEAN': 'mean',
+                'ETG_LPI': 'mean',
+                'ETG_UPI': 'mean',
+                'ETG_LCI': 'mean',
+                'ETG_UCI': 'mean',
+                'ET_MEAN': 'mean',
+                'ET_LPI': 'mean',
+                'ET_UPI': 'mean',
+                'ET_LCI': 'mean',
+                'ET_UCI': 'mean',
+                'WY_ETO': 'mean',
+                'WY_PPT': 'mean'
             })
-        annual_df.columns = annual_df.columns.droplevel(0)
+        annual_df.columns = annual_df.columns.map('_'.join)
+        annual_df = annual_df.rename(columns={
+            'PIXEL_COUNT_count': 'SCENE_COUNT',
+            'PIXEL_COUNT_mean': 'PIXEL_COUNT'})
+        annual_df.rename(
+            columns=lambda x: str(x).replace('_mean', ''), inplace=True)
         annual_df['SCENE_COUNT'] = annual_df['SCENE_COUNT'].astype(np.int)
         annual_df['PIXEL_COUNT'] = annual_df['PIXEL_COUNT'].astype(np.int)
         annual_df['PIXEL_TOTAL'] = annual_df['PIXEL_TOTAL'].astype(np.int)
@@ -293,10 +296,9 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
         logging.debug('    EVI vs PPT')
         figure_path = os.path.join(
-            figures_ws,
-            '{}_evi.png'.format(zone_name.lower()))
+            output_ws, '{}_evi.png'.format(zone_output_name))
         fig = plt.figure(figsize=figsize)
-        ax1 = fig.add_axes([0.18, 0.21, 0.67, 0.75])
+        ax1 = fig.add_axes([0.20, 0.21, 0.65, 0.75])
         ax1.set_xlabel('Year', fontsize=xlabel_fs)
         ax2 = ax1.twinx()
         ax1.plot(
@@ -338,8 +340,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
         logging.debug('    ETo vs PPT')
         figure_path = os.path.join(
-            figures_ws,
-            '{}_eto.png'.format(zone_name.lower()))
+            output_ws, '{}_eto.png'.format(zone_output_name))
         fig = plt.figure(figsize=figsize)
         ax1 = fig.add_axes([0.18, 0.21, 0.67, 0.75])
         ax1.set_xlabel('Year', fontsize=xlabel_fs)
@@ -386,8 +387,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
         logging.debug('    ET vs PPT')
         figure_path = os.path.join(
-            figures_ws,
-            '{}_et.png'.format(zone_name.lower()))
+            output_ws, '{}_et.png'.format(zone_output_name))
         fig = plt.figure(figsize=figsize)
         ax1 = fig.add_axes([0.18, 0.21, 0.67, 0.75])
         ax1.set_xlabel('Year', fontsize=xlabel_fs)
@@ -440,8 +440,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
         logging.debug('    ETg vs PPT')
         figure_path = os.path.join(
-            figures_ws,
-            '{}_etg.png'.format(zone_name.lower()))
+            output_ws, '{}_etg.png'.format(zone_output_name))
         fig = plt.figure(figsize=figsize)
         ax1 = fig.add_axes([0.18, 0.21, 0.67, 0.75])
         ax1.set_xlabel('Year', fontsize=xlabel_fs)
@@ -494,8 +493,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
 
         logging.debug('    Complimentary')
         figure_path = os.path.join(
-            figures_ws,
-            '{}_complimentary.png'.format(zone_name.lower()))
+            output_ws, '{}_complimentary.png'.format(zone_output_name))
         fig = plt.figure(figsize=(3, 2.5))
         ax = fig.add_axes([0.18, 0.16, 0.78, 0.80])
         # ax = fig.add_axes([0.18, 0.21, 0.67, 0.70])
@@ -540,9 +538,9 @@ def arg_parse():
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
         help='Debug level logging', action='store_const', dest='loglevel')
-    parser.add_argument(
-        '-o', '--overwrite', default=False, action='store_true',
-        help='Force overwrite of existing files')
+    # parser.add_argument(
+    #     '-o', '--overwrite', default=False, action='store_true',
+    #     help='Force overwrite of existing files')
     args = parser.parse_args()
 
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
@@ -563,4 +561,4 @@ if __name__ == '__main__':
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
 
-    main(ini_path=args.ini, show_flag=args.show, overwrite_flag=args.overwrite)
+    main(ini_path=args.ini, show_flag=args.show)

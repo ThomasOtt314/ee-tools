@@ -199,7 +199,6 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
 
     # CSV parameters
-    # Zone field will be inserted after it is read in from INI file
     landsat_annual_fields = [
         'ZONE_FID', 'ZONE_NAME', 'YEAR', 'SCENE_COUNT', 'CLOUD_SCORE',
         'PIXEL_COUNT', 'PIXEL_TOTAL', 'FMASK_COUNT', 'FMASK_TOTAL',
@@ -328,11 +327,11 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
 
         # Output paths
         landsat_summary_path = os.path.join(
-            zone_stats_ws, 'figures',
-            '{}_landsat_figures.csv'.format(zone_name))
+            zone_figures_ws, '{}_landsat_figures.csv'.format(zone_name))
         gridmet_summary_path = os.path.join(
-            zone_stats_ws, 'figures',
-            '{}_gridmet_figures.csv'.format(zone_name))
+            zone_figures_ws, '{}_gridmet_figures.csv'.format(zone_name))
+        zone_summary_path = os.path.join(
+            zone_figures_ws, '{}_zone_figures.csv'.format(zone_name))
 
         logging.debug('  Reading Landsat CSV')
         landsat_df = pd.read_csv(landsat_daily_path)
@@ -441,38 +440,23 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
             continue
 
         logging.debug('  Computing Landsat annual summaries')
-        landsat_df = landsat_df\
-            .groupby(['ZONE_FID', 'ZONE_NAME', 'YEAR'])\
-            .agg({
-                'PIXEL_COUNT': {
-                    'PIXEL_COUNT': 'mean',
-                    'SCENE_COUNT': 'count'},
-                'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
-                'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
-                'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
-                'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'},
-                'ALBEDO_SUR': {'ALBEDO_SUR': 'mean'},
-                'EVI_SUR': {'EVI_SUR': 'mean'},
-                'NDVI_SUR': {'NDVI_SUR': 'mean'},
-                'NDVI_TOA': {'NDVI_TOA': 'mean'},
-                'NDWI_GREEN_NIR_SUR': {'NDWI_GREEN_NIR_SUR': 'mean'},
-                'NDWI_GREEN_SWIR1_SUR': {'NDWI_GREEN_SWIR1_SUR': 'mean'},
-                'NDWI_NIR_SWIR1_SUR': {'NDWI_NIR_SWIR1_SUR': 'mean'},
-                # 'NDWI_GREEN_NIR_TOA': {'NDWI_GREEN_NIR_TOA': 'mean'},
-                # 'NDWI_GREEN_SWIR1_TOA': {'NDWI_GREEN_SWIR1_TOA': 'mean'},
-                # 'NDWI_NIR_SWIR1_TOA': {'NDWI_NIR_SWIR1_TOA': 'mean'},
-                # 'NDWI_SWIR1_GREEN_SUR': {'NDWI_SWIR1_GREEN_SUR': 'mean'},
-                # 'NDWI_SWIR1_GREEN_TOA': {'NDWI_SWIR1_GREEN_TOA': 'mean'},
-                # 'NDWI_SUR': {'NDWI_SUR': 'mean'},
-                # 'NDWI_TOA': {'NDWI_TOA': 'mean'},
-                'TC_BRIGHT': {'TC_BRIGHT': 'mean'},
-                'TC_GREEN': {'TC_GREEN': 'mean'},
-                'TC_WET': {'TC_WET': 'mean'},
-                'TS': {'TS': 'mean'},
-            })
+        agg_dict = {
+            'PIXEL_COUNT': {
+                'PIXEL_COUNT': 'mean',
+                'SCENE_COUNT': 'count'},
+            'PIXEL_TOTAL': {'PIXEL_TOTAL': 'mean'},
+            'FMASK_COUNT': {'FMASK_COUNT': 'mean'},
+            'FMASK_TOTAL': {'FMASK_TOTAL': 'mean'},
+            'CLOUD_SCORE': {'CLOUD_SCORE': 'mean'}}
+        for field in landsat_df.columns.values:
+            if field in landsat_annual_fields:
+                agg_dict.update({field: {field: 'mean'}})
+        landsat_df = landsat_df \
+            .groupby(['ZONE_NAME', 'ZONE_FID', 'YEAR']) \
+            .agg(agg_dict)
         landsat_df.columns = landsat_df.columns.droplevel(0)
         landsat_df.reset_index(inplace=True)
-        landsat_df = landsat_df[landsat_annual_fields]
+        # landsat_df = landsat_df[landsat_annual_fields]
         landsat_df['YEAR'] = landsat_df['YEAR'].astype(np.int)
         landsat_df['SCENE_COUNT'] = landsat_df['SCENE_COUNT'].astype(np.int)
         landsat_df['PIXEL_COUNT'] = landsat_df['PIXEL_COUNT'].astype(np.int)
@@ -481,6 +465,7 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         landsat_df['FMASK_TOTAL'] = landsat_df['FMASK_TOTAL'].astype(np.int)
         landsat_df.sort_values(by='YEAR', inplace=True)
 
+        # Aggregate GRIDMET (to water year)
         if os.path.isfile(gridmet_monthly_path):
             logging.debug('  Reading montly GRIDMET CSV')
             gridmet_df = pd.read_csv(gridmet_monthly_path)
@@ -547,6 +532,18 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         # del gridmet_month_df.index.name
 
 
+        # Merge Landsat and GRIDMET collections
+        zone_df = landsat_df.merge(
+            gridmet_group_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
+            # gridmet_group_df, on=['ZONE_FID', 'YEAR'])
+        # zone_df = zone_df.merge(
+        #     gridmet_month_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
+        #     gridmet_month_df, on=['ZONE_FID', 'YEAR'])
+        if zone_df is None or zone_df.empty:
+            logging.info('  Empty zone dataframe, not generating figures')
+            continue
+
+
         # Save annual Landsat and GRIDMET tables
         logging.debug('  Saving summary tables')
 
@@ -560,17 +557,11 @@ def main(ini_path=None, overwrite_flag=True, show_flag=False):
         gridmet_group_df.to_csv(gridmet_summary_path, index=False)
         # columns=export_fields
 
+        logging.debug('  {}'.format(zone_summary_path))
+        zone_df.sort_values(by=['YEAR'], inplace=True)
+        zone_df.to_csv(zone_summary_path, index=False)
+        # columns=export_fields
 
-        # Merge Landsat and GRIDMET collections
-        zone_df = landsat_df.merge(
-            gridmet_group_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
-            # gridmet_group_df, on=['ZONE_FID', 'YEAR'])
-        # zone_df = zone_df.merge(
-        #     gridmet_month_df, on=['ZONE_FID', 'ZONE_NAME', 'YEAR'])
-        #     gridmet_month_df, on=['ZONE_FID', 'YEAR'])
-        if zone_df is None or zone_df.empty:
-            logging.info('  Empty zone dataframe, not generating figures')
-            continue
 
         # Adjust year range based on data availability?
         # start_year = min(zone_df['YEAR']),

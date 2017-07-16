@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
-# Created       2017-06-20
+# Created       2017-07-16
 # Python:       3.6
 #--------------------------------
 
@@ -53,23 +53,49 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
     """
     logging.info('\nGenerate interactive timeseries figures')
 
-    # Read config file
-    ini = inputs.read(ini_path)
-    inputs.parse_section(ini, section='INPUTS')
-    inputs.parse_section(ini, section='SUMMARY')
-
     # Eventually read from INI
     plot_var_list = ['NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_TOA', 'EVI_SUR']
     # plot_var_list = [
     #     'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_TOA',
     #     'CLOUD_SCORE', 'FMASK_PCT']
+    output_folder = 'figures'
 
-    year_list = range(
-        ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1)
+    # List of possible field names
+    # landsat_beamer_fields = [
+    #     'EVI_SUR',
+    #     'NDVI_TOA', 'NDWI_TOA', 'NDVI_SUR', 'ALBEDO_SUR', 'TS',
+    #     'ETSTAR_MEAN', 'ETSTAR_LPI', 'ETSTAR_UPI', 'ETSTAR_LCI', 'ETSTAR_UCI',
+    #     # 'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
+    #     # 'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI'
+    # ]
+
+    # Read config file
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='ZONAL_STATS')
+    inputs.parse_section(ini, section='SUMMARY')
+    inputs.parse_section(ini, section='FIGURES')
+    inputs.parse_section(ini, section='BEAMER')
+
+    # Hardcode GRIDMET month range to the water year
+    ini['SUMMARY']['gridmet_start_month'] = 10
+    ini['SUMMARY']['gridmet_end_month'] = 9
+
+    # Start/end year
+    year_list = list(range(
+        ini['INPUTS']['start_year'], ini['INPUTS']['end_year'] + 1))
     month_list = list(utils.wrapped_range(
         ini['INPUTS']['start_month'], ini['INPUTS']['end_month'], 1, 12))
     doy_list = list(utils.wrapped_range(
         ini['INPUTS']['start_doy'], ini['INPUTS']['end_doy'], 1, 366))
+
+    # GRIDMET month range (default to water year)
+    gridmet_start_month = ini['SUMMARY']['gridmet_start_month']
+    gridmet_end_month = ini['SUMMARY']['gridmet_end_month']
+    gridmet_months = list(utils.month_range(
+        gridmet_start_month, gridmet_end_month))
+    logging.info('\nGridmet months: {}'.format(
+        ', '.join(map(str, gridmet_months))))
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(
@@ -86,69 +112,66 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             zone_obj for zone_obj in zone_geom_list
             if zone_obj[0] not in ini['INPUTS']['fid_skip_list']]
 
+    # # Filter features by FID before merging geometries
+    # if ini['INPUTS']['fid_keep_list']:
+    #     landsat_df = landsat_df[landsat_df['ZONE_FID'].isin(
+    #         ini['INPUTS']['fid_keep_list'])]
+    # if ini['INPUTS']['fid_skip_list']:
+    #     landsat_df = landsat_df[~landsat_df['ZONE_FID'].isin(
+    #         ini['INPUTS']['fid_skip_list'])]
+
     logging.info('\nProcessing zones')
-    zone_list = []
     for zone_fid, zone_name, zone_json in zone_geom_list:
         zone_name = zone_name.replace(' ', '_')
-        # zone['json'] = zone_json
         logging.info('ZONE: {} (FID: {})'.format(zone_name, zone_fid))
-        zone_list.append(zone_name)
 
-        zone_stats_ws = os.path.join(ini['SUMMARY']['output_ws'], zone_name)
-        figures_ws = os.path.join(zone_stats_ws, 'figures')
+        zone_stats_ws = os.path.join(
+            ini['ZONAL_STATS']['output_ws'], zone_name)
+        zone_figures_ws = os.path.join(
+            ini['SUMMARY']['output_ws'], zone_name, output_folder)
         if not os.path.isdir(zone_stats_ws):
-            logging.debug('Folder {} does not exist, skipping'.format(
+            logging.debug('  Folder {} does not exist, skipping'.format(
                 zone_stats_ws))
             continue
-        if not os.path.isdir(figures_ws):
-            os.makedirs(figures_ws)
+        elif not os.path.isdir(zone_figures_ws):
+            os.makedirs(zone_figures_ws)
 
-        # Output file paths
-        output_doy_path = os.path.join(
-            ini['SUMMARY']['output_ws'],
-            '{}_timeseries_doy.html'.format(zone_name))
-        output_date_path = os.path.join(
-            ini['SUMMARY']['output_ws'],
-            '{}_timeseries_date.html'.format(zone_name))
-
+        # Input paths
         landsat_daily_path = os.path.join(
-            ini['SUMMARY']['output_ws'], 'brady_v5.csv')
-        # landsat_daily_path = os.path.join(
-        #     zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
+            zone_stats_ws, '{}_landsat_daily.csv'.format(zone_name))
+        gridmet_daily_path = os.path.join(
+            zone_stats_ws, '{}_gridmet_daily.csv'.format(zone_name))
+        gridmet_monthly_path = os.path.join(
+            zone_stats_ws, '{}_gridmet_monthly.csv'.format(zone_name))
         if not os.path.isfile(landsat_daily_path):
             logging.error('  Landsat daily CSV does not exist, skipping zone')
             continue
+        elif (not os.path.isfile(gridmet_daily_path) and
+              not os.path.isfile(gridmet_monthly_path)):
+            logging.error(
+                '  GRIDMET daily or monthly CSV does not exist, skipping zone')
+            continue
+            # DEADBEEF - Eventually support generating only Landsat figures
+            # logging.error(
+            #     '  GRIDMET daily and/or monthly CSV files do not exist.\n'
+            #     '  ETo and PPT will not be processed.')
+
+        # Output paths
+        output_doy_path = os.path.join(
+            zone_figures_ws, '{}_timeseries_doy.html'.format(zone_name))
+        output_date_path = os.path.join(
+            zone_figures_ws, '{}_timeseries_date.html'.format(zone_name))
 
         logging.debug('  Reading Landsat CSV')
-        landsat_df = pd.read_csv(
-            landsat_daily_path, parse_dates=['DATE'], index_col='DATE')
-
-        # Filter to the target zone
-        landsat_df = landsat_df[landsat_df['ZONE_NAME'] == zone_name]
-
-        # Check for QA field
-        if 'QA' not in landsat_df.columns.values:
-            # logging.warning(
-            #     '  WARNING: QA field not present in CSV\n'
-            #     '  To compute QA/QC values, please run "ee_summary_qaqc.py"\n'
-            #     '  Script will continue with no QA/QC values')
-            landsat_df['QA'] = 0
-            # raw_input('ENTER')
-            # logging.error(
-            #     '\nPlease run the "ee_summary_qaqc.py" script '
-            #     'to compute QA/QC values\n')
-            # sys.exit()
-
-        # Check that plot variables are present
-        for plot_var in plot_var_list:
-            if plot_var not in landsat_df.columns.values:
-                logging.error(
-                    '  The variable {} does not exist in the '
-                    'dataframe'.format(plot_var))
-                sys.exit()
+        landsat_df = pd.read_csv(landsat_daily_path)
 
         logging.debug('  Filtering Landsat dataframe')
         landsat_df = landsat_df[landsat_df['PIXEL_COUNT'] > 0]
+
+        # QA field should have been written in zonal stats code
+        # Eventually this block can be removed
+        if 'QA' not in landsat_df.columns.values:
+            landsat_df['QA'] = 0
 
         # # This assumes that there are L5/L8 images in the dataframe
         # if not landsat_df.empty:
@@ -163,6 +186,16 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         if doy_list:
             landsat_df = landsat_df[landsat_df['DOY'].isin(doy_list)]
 
+        # Assume the default is for these to be True and only filter if False
+        if not ini['INPUTS']['landsat4_flag']:
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LT04']
+        if not ini['INPUTS']['landsat5_flag']:
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LT05']
+        if not ini['INPUTS']['landsat7_flag']:
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LE07']
+        if not ini['INPUTS']['landsat8_flag']:
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LC08']
+
         if ini['INPUTS']['path_keep_list']:
             landsat_df = landsat_df[
                 landsat_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
@@ -170,16 +203,6 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
                 ini['INPUTS']['row_keep_list'] != ['XXX']):
             landsat_df = landsat_df[
                 landsat_df['ROW'].isin(ini['INPUTS']['row_keep_list'])]
-
-        # Assume the default is for these to be True and only filter if False
-        if not ini['INPUTS']['landsat4_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT04']
-        if not ini['INPUTS']['landsat5_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT05']
-        if not ini['INPUTS']['landsat7_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LE07']
-        if not ini['INPUTS']['landsat8_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LC08']
 
         if ini['INPUTS']['scene_id_keep_list']:
             # Replace XXX with primary ROW value for checking skip list SCENE_ID
@@ -206,9 +229,10 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         if ini['SUMMARY']['max_qa'] >= 0 and not landsat_df.empty:
             logging.debug('    Maximum QA: {0}'.format(
                 ini['SUMMARY']['max_qa']))
-            landsat_df = landsat_df[landsat_df['QA'] <= ini['SUMMARY']['max_qa']]
+            landsat_df = landsat_df[
+                landsat_df['QA'] <= ini['SUMMARY']['max_qa']]
 
-        # First filter by average cloud score
+        # Filter by average cloud score
         if ini['SUMMARY']['max_cloud_score'] < 100 and not landsat_df.empty:
             logging.debug('    Maximum cloud score: {0}'.format(
                 ini['SUMMARY']['max_cloud_score']))
@@ -231,7 +255,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             # logging.debug('    Maximum pixel count: {}'.format(
             #     max_pixel_count))
             slc_off_mask = (
-                (landsat_df['LANDSAT'] == 'LE7') &
+                (landsat_df['PLATFORM'] == 'LE7') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
             slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
@@ -245,9 +269,134 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
                 '  Empty Landsat dataframe after filtering, skipping zone')
             continue
 
+        # Aggregate GRIDMET (to water year)
+        if os.path.isfile(gridmet_monthly_path):
+            logging.debug('  Reading montly GRIDMET CSV')
+            gridmet_df = pd.read_csv(gridmet_monthly_path)
+        elif os.path.isfile(gridmet_daily_path):
+            logging.debug('  Reading daily GRIDMET CSV')
+            gridmet_df = pd.read_csv(gridmet_daily_path)
+
+        logging.debug('  Computing GRIDMET summaries')
+        # Summarize GRIDMET for target months year
+        if (gridmet_start_month in [10, 11, 12] and
+                gridmet_end_month in [10, 11, 12]):
+            month_mask = (
+                (gridmet_df['MONTH'] >= gridmet_start_month) &
+                (gridmet_df['MONTH'] <= gridmet_end_month))
+            gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR'] + 1
+        elif (gridmet_start_month in [10, 11, 12] and
+              gridmet_end_month not in [10, 11, 12]):
+            month_mask = gridmet_df['MONTH'] >= gridmet_start_month
+            gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR'] + 1
+            month_mask = gridmet_df['MONTH'] <= gridmet_end_month
+            gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR']
+        else:
+            month_mask = (
+                (gridmet_df['MONTH'] >= gridmet_start_month) &
+                (gridmet_df['MONTH'] <= gridmet_end_month))
+            gridmet_df.loc[month_mask, 'GROUP_YEAR'] = gridmet_df['YEAR']
+        # GROUP_YEAR for rows not in the GRIDMET month range will be NAN
+        gridmet_df = gridmet_df[~pd.isnull(gridmet_df['GROUP_YEAR'])]
+
+        if year_list:
+            gridmet_df = gridmet_df[gridmet_df['GROUP_YEAR'].isin(year_list)]
+
+        if gridmet_df.empty:
+            logging.error(
+                '    Empty GRIDMET dataframe after filtering by year')
+            continue
+
+        # Group GRIDMET data by user specified range (default is water year)
+        gridmet_group_df = gridmet_df \
+            .groupby(['ZONE_NAME', 'ZONE_FID', 'GROUP_YEAR']) \
+            .agg({'ETO': np.sum, 'PPT': np.sum}) \
+            .reset_index() \
+            .sort_values(by='GROUP_YEAR')
+            # .rename(columns={'ETO': 'ETO', 'PPT': 'ETO'}) \
+        # Rename wasn't working when chained...
+        gridmet_group_df.rename(columns={'GROUP_YEAR': 'YEAR'}, inplace=True)
+        gridmet_group_df['YEAR'] = gridmet_group_df['YEAR'].astype(int)
+
+        # # Group GRIDMET data by month
+        # gridmet_month_df = gridmet_df\
+        #     .groupby(['ZONE_NAME', 'ZONE_FID', 'GROUP_YEAR', 'MONTH']) \
+        #     .agg({'ETO': np.sum, 'PPT': np.sum}) \
+        #     .reset_index() \
+        #     .sort_values(by=['GROUP_YEAR', 'MONTH'])
+        # gridmet_month_df.rename(columns={'GROUP_YEAR': 'YEAR'}, inplace=True)
+        # # Rename monthly PPT columns
+        # gridmet_month_df['MONTH'] = 'PPT_M' + gridmet_month_df['MONTH'].astype(str)
+        # # Pivot rows up to separate columns
+        # gridmet_month_df = gridmet_month_df.pivot_table(
+        #     'PPT', ['ZONE_NAME', 'YEAR'], 'MONTH')
+        # gridmet_month_df.reset_index(inplace=True)
+        # columns = ['ZONE_NAME', 'YEAR'] + ['PPT_M{}'.format(m) for m in gridmet_months]
+        # gridmet_month_df = gridmet_month_df[columns]
+        # del gridmet_month_df.index.name
+
+        # Merge Landsat and GRIDMET collections
+        zone_df = landsat_df.merge(
+            gridmet_group_df, on=['ZONE_NAME', 'ZONE_FID', 'YEAR'])
+        if zone_df is None or zone_df.empty:
+            logging.info('  Empty zone dataframe, not generating figures')
+            continue
+
+        # Compute ETg
+        zone_df['ETG_MEAN'] = zone_df['ETSTAR_MEAN'] * (
+            zone_df['ETO'] - zone_df['PPT'])
+        zone_df['ETG_LPI'] = zone_df['ETSTAR_LPI'] * (
+            zone_df['ETO'] - zone_df['PPT'])
+        zone_df['ETG_UPI'] = zone_df['ETSTAR_UPI'] * (
+            zone_df['ETO'] - zone_df['PPT'])
+        zone_df['ETG_LCI'] = zone_df['ETSTAR_LCI'] * (
+            zone_df['ETO'] - zone_df['PPT'])
+        zone_df['ETG_UCI'] = zone_df['ETSTAR_UCI'] * (
+            zone_df['ETO'] - zone_df['PPT'])
+
+        # Compute ET
+        zone_df['ET_MEAN'] = zone_df['ETG_MEAN'] + zone_df['PPT']
+        zone_df['ET_LPI'] = zone_df['ETG_LPI'] + zone_df['PPT']
+        zone_df['ET_UPI'] = zone_df['ETG_UPI'] + zone_df['PPT']
+        zone_df['ET_LCI'] = zone_df['ETG_LCI'] + zone_df['PPT']
+        zone_df['ET_UCI'] = zone_df['ETG_UCI'] + zone_df['PPT']
+
+
+
+        # ORIGINAL PLOTTING CODE
+        # Check that plot variables are present
+        for plot_var in plot_var_list:
+            if plot_var not in landsat_df.columns.values:
+                logging.error(
+                    '  The plotting variable {} does not exist in the '
+                    'dataframe'.format(plot_var))
+                sys.exit()
+
+        # if ini['INPUTS']['scene_id_keep_list']:
+        #     # Replace XXX with primary ROW value for checking skip list SCENE_ID
+        #     scene_id_df = pd.Series([
+        #         s.replace('XXX', '{:03d}'.format(int(r)))
+        #         for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+        #     landsat_df = landsat_df[scene_id_df.isin(
+        #         ini['INPUTS']['scene_id_keep_list']).values]
+        #     # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+        #     # landsat_df = landsat_df[landsat_df['SCENE_ID'].isin(
+        #     #     ini['INPUTS']['scene_id_keep_list'])]
+        # if ini['INPUTS']['scene_id_skip_list']:
+        #     # Replace XXX with primary ROW value for checking skip list SCENE_ID
+        #     scene_id_df = pd.Series([
+        #         s.replace('XXX', '{:03d}'.format(int(r)))
+        #         for s, r in zip(landsat_df['SCENE_ID'], landsat_df['ROW'])])
+        #     landsat_df = landsat_df[np.logical_not(scene_id_df.isin(
+        #         ini['INPUTS']['scene_id_skip_list']).values)]
+        #     # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+        #     # landsat_df = landsat_df[np.logical_not(landsat_df['SCENE_ID'].isin(
+        #     #     ini['INPUTS']['scene_id_skip_list']))]
+
+
         # Compute colors for each QA value
         logging.debug('  Building column data source')
-        qa_values = sorted(list(set(landsat_df['QA'].values)))
+        qa_values = sorted(list(set(zone_df['QA'].values)))
         colors = {
             qa: "#%02x%02x%02x" % (int(r), int(g), int(b))
             for qa, (r, g, b, _) in zip(
@@ -260,11 +409,12 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         # Unpack the data by QA type to support interactive legends
         qa_sources = dict()
         for qa_value in qa_values:
-            qa_df = landsat_df[landsat_df['QA'] == qa_value]
+            qa_df = zone_df[zone_df['QA'] == qa_value]
             qa_data = {
                 'INDEX': list(range(len(qa_df.index))),
-                'DATE': qa_df.index,
-                'TIME': qa_df.index.map(lambda x: x.strftime('%Y-%m-%d')),
+                'DATE': pd.to_datetime(qa_df['DATE']),
+                'TIME': pd.to_datetime(qa_df['DATE']).map(
+                    lambda x: x.strftime('%Y-%m-%d')),
                 'DOY': qa_df['DOY'].values,
                 'QA': qa_df['QA'].values,
                 'COLOR': [colors[qa] for qa in qa_df['QA'].values]
@@ -397,10 +547,9 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             show(p)
         save(p)
 
-        # Don't automatically build all plots if show is True
+        # Pause after each iteration if show is True
         if show_flag:
             input('Press ENTER to continue')
-        # break
 
 
 def arg_parse():

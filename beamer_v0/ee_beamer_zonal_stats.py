@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_zonal_stats.py
 # Purpose:      Beamer ET using Earth Engine
-# Created       2017-07-13
+# Created       2017-07-16
 # Python:       3.6
 #--------------------------------
 
@@ -49,24 +49,20 @@ def main(ini_path, overwrite_flag=True):
     """
     logging.info('\nEarth Engine Beamer ET Zonal Stats')
 
-    # Eventually get from INI (like ini['BEAMER']['landsat_products'])
-    landsat_products = [
-        'ndvi_toa', 'ndwi_toa', 'albedo_sur', 'ts', 'evi_sur'
-    ]
-
-    # Regular expression to pull out Landsat scene_id
-    # If RE has capturing groups, findall call below will fail to extract ID
-    landsat_re = re.compile('L[ETC]0[4578]_\d{3}XXX_\d{4}\d{2}\d{2}')
-    # landsat_re = re.compile('L[ETC][4578]\d{3}XXX\d{4}\d{3}')
-    # landsat_re = re.compile('L[ETC][4578]\d{3}\d{3}\d{4}\d{3}\D{3}\d{2}')
-
     # Read config file
     ini = inputs.read(ini_path)
     inputs.parse_section(ini, section='INPUTS')
     inputs.parse_section(ini, section='SPATIAL')
     inputs.parse_section(ini, section='BEAMER')
-    # inputs.parse_section(ini, section='EXPORT')
+    inputs.parse_section(ini, section='EXPORT')
     inputs.parse_section(ini, section='ZONAL_STATS')
+
+    # Overwrite landsat products with Beamer specific values
+    ini['EXPORT']['landsat_products'] = [
+        'ndvi_toa', 'ndwi_toa', 'albedo_sur', 'ts', 'evi_sur', 'etstar_mean',
+        'etg_mean', 'etg_lpi', 'etg_upi', 'etg_lci', 'etg_uci',
+        'etg_mean', 'et_lpi', 'et_upi', 'et_lci', 'et_uci'
+    ]
 
     # First row  of csv is header
     header_list = [
@@ -86,6 +82,12 @@ def main(ini_path, overwrite_flag=True):
     float_fields = list(
         set(header_list) - set(int_fields) -
         set(['ZONE_NAME', 'DATE', 'SCENE_ID', 'PLATFORM']))
+
+    # Regular expression to pull out Landsat scene_id
+    # If RE has capturing groups, findall call below will fail to extract ID
+    landsat_re = re.compile('L[ETC]0[4578]_\d{3}XXX_\d{4}\d{2}\d{2}')
+    # landsat_re = re.compile('L[ETC][4578]\d{3}XXX\d{4}\d{3}')
+    # landsat_re = re.compile('L[ETC][4578]\d{3}\d{3}\d{4}\d{3}\D{3}\d{2}')
 
     # Remove the existing CSV
     output_path = os.path.join(
@@ -210,10 +212,7 @@ def main(ini_path, overwrite_flag=True):
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
             'adjust_method', 'mosaic_method', 'tile_geom']}
-    landsat_args['products'] = landsat_products
-    # Currently only using TOA collections and comput Tasumi at-surface
-    #   reflectance is supported
-    landsat_args['refl_type'] = 'toa'
+    landsat_args['products'] = ini['EXPORT']['landsat_products']
     landsat = ee_common.Landsat(landsat_args)
 
     # Calculate zonal stats for each feature separately
