@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_composite_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-13
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -279,7 +279,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 if ini['BEAMER']['data_ppt_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_ppt_units'] == 'in':
-                    wy_ppt_input = {y: x * 25.4 for y, x in wy_ppt_input.items()}
+                    wy_ppt_input = {
+                        y: x * 25.4 for y, x in wy_ppt_input.items()}
                 elif ini['BEAMER']['data_ppt_units'] == 'ft':
                     wy_ppt_input = {
                         y: x * 25.4 * 12 for y, x in wy_ppt_input.items()}
@@ -339,7 +340,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 if ini['BEAMER']['data_eto_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_eto_units'] == 'in':
-                    wy_eto_input = {y: x * 25.4 for y, x in wy_eto_input.items()}
+                    wy_eto_input = {
+                        y: x * 25.4 for y, x in wy_eto_input.items()}
                 elif ini['BEAMER']['data_eto_units'] == 'ft':
                     wy_eto_input = {
                         y: x * 25.4 * 12 for y, x in wy_eto_input.items()}
@@ -454,7 +456,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
             # Build the collection from the images
             etg_coll = ee.ImageCollection.fromImages(etg_images)
-            # print([float(x[4]) for x in etg_coll.getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
+            # print([float(x[4]) for x in etg_coll.getRegion(
+            #     zone['geom'].centroid(1), 1).getInfo()[1:]])
             # raw_input('ENTER')
 
             if stat.lower() == 'median':

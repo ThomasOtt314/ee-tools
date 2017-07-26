@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-06-13
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -12,7 +12,6 @@ import logging
 import os
 import shutil
 import sys
-from time import sleep
 
 # import arcpy
 from dateutil.relativedelta import relativedelta
@@ -127,7 +126,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
 
     # Initialize Earth Engine API key
+    logging.info('\nInitializing Earth Engine')
     ee.Initialize()
+    utils.ee_request(ee.Number(1).getInfo())
 
     # Get current running tasks
     tasks = utils.get_ee_tasks()
@@ -299,23 +300,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 #         crsTransform=output_transform)
 
                 logging.debug('  Starting export task')
-                for i in range(1, 10):
-                    try:
-                        task.start()
-                        break
-                    except Exception as e:
-                        logging.error('  Exception: {}, retry {}'.format(e, i))
-                        logging.debug('{}'.format(e))
-                        sleep(i ** 2)
-                # try:
-                #     task.start()
-                # except Exception as e:
-                #     logging.error(
-                #         '  Unhandled error starting task, skipping\n'
-                #         '  {}'.format(str(e)))
-                #     continue
-                # logging.debug('  Status: {}'.format(task.status()))
-                # logging.debug('  Active: {}'.format(task.active()))
+                utils.ee_request(task.start())
 
 
         # GRIDMET PDSI
@@ -426,23 +411,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 #         crsTransform=output_transform)
 
                 logging.debug('  Starting export task')
-                for i in range(1, 10):
-                    try:
-                        task.start()
-                        break
-                    except Exception as e:
-                        logging.error('  Exception: {}, retry {}'.format(e, i))
-                        logging.debug('{}'.format(e))
-                        sleep(i ** 2)
-                # try:
-                #     task.start()
-                # except Exception as e:
-                #     logging.error(
-                #         '  Unhandled error starting task, skipping\n'
-                #         '  {}'.format(str(e)))
-                #     continue
-                # logging.debug('  Status: {}'.format(task.status()))
-                # logging.debug('  Active: {}'.format(task.active()))
+                utils.ee_request(task.start())
 
 
 def arg_parse():

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-06-06
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -199,13 +199,13 @@ def main(ini_path=None, overwrite_flag=False):
 
         # Assume the default is for these to be True and only filter if False
         if not ini['INPUTS']['landsat4_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT4']
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LT04']
         if not ini['INPUTS']['landsat5_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LT5']
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LT05']
         if not ini['INPUTS']['landsat7_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LE7']
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LE07']
         if not ini['INPUTS']['landsat8_flag']:
-            landsat_df = landsat_df[landsat_df['LANDSAT'] != 'LC8']
+            landsat_df = landsat_df[landsat_df['PLATFORM'] != 'LC08']
 
         if ini['INPUTS']['scene_id_keep_list']:
             # Replace XXX with primary ROW value for checking skip list SCENE_ID

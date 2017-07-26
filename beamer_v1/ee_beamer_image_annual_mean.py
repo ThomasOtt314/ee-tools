@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_annual_mean_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-13
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -13,7 +13,6 @@ from dateutil import rrule, relativedelta
 import json
 import logging
 import os
-# import re
 import shutil
 import sys
 from time import sleep
@@ -435,8 +434,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
             # Build each collection separately then merge
             etg_coll = ee.ImageCollection(landsat_coll.map(landsat_etg_func))
-            # print([float(x[4]) for x in etg_coll.getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
-            # print([float(x[4]) for x in ee.ImageCollection(ee.Image(etg_coll.mean())).getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
+            # print([float(x[4]) for x in etg_coll.getRegion(
+            #     zone['geom'].centroid(1), 1).getInfo()[1:]])
+            # print([float(x[4]) for x in ee.ImageCollection(ee.Image(
+            #     etg_coll.mean())).getRegion(zone['geom'].centroid(1), 1).getInfo()[1:]])
             # input('ENTER')
 
             # Clip using the feature geometry

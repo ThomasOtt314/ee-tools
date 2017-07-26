@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_image_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-13
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -302,11 +302,12 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     logging.debug('    Output already exists, skipping')
                     continue
                 except:
-                    logging.warning('    Zip file error, removing'.format(i))
+                    logging.warning('    Zip file error, removing')
                     os.remove(zip_path)
 
             # Getting the date directly from the SCENE_ID
-            image_start_dt = datetime.datetime.strptime(image_id[12:], '%Y%m%d')
+            image_start_dt = datetime.datetime.strptime(
+                image_id[12:], '%Y%m%d')
             image_end_dt = image_start_dt + datetime.timedelta(days=1)
             logging.debug('  {}  {}'.format(
                 image_start_dt.date(), image_end_dt.date()))

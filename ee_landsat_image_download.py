@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-06-13
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -13,7 +13,6 @@ import logging
 import os
 import subprocess
 import sys
-from time import sleep
 
 # import arcpy
 import ee
@@ -135,13 +134,16 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         k: v for section in ['INPUTS', 'EXPORT']
         for k, v in ini[section].items()
         if k in [
-            'landsat4_flag', 'landsat5_flag', 'landsat7_flag',
-            'landsat8_flag', 'fmask_flag', 'acca_flag', 'fmask_source',
+            'landsat4_flag', 'landsat5_flag',
+            'landsat7_flag', 'landsat8_flag',
+            'fmask_flag', 'acca_flag', 'fmask_source',
             'start_year', 'end_year',
-            'start_month', 'end_month', 'start_doy', 'end_doy',
+            'start_month', 'end_month',
+            'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method']}
+            'adjust_method', 'mosaic_method', 'refl_sur_method'
+        ]}
     # landsat_args['start_date'] = start_date
     # landsat_args['end_date'] = end_date
 
@@ -163,7 +165,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         landsat_args['products'].remove('tasseled_cap')
 
     # Initialize Earth Engine API key
+    logging.info('\nInitializing Earth Engine')
     ee.Initialize()
+    utils.ee_request(ee.Number(1).getInfo())
 
     # Get current running tasks
     tasks = utils.get_ee_tasks()
@@ -348,16 +352,10 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                     band_list = [
                         'blue_toa', 'green_toa', 'red_toa',
                         'nir_toa', 'swir1_toa', 'swir2_toa']
-                        # 'toa_blue', 'toa_green', 'toa_red',
-                        # 'toa_nir', 'toa_swir1', 'toa_swir2']
-                    # band_list = ['toa_red', 'toa_green', 'toa_blue']
                 elif band == 'refl_sur':
                     band_list = [
                         'blue_sur', 'green_sur', 'red_sur',
                         'nir_sur', 'swir1_sur', 'swir2_sur']
-                        # 'sur_blue', 'sur_green', 'sur_red',
-                        # 'sur_nir', 'sur_swir1', 'sur_swir2']
-                    # band_list = ['sur_red', 'sur_green', 'sur_blue']
                 elif band == 'tasseled_cap':
                     band_list = ['tc_bright', 'tc_green', 'tc_wet']
                 else:
@@ -392,23 +390,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                 #         crsTransform=output_transform)
 
                 logging.debug('  Starting export task')
-                for i in range(1, 10):
-                    try:
-                        task.start()
-                        break
-                    except Exception as e:
-                        logging.error('  Exception: {}, retry {}'.format(e, i))
-                        logging.debug('{}'.format(e))
-                        sleep(i ** 2)
-                # try:
-                #     task.start()
-                # except Exception as e:
-                #     logging.error(
-                #         '  Unhandled error starting task, skipping\n'
-                #         '  {}'.format(str(e)))
-                #     continue
-                # logging.debug('  Status: {}'.format(task.status()))
-                # logging.debug('  Active: {}'.format(task.active()))
+                utils.ee_request(task.start())
 
 
 def arg_parse():
