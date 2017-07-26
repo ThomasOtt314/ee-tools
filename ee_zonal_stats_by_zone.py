@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-16
+# Modified:     2017-07-25
 # Python:       3.6
 #--------------------------------
 
@@ -442,7 +442,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method'
+            'adjust_method', 'mosaic_method', 'refl_sr_method'
         ]}
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
@@ -1146,7 +1146,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # for ftr in stats_info['features']:
         #     pp.pprint(ftr)
         # input('ENTER')
-        # return False
+        # # return False
 
         # Add a dummy entry to the stats collection
         format_dict = {

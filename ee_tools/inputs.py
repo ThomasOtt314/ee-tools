@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-16
+# Modified:     2017-07-25
 # Python:       3.6
 #--------------------------------
 
@@ -102,7 +102,7 @@ def get_param(ini, section, input_name, output_name, get_type,
             ini[section][output_name] = str(ini[section][input_name])
             # Convert 'None' (strings) to None
             if ini[section][output_name].lower() == 'none':
-                ini[section][output_name] = None
+                ini[section][output_name] = ''
     except (KeyError, configparser.NoOptionError):
         if default == 'MANDATORY':
             logging.error(
@@ -167,11 +167,14 @@ def parse_inputs(ini, section='INPUTS'):
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
-        ['fmask_source', 'fmask_source', str, None],
+        ['fmask_source', 'fmask_source', str, ''],
         #
         ['mosaic_method', 'mosaic_method', str, 'mean'],
         ['adjust_method', 'adjust_method', str, None],
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
+        # Default to Tasumi at-surface reflectance
+        #   until SR Collection 1 is ingested into Earth Engine
+        ['refl_sr_method', 'refl_sr_method', str, 'tasumi']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -300,7 +303,7 @@ def parse_inputs(ini, section='INPUTS'):
         sys.exit()
     if ini[section]['fmask_source']:
         ini[section]['fmask_source'] = ini[section]['fmask_source'].lower()
-        if ini[section]['fmask_source'] not in ['fmask', 'cfmask']:
+        if ini[section]['fmask_source'] not in ['fmask', 'cfmask', 'none']:
             logging.error(
                 '\nERROR: Invalid Fmask source type: {}\n'
                 '  Must be "fmask" or "cfmask"'.format(
@@ -310,23 +313,32 @@ def parse_inputs(ini, section='INPUTS'):
     # Mosaic method
     if ini[section]['mosaic_method']:
         ini[section]['mosaic_method'] = ini[section]['mosaic_method'].lower()
-        mosaic_method_options = ['mean', 'median', 'mosaic', 'min', 'max']
-        if ini[section]['mosaic_method'] not in mosaic_method_options:
+        options = ['mean', 'median', 'mosaic', 'min', 'max']
+        if ini[section]['mosaic_method'] not in options:
             logging.error(
-                '\nERROR: Invalid mosaic method: {}\n''  Must be: {}'.format(
-                    ini[section]['mosaic_method'],
-                    ', '.join(mosaic_method_options)))
+                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
+                    ini[section]['mosaic_method'], ', '.join(options)))
             sys.exit()
 
     # Adjust Landsat Red and NIR bands
     if ini[section]['adjust_method']:
         ini[section]['adjust_method'] = ini[section]['adjust_method'].lower()
-        adjust_method_options = ['oli_2_etm', 'etm_2_oli']
-        if ini[section]['adjust_method'] not in adjust_method_options:
+        options = ['oli_2_etm', 'etm_2_oli']
+        if ini[section]['adjust_method'] not in options:
             logging.error(
-                '\nERROR: Invalid mosaic method: {}\n  Must be: {}'.format(
-                    ini[section]['adjust_method'],
-                    ', '.join(adjust_method_options)))
+                '\nERROR: Invalid adjust method: {}\n  Must be: {}'.format(
+                    ini[section]['adjust_method'], ', '.join(options)))
+            sys.exit()
+
+    # At-surface reflectance method
+    if ini[section]['refl_sr_method']:
+        ini[section]['refl_sr_method'] = ini[section]['refl_sr_method'].lower()
+        options = ['tasumi', 'usgs_sr']
+        if ini[section]['refl_sr_method'] not in options:
+            logging.error(
+                '\nERROR: Invalid at-surface reflectance method: {}\n'
+                '  Must be: {}'.format(
+                    ini[section]['refl_sr_method'], ', '.join(options)))
             sys.exit()
 
 
@@ -506,14 +518,14 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # DEADBEEF - What should the default Landsat products be?
     get_param(
         ini, section, 'landsat_products', 'landsat_products', list,
-        'albedo_sur, evi_sur, ndvi_sur, ndvi_toa, ts')
+        'albedo_sr, evi_sr, ndvi_sr, ndvi_toa, ts')
     get_param(
         ini, section, 'gridmet_products', 'gridmet_products', list,
         'eto, ppt')
 
     # get_param(
     #     ini, section, 'landsat_products', 'landsat_products', list,
-    #     'albedo_sur, ndvi_toa, ts')
+    #     'albedo_sr, ndvi_toa, ts')
     ini[section]['landsat_products'] = utils.unique_keep_order([
         x.lower().strip()
         for x in ini[section]['landsat_products'].split(',') if x.strip()])
@@ -727,8 +739,8 @@ def parse_figures(ini, section='FIGURES'):
         ['ppt_plot_type', 'ppt_plot_type', str, 'LINE'],
         ['best_fit_flag', 'scatter_best_fit', bool, False],
         ['timeseries_bands', 'timeseries_bands', str, 'ndvi_toa'],
-        ['scatter_bands', 'scatter_bands', str, 'ppt:ndvi_sur, ppt:evi_sur'],
-        ['complementary_bands', 'complementary_bands', str, 'evi_sur']
+        ['scatter_bands', 'scatter_bands', str, 'ppt:ndvi_sr, ppt:evi_sr'],
+        ['complementary_bands', 'complementary_bands', str, 'evi_sr']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
