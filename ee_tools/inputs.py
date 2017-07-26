@@ -174,7 +174,7 @@ def parse_inputs(ini, section='INPUTS'):
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
         # Default to Tasumi at-surface reflectance
         #   until SR Collection 1 is ingested into Earth Engine
-        ['refl_sr_method', 'refl_sr_method', str, 'tasumi']
+        ['refl_sur_method', 'refl_sur_method', str, 'tasumi']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -331,14 +331,14 @@ def parse_inputs(ini, section='INPUTS'):
             sys.exit()
 
     # At-surface reflectance method
-    if ini[section]['refl_sr_method']:
-        ini[section]['refl_sr_method'] = ini[section]['refl_sr_method'].lower()
+    if ini[section]['refl_sur_method']:
+        ini[section]['refl_sur_method'] = ini[section]['refl_sur_method'].lower()
         options = ['tasumi', 'usgs_sr']
-        if ini[section]['refl_sr_method'] not in options:
+        if ini[section]['refl_sur_method'] not in options:
             logging.error(
                 '\nERROR: Invalid at-surface reflectance method: {}\n'
                 '  Must be: {}'.format(
-                    ini[section]['refl_sr_method'], ', '.join(options)))
+                    ini[section]['refl_sur_method'], ', '.join(options)))
             sys.exit()
 
 
@@ -518,14 +518,14 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     # DEADBEEF - What should the default Landsat products be?
     get_param(
         ini, section, 'landsat_products', 'landsat_products', list,
-        'albedo_sr, evi_sr, ndvi_sr, ndvi_toa, ts')
+        'albedo_sur, evi_sur, ndvi_sur, ndvi_toa, ts')
     get_param(
         ini, section, 'gridmet_products', 'gridmet_products', list,
         'eto, ppt')
 
     # get_param(
     #     ini, section, 'landsat_products', 'landsat_products', list,
-    #     'albedo_sr, ndvi_toa, ts')
+    #     'albedo_sur, ndvi_toa, ts')
     ini[section]['landsat_products'] = utils.unique_keep_order([
         x.lower().strip()
         for x in ini[section]['landsat_products'].split(',') if x.strip()])
@@ -739,8 +739,8 @@ def parse_figures(ini, section='FIGURES'):
         ['ppt_plot_type', 'ppt_plot_type', str, 'LINE'],
         ['best_fit_flag', 'scatter_best_fit', bool, False],
         ['timeseries_bands', 'timeseries_bands', str, 'ndvi_toa'],
-        ['scatter_bands', 'scatter_bands', str, 'ppt:ndvi_sr, ppt:evi_sr'],
-        ['complementary_bands', 'complementary_bands', str, 'evi_sr']
+        ['scatter_bands', 'scatter_bands', str, 'ppt:ndvi_sur, ppt:evi_sur'],
+        ['complementary_bands', 'complementary_bands', str, 'evi_sur']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)

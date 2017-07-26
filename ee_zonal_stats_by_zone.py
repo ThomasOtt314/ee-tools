@@ -442,7 +442,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'refl_sr_method'
+            'adjust_method', 'mosaic_method', 'refl_sur_method'
         ]}
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
@@ -1032,7 +1032,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         landsat.end_date = end_date
         landsat_coll = landsat.get_collection()
 
-        # DEBUG - Test that the Landsat collection is getting built
+        # # DEBUG - Test that the Landsat collection is getting built
         # print(landsat_coll.aggregate_histogram('SCENE_ID').getInfo())
         # input('ENTER')
         # print('Bands: {}'.format(
