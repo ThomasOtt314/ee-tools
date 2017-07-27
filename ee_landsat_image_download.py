@@ -131,7 +131,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     #   ee_common.get_landsat_image()
     # Zone geom will be updated inside the loop
     landsat_args = {
-        k: v for section in ['INPUTS', 'EXPORT']
+        k: v for section in ['INPUTS']
         for k, v in ini[section].items()
         if k in [
             'landsat4_flag', 'landsat5_flag',
@@ -227,7 +227,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         # Keep scene_id components as string for set operation
         # If not mosaicing images, include path/row in set
         #   otherwise set to None
-        if not ini['EXPORT']['mosaic_method']:
+        if not ini['INPUTS']['mosaic_method']:
             scene_id_list = set([
                 (image_id[12:20], image_id[0:4], image_id[5:8], image_id[8:11])
                 for image_id in scene_id_list])
@@ -245,7 +245,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             doy = scene_dt.strftime('%j')
 
             # If not mosaicing images, include path/row in name
-            if not ini['EXPORT']['mosaic_method']:
+            if not ini['INPUTS']['mosaic_method']:
                 landsat_str = '{}{}{}'.format(landsat, path, row)
             else:
                 landsat_str = '{}'.format(landsat)

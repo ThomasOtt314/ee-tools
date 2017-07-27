@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_zonal_stats.py
 # Purpose:      Beamer ET using Earth Engine
-# Created       2017-07-16
+# Created       2017-07-26
 # Python:       3.6
 #--------------------------------
 
@@ -174,7 +174,9 @@ def main(ini_path, overwrite_flag=True):
             ini['SPATIAL']['cellsize']))
 
     # Initialize Earth Engine API key
+    logging.info('\nInitializing Earth Engine')
     ee.Initialize()
+    utils.ee_request(ee.Number(1).getInfo())
 
     # Read in ETo and PPT data from file
     if (ini['BEAMER']['eto_source'] == 'file' or
@@ -208,10 +210,11 @@ def main(ini_path, overwrite_flag=True):
             'landsat7_flag', 'landsat8_flag',
             'fmask_flag', 'acca_flag', 'fmask_source',
             'start_year', 'end_year',
-            'start_month', 'end_month', 'start_doy', 'end_doy',
+            'start_month', 'end_month',
+            'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
-            'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'tile_geom']}
+            'path_keep_list', 'row_keep_list', 'tile_geom',
+            'adjust_method', 'mosaic_method', 'refl_sur_method']}
     landsat_args['products'] = ini['EXPORT']['landsat_products']
     landsat = ee_common.Landsat(landsat_args)
 
@@ -705,13 +708,15 @@ def landsat_etg_func(img):
 
 def etstar_func(evi, etstar_type='mean'):
     """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
-    def etstar(evi, c0, c1, c2):
+    def etstar(img, c0, c1, c2, evi_min=0.075):
         """Beamer ET*"""
-        return ee.Image(evi) \
+        return ee.Image(img) \
+            .max(evi_min) \
             .expression(
-                'c0 + c1 * evi + c2 * (evi ** 2)',
-                {'evi': evi, 'c0': c0, 'c1': c1, 'c2': c2}) \
+                'c0 + c1 * b(0) + c2 * (b(0) ** 2)',
+                {'c0': c0, 'c1': c1, 'c2': c2}) \
             .max(0)
+
     if etstar_type == 'mean':
         return etstar(evi, -0.1955, 2.9042, -1.5916)
     elif etstar_type == 'lpi':

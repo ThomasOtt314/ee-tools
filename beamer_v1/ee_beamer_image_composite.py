@@ -68,6 +68,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     ini = inputs.read(ini_path)
     inputs.parse_section(ini, section='INPUTS')
     inputs.parse_section(ini, section='SPATIAL')
+    inputs.parse_section(ini, section='IMAGES')
     inputs.parse_section(ini, section='BEAMER')
 
     # Get ee features from shapefile
@@ -191,8 +192,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             'start_month', 'end_month',
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
-            'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'tile_geom']}
+            'path_keep_list', 'row_keep_list', 'tile_geom',
+            'adjust_method', 'mosaic_method', 'refl_sur_method']}
     landsat_args['products'] = ['evi_sur']
     landsat = ee_common.Landsat(landsat_args)
 
@@ -240,7 +241,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         logging.debug('  Image Transform: {}'.format(output_transform))
         logging.debug('  Image Shape: {}'.format(output_shape))
 
-        zone_output_ws = os.path.join(ini['BEAMER']['output_ws'], zone_name)
+        zone_output_ws = os.path.join(ini['IMAGES']['output_ws'], zone_name)
         if not os.path.isdir(zone_output_ws):
             os.makedirs(zone_output_ws)
 
@@ -429,7 +430,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 landsat.start_date = datetime.date(year, 1, 1).isoformat()
                 landsat.end_date = datetime.date(year, 12, 31).isoformat()
                 landsat_coll = landsat.get_collection()
-                # print(utils.getinfo(landsat_coll.aggregate_histogram('SCENE_ID')))
+                # print(utils.ee_getinfo(landsat_coll.aggregate_histogram('SCENE_ID')))
                 # input('ENTER')
 
                 # Add water year ETo and PPT values to each image
@@ -478,7 +479,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             # Download the image
             if not os.path.isfile(zip_path):
                 logging.debug('  Requesting URL')
-                zip_url = utils.request(etg_image.getDownloadURL({
+                zip_url = utils.ee_request(etg_image.getDownloadURL({
                     'name': image_id,
                     'crs': ini['SPATIAL']['crs'],
                     'crs_transform': output_transform,
@@ -590,13 +591,15 @@ def landsat_etg_func(img):
 
 def etstar_func(evi, etstar_type='mean'):
     """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
-    def etstar(evi, c0, c1, c2):
+    def etstar(img, c0, c1, c2, evi_min=0.075):
         """Beamer ET*"""
-        return ee.Image(evi) \
+        return ee.Image(img) \
+            .max(evi_min) \
             .expression(
-                'c0 + c1 * evi + c2 * (evi ** 2)',
-                {'evi': evi, 'c0': c0, 'c1': c1, 'c2': c2}) \
+                'c0 + c1 * b(0) + c2 * (b(0) ** 2)',
+                {'c0': c0, 'c1': c1, 'c2': c2}) \
             .max(0)
+
     if etstar_type == 'mean':
         return etstar(evi, -0.1955, 2.9042, -1.5916)
     elif etstar_type == 'lpi':

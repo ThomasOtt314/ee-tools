@@ -73,6 +73,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     ini = inputs.read(ini_path)
     inputs.parse_section(ini, section='INPUTS')
     inputs.parse_section(ini, section='SPATIAL')
+    inputs.parse_section(ini, section='IMAGES')
     inputs.parse_section(ini, section='BEAMER')
 
     # if end_doy and end_doy > 273:
@@ -205,8 +206,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             'start_month', 'end_month',
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
-            'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'tile_geom']}
+            'path_keep_list', 'row_keep_list', 'tile_geom',
+            'adjust_method', 'mosaic_method', 'refl_sur_method']}
     # landsat_args['products'] = ['evi_sur']
     landsat = ee_common.Landsat(landsat_args)
 
@@ -254,7 +255,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         logging.debug('  Image Transform: {}'.format(output_transform))
         logging.debug('  Image Shape: {}'.format(output_shape))
 
-        zone_output_ws = os.path.join(ini['BEAMER']['output_ws'], zone_name)
+        zone_output_ws = os.path.join(ini['IMAGES']['output_ws'], zone_name)
         zone_zips_ws = os.path.join(zone_output_ws, zips_folder)
         zone_images_ws = os.path.join(zone_output_ws, images_folder)
         zone_annuals_ws = os.path.join(zone_output_ws, annuals_folder)
@@ -277,7 +278,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         # Get the full list of scene IDs
         logging.debug('  Getting SCENE_ID list')
         scene_id_list = sorted(
-            utils.getinfo(landsat_coll.aggregate_histogram('SCENE_ID')))
+            utils.ee_getinfo(landsat_coll.aggregate_histogram('SCENE_ID')))
         logging.debug('    {} scenes'.format(len(scene_id_list)))
 
         # Switch Landsat products for computing ETg
@@ -346,7 +347,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     wy_ppt_input *= (25.4 * 12)
             elif ini['BEAMER']['ppt_source'] == 'gridmet':
                 # GET GRIDMET value at centroid of geometry
-                wy_ppt_input = float(utils.getinfo(ee.ImageCollection(
+                wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_ppt_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # Calculate GRIDMET zonal mean of geometry
@@ -381,10 +382,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     wy_eto_input *= (25.4 * 12)
             # This assumes GRIMET data is in millimeters
             elif ini['BEAMER']['eto_source'] == 'gridmet':
-                wy_eto_input = float(utils.getinfo(ee.ImageCollection(
+                wy_eto_input = float(utils.ee_getinfo(ee.ImageCollection(
                     gridmet_coll.map(ee_common.gridmet_eto_func).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
-                # wy_eto_input = float(utils.getinfo(ee.ImageCollection(
+                # wy_eto_input = float(utils.ee_getinfo(ee.ImageCollection(
                 #     gridmet_coll.map(gridmet_eto_func)).reduceRegion(
                 #         reducer=ee.Reducer.sum(),
                 #         geometry=zone['geom'],
@@ -438,7 +439,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
             # Get the download URL
             logging.debug('  Requesting URL')
-            zip_url = utils.request(etg_image.getDownloadURL({
+            zip_url = utils.ee_request(etg_image.getDownloadURL({
                 'name': image_id,
                 'crs': ini['SPATIAL']['crs'],
                 'crs_transform': output_transform,
@@ -645,13 +646,15 @@ def landsat_etg_func(img):
 
 def etstar_func(evi, etstar_type='mean'):
     """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
-    def etstar(evi, c0, c1, c2):
+    def etstar(img, c0, c1, c2, evi_min=0.075):
         """Beamer ET*"""
-        return ee.Image(evi) \
+        return ee.Image(img) \
+            .max(evi_min) \
             .expression(
-                'c0 + c1 * evi + c2 * (evi ** 2)',
-                {'evi': evi, 'c0': c0, 'c1': c1, 'c2': c2}) \
+                'c0 + c1 * b(0) + c2 * (b(0) ** 2)',
+                {'c0': c0, 'c1': c1, 'c2': c2}) \
             .max(0)
+
     if etstar_type == 'mean':
         return etstar(evi, -0.1955, 2.9042, -1.5916)
     elif etstar_type == 'lpi':

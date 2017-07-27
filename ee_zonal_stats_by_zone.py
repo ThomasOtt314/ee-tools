@@ -442,8 +442,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'refl_sur_method'
-        ]}
+            'adjust_method', 'mosaic_method', 'refl_sur_method']}
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']

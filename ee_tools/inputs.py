@@ -101,8 +101,8 @@ def get_param(ini, section, input_name, output_name, get_type,
         else:
             ini[section][output_name] = str(ini[section][input_name])
             # Convert 'None' (strings) to None
-            if ini[section][output_name].lower() == 'none':
-                ini[section][output_name] = ''
+            if ini[section][output_name].lower() in ['none', '']:
+                ini[section][output_name] = None
     except (KeyError, configparser.NoOptionError):
         if default == 'MANDATORY':
             logging.error(
@@ -167,7 +167,7 @@ def parse_inputs(ini, section='INPUTS'):
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
-        ['fmask_source', 'fmask_source', str, ''],
+        ['fmask_source', 'fmask_source', str, None],
         #
         ['mosaic_method', 'mosaic_method', str, 'mean'],
         ['adjust_method', 'adjust_method', str, None],
@@ -423,6 +423,8 @@ def parse_export(ini, section='EXPORT'):
                 '\n  Setting "export_folder" = ""\n')
             ini[section]['export_folder'] = ''
             input('ENTER')
+        elif not ini[section]['export_folder']:
+            ini[section]['export_folder'] = ''
 
         # Build and check file paths
         ini[section]['export_ws'] = os.path.join(
@@ -489,23 +491,32 @@ def parse_export(ini, section='EXPORT'):
 
 def parse_images(ini, section='IMAGES'):
     """"""
+    # # Image download bands
+    # get_param(ini, section, 'download_bands', 'download_bands', str)
+    # ini[section]['download_bands'] = sorted(list(set(map(
+    #     lambda x: x.strip().lower(),
+    #     ini[section]['download_bands'].split(',')))))
+    # logging.debug('  Output Bands:')
+    # for band in ini[section]['download_bands']:
+    #     logging.debug('    {}'.format(band))
+
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['output_workspace', 'output_ws', str, os.getcwd()],
+        ['download_bands', 'download_bands', str, ''],
+        ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
+        ['image_buffer', 'image_buffer', int, 0]
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
+
     # Image download bands
-    get_param(ini, section, 'download_bands', 'download_bands', str)
     ini[section]['download_bands'] = sorted(list(set(map(
         lambda x: x.strip().lower(),
         ini[section]['download_bands'].split(',')))))
     logging.debug('  Output Bands:')
     for band in ini[section]['download_bands']:
         logging.debug('    {}'.format(band))
-
-    # param_section, input_name, output_name, get_type, default
-    param_list = [
-        ['output_workspace', 'output_ws', str, os.getcwd()],
-        ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
-        ['image_buffer', 'image_buffer', int, 0]
-    ]
-    for input_name, output_name, get_type, default in param_list:
-        get_param(ini, section, input_name, output_name, get_type, default)
 
     # Build output folder if necessary
     if not os.path.isdir(ini[section]['output_ws']):

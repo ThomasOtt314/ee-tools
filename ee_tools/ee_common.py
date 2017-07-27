@@ -276,7 +276,7 @@ class Landsat():
                 else:
                     logging.error(
                         '\nERROR: Unsupported Landsat/Fmask combination, exiting\n'
-                        '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
+                        '  Landsat: {}  Reflectance: {}  Fmask: {}'.format(
                             landsat, self.refl_sur_method, self.fmask_source))
                     sys.exit()
 
@@ -304,7 +304,7 @@ class Landsat():
                     landsat_toa_coll = ee.ImageCollection(landsat_fmask_name)
                     landsat_sur_coll = ee.ImageCollection(landsat_toa_name)
                 elif (self.refl_sur_method == 'tasumi' and
-                        (not self.fmask_source or self.fmask_source == 'none')):
+                        not self.fmask_source):
                     # Add an empty fmask band to the TOA collection
                     # Compute SR from TOA using Tasumi
                     landsat_toa_coll = ee.ImageCollection(landsat_toa_name) \
@@ -324,7 +324,7 @@ class Landsat():
                     landsat_toa_coll = ee.ImageCollection(landsat_fmask_name)
                     landsat_sur_coll = ee.ImageCollection(landsat_sur_name)
                 elif (self.refl_sur_method == 'usgs_sr' and
-                        (not self.fmask_source or self.fmask_source == 'none')):
+                        not self.fmask_source):
                     # Add an empty fmask band to the TOA collection
                     landsat_toa_coll = ee.ImageCollection(landsat_toa_name) \
                         .map(landsat_empty_fmask_band_func)
@@ -333,7 +333,7 @@ class Landsat():
                 else:
                     logging.error(
                         '\nERROR: Unsupported Landsat/Fmask combination, exiting\n'
-                        '  Landsat: {}  Reclectance: {}  Fmask: {}'.format(
+                        '  Landsat: {}  Reflectance: {}  Fmask: {}'.format(
                             landsat, self.refl_sur_method, self.fmask_source))
                     sys.exit()
 
@@ -1192,17 +1192,16 @@ def landsat_msavi_func(refl_image):
     #     .copyProperties(refl_image, system_properties)
 
 
-def etstar_func(evi, etstar_type='mean', evi_min=0.075):
+def etstar_func(evi, etstar_type='mean'):
     """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
-    def etstar(evi, c0, c1, c2):
+    def etstar(img, c0, c1, c2, evi_min=0.075):
         """Beamer ET*"""
-        return ee.Image(evi) \
+        return ee.Image(img) \
             .max(evi_min) \
             .expression(
-                'c0 + c1 * evi + c2 * (evi ** 2)',
-                {'evi': evi, 'c0': c0, 'c1': c1, 'c2': c2}) \
+                'c0 + c1 * b(0) + c2 * (b(0) ** 2)',
+                {'c0': c0, 'c1': c1, 'c2': c2}) \
             .max(0)
-
     if etstar_type == 'mean':
         return etstar(evi, -0.1955, 2.9042, -1.5916)
     elif etstar_type == 'lpi':
