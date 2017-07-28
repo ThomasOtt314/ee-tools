@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_summary_figures.py
 # Purpose:      Generate Beamer ETg summary figures
-# Created       2017-07-16
+# Created       2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -140,11 +140,25 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
         input_df = input_df[input_df['PLATFORM'] != 'LC08']
 
     if ini['INPUTS']['scene_id_keep_list']:
-        input_df = input_df[input_df['SCENE_ID'].isin(
-            ini['INPUTS']['scene_id_keep_list'])]
+        # Replace XXX with primary ROW value for checking skip list SCENE_ID
+        scene_id_df = pd.Series([
+            s.replace('XXX', '{:03d}'.format(int(r)))
+            for s, r in zip(input_df['SCENE_ID'], input_df['ROW'])])
+        input_df = input_df[scene_id_df.isin(
+            ini['INPUTS']['scene_id_keep_list']).values]
+        # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+        # input_df = input_df[input_df['SCENE_ID'].isin(
+        #     ini['INPUTS']['scene_id_keep_list'])]
     if ini['INPUTS']['scene_id_skip_list']:
-        input_df = input_df[~input_df['SCENE_ID'].isin(
-            ini['INPUTS']['scene_id_skip_list'])]
+        # Replace XXX with primary ROW value for checking skip list SCENE_ID
+        scene_id_df = pd.Series([
+            s.replace('XXX', '{:03d}'.format(int(r)))
+            for s, r in zip(input_df['SCENE_ID'], input_df['ROW'])])
+        input_df = input_df[np.logical_not(scene_id_df.isin(
+            ini['INPUTS']['scene_id_skip_list']).values)]
+        # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+        # input_df = input_df[~input_df['SCENE_ID'].isin(
+        #     ini['INPUTS']['scene_id_skip_list'])]
 
     # Filter by QA/QC value
     if ini['SUMMARY']['max_qa'] >= 0 and not input_df.empty:
@@ -175,7 +189,7 @@ def main(ini_path, show_flag=False, overwrite_flag=False):
         # logging.debug('    Maximum pixel count: {}'.format(
         #     max_pixel_count))
         slc_off_mask = (
-            (input_df['PLATFORM'] == 'LE7') &
+            (input_df['PLATFORM'] == 'LE07') &
             ((input_df['YEAR'] >= 2004) |
              ((input_df['YEAR'] == 2003) & (input_df['DOY'] > 151))))
         slc_off_pct = 100 * (input_df['PIXEL_COUNT'] / input_df['PIXEL_TOTAL'])

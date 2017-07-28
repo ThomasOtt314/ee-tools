@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-25
+# Modified:     2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -505,7 +505,9 @@ def parse_images(ini, section='IMAGES'):
         ['output_workspace', 'output_ws', str, os.getcwd()],
         ['download_bands', 'download_bands', str, ''],
         ['clip_landsat_flag', 'clip_landsat_flag', bool, True],
-        ['image_buffer', 'image_buffer', int, 0]
+        ['image_buffer', 'image_buffer', int, 0],
+        ['eto_units', 'eto_units', str, 'mm'],
+        ['ppt_units', 'ppt_units', str, 'mm']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -712,31 +714,8 @@ def parse_tables(ini, section='TABLES'):
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
-    # Summary ETo/PPT units
-    ini[section]['eto_units'] = ini[section]['eto_units'].lower()
-    ini[section]['ppt_units'] = ini[section]['ppt_units'].lower()
-    # Standardize unit naming
-    units_remap = {'inches': 'in', 'feet': 'ft'}
-    if ini[section]['eto_units'] in units_remap.keys():
-        ini[section]['eto_units'] = units_remap[
-            ini[section]['eto_units']]
-    if ini[section]['ppt_units'] in units_remap.keys():
-        ini[section]['ppt_units'] = units_remap[
-            ini[section]['ppt_units']]
-    # Check input and output units
-    unit_options = ['mm', 'ft', 'in']
-    if ini[section]['eto_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The {} ETo units {} are invalid'
-             '\n  Please set units to: {}').format(
-                section, ini[section]['eto_units'], ', '.join(unit_options)))
-        sys.exit()
-    if ini[section]['ppt_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The {} PPT units {} are invalid'
-             '\n  Please set units to: {}').format(
-                section, ini[section]['ppt_units'], ', '.join(unit_options)))
-        sys.exit()
+    standardize_depth_units(ini, section, 'eto_units', 'ETo')
+    standardize_depth_units(ini, section, 'ppt_units', 'PPT')
 
 
 def parse_figures(ini, section='FIGURES'):
@@ -756,31 +735,8 @@ def parse_figures(ini, section='FIGURES'):
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
 
-    # Summary ETo/PPT units
-    ini[section]['eto_units'] = ini[section]['eto_units'].lower()
-    ini[section]['ppt_units'] = ini[section]['ppt_units'].lower()
-    # Standardize unit naming
-    units_remap = {'inches': 'in', 'feet': 'ft'}
-    if ini[section]['eto_units'] in units_remap.keys():
-        ini[section]['eto_units'] = units_remap[
-            ini[section]['eto_units']]
-    if ini[section]['ppt_units'] in units_remap.keys():
-        ini[section]['ppt_units'] = units_remap[
-            ini[section]['ppt_units']]
-    # Check input and output units
-    unit_options = ['mm', 'ft', 'in']
-    if ini[section]['eto_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The {} ETo units {} are invalid'
-             '\n  Please set units to: {}').format(
-                section, ini[section]['eto_units'], ', '.join(unit_options)))
-        sys.exit()
-    if ini[section]['ppt_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The {} PPT units {} are invalid'
-             '\n  Please set units to: {}').format(
-                section, ini[section]['ppt_units'], ', '.join(unit_options)))
-        sys.exit()
+    standardize_depth_units(ini, section, 'eto_units', 'ETo')
+    standardize_depth_units(ini, section, 'ppt_units', 'PPT')
 
     ini[section]['timeseries_bands'] = list(map(
         lambda x: x.strip().lower(),
@@ -883,47 +839,28 @@ def parse_beamer(ini, section='BEAMER'):
     if ini[section]['ppt_source'] in ['gridmet']:
         ini[section]['data_ppt_units'] = 'mm'
 
+    standardize_depth_units(ini, section, 'data_eto_units', 'ETo')
+    standardize_depth_units(ini, section, 'data_ppt_units', 'PPT')
+    standardize_depth_units(ini, section, 'eto_units', 'ETo')
+    standardize_depth_units(ini, section, 'ppt_units', 'PPT')
+
+
+def standardize_depth_units(ini, section, param, name):
+    """"""
+    ini[section][param] = ini[section]['eto_units'].lower()
+
     # Standardize unit naming
-    units_remap = {
-        'inches': 'in',
-        'feet': 'ft'
-    }
-    if ini[section]['data_eto_units'] in units_remap.keys():
-        ini[section]['data_eto_units'] = units_remap[
-            ini[section]['data_eto_units']]
-    if ini[section]['data_ppt_units'] in units_remap.keys():
-        ini[section]['data_ppt_units'] = units_remap[
-            ini[section]['data_ppt_units']]
+    units_remap = {'inches': 'in', 'feet': 'ft'}
     if ini[section]['eto_units'] in units_remap.keys():
         ini[section]['eto_units'] = units_remap[
             ini[section]['eto_units']]
-    if ini[section]['ppt_units'] in units_remap.keys():
-        ini[section]['ppt_units'] = units_remap[
-            ini[section]['ppt_units']]
 
     # Check input and output units
     unit_options = ['mm', 'ft', 'in']
-    if ini[section]['data_eto_units'] not in unit_options:
+    if ini[section][param] not in unit_options:
         logging.error(
-            ('\nERROR: The data ETo units {} are invalid' +
+            ('\nERROR: The {} {} units {} are invalid'
              '\n  Please set units to: {}').format(
-                ini[section]['data_eto_units'], ', '.join(unit_options)))
-        sys.exit()
-    if ini[section]['data_ppt_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The data PPT units {} are invalid'
-             '\n  Please set units to: {}').format(
-                ini[section]['data_ppt_units'], ', '.join(unit_options)))
-        sys.exit()
-    if ini[section]['eto_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The {} ETo units {} are invalid'
-             '\n  Please set units to: {}').format(
-                section, ini[section]['eto_units'], ', '.join(unit_options)))
-        sys.exit()
-    if ini[section]['ppt_units'] not in unit_options:
-        logging.error(
-            ('\nERROR: The {} PPT units {} are invalid'
-             '\n  Please set units to: {}').format(
-                section, ini[section]['ppt_units'], ', '.join(unit_options)))
+                section, name, ini[section][param],
+                ', '.join(unit_options)))
         sys.exit()

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_summary_figures.py
 # Purpose:      Generate Beamer ETg summary figures
-# Created       2017-07-16
+# Created       2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -266,7 +266,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             # logging.debug('    Maximum pixel count: {}'.format(
             #     max_pixel_count))
             slc_off_mask = (
-                (landsat_df['PLATFORM'] == 'LE7') &
+                (landsat_df['PLATFORM'] == 'LE07') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
             slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])

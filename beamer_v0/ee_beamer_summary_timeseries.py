@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
-# Created       2017-07-16
+# Created       2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -14,7 +14,7 @@ import sys
 
 from bokeh.io import output_file, save, show
 from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, TapTool
+import bokeh.models
 from bokeh.models.glyphs import Circle
 from bokeh.plotting import figure
 import matplotlib as mpl
@@ -120,7 +120,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
 
     if ini['INPUTS']['path_keep_list']:
         input_df = input_df[
-            input_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
+            landsat_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
     if (ini['INPUTS']['row_keep_list'] and
             ini['INPUTS']['row_keep_list'] != ['XXX']):
         input_df = input_df[
@@ -137,11 +137,25 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         input_df = input_df[input_df['PLATFORM'] != 'LC08']
 
     if ini['INPUTS']['scene_id_keep_list']:
-        input_df = input_df[input_df['SCENE_ID'].isin(
-            ini['INPUTS']['scene_id_keep_list'])]
+        # Replace XXX with primary ROW value for checking skip list SCENE_ID
+        scene_id_df = pd.Series([
+            s.replace('XXX', '{:03d}'.format(int(r)))
+            for s, r in zip(input_df['SCENE_ID'], input_df['ROW'])])
+        input_df = input_df[scene_id_df.isin(
+            ini['INPUTS']['scene_id_keep_list']).values]
+        # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+        # input_df = input_df[input_df['SCENE_ID'].isin(
+        #     ini['INPUTS']['scene_id_keep_list'])]
     if ini['INPUTS']['scene_id_skip_list']:
-        input_df = input_df[~input_df['SCENE_ID'].isin(
-            ini['INPUTS']['scene_id_skip_list'])]
+        # Replace XXX with primary ROW value for checking skip list SCENE_ID
+        scene_id_df = pd.Series([
+            s.replace('XXX', '{:03d}'.format(int(r)))
+            for s, r in zip(input_df['SCENE_ID'], input_df['ROW'])])
+        input_df = input_df[np.logical_not(scene_id_df.isin(
+            ini['INPUTS']['scene_id_skip_list']).values)]
+        # This won't work: SCENE_ID have XXX but scene_id_skip_list don't
+        # input_df = input_df[~input_df['SCENE_ID'].isin(
+        #     ini['INPUTS']['scene_id_skip_list'])]
 
     # Filter by QA/QC value
     if ini['SUMMARY']['max_qa'] >= 0 and not input_df.empty:
@@ -172,7 +186,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         # logging.debug('    Maximum pixel count: {}'.format(
         #     max_pixel_count))
         slc_off_mask = (
-            (input_df['PLATFORM'] == 'LE7') &
+            (input_df['PLATFORM'] == 'LE07') &
             ((input_df['YEAR'] >= 2004) |
              ((input_df['YEAR'] == 2003) & (input_df['DOY'] > 151))))
         slc_off_pct = 100 * (input_df['PIXEL_COUNT'] / input_df['PIXEL_TOTAL'])
@@ -259,11 +273,12 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             ', '.join(map(str, qa_values))))
 
         # Unpack the data by QA type to support interactive legends
-        qa_sources = dict()
+        sources = dict()
         for qa_value in qa_values:
             qa_df = zone_df[zone_df['QA'] == qa_value]
             qa_data = {
                 'INDEX': list(range(len(qa_df.index))),
+                'PLATFORM': qa_df['PLATFORM'],
                 'DATE': pd.to_datetime(qa_df['DATE']),
                 'DATE_STR': pd.to_datetime(qa_df['DATE']).map(
                     lambda x: x.strftime('%Y-%m-%d')),
@@ -274,9 +289,16 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             for plot_var in plot_var_list:
                 if plot_var in qa_df.columns.values:
                     qa_data.update({plot_var: qa_df[plot_var].values})
-            qa_sources[qa_value] = ColumnDataSource(qa_data)
+            sources[qa_value] = bokeh.models.ColumnDataSource(qa_data)
+
+        tooltips = [
+            ("LANDSAT", "@PLATFORM"),
+            ("DATE", "@TIME"),
+            ("DOY", "@DOY")]
 
         # Selection
+        hover_circle = Circle(
+            fill_color='#ff0000', line_color='#ff0000')
         selected_circle = Circle(
             fill_color='COLOR', line_color='COLOR')
         nonselected_circle = Circle(
@@ -309,18 +331,19 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
                 f = figure(
                     x_range=f.x_range, y_axis_label=plot_var, **figure_args)
 
-            for qa, source in sorted(qa_sources.items()):
+            for qa, source in sorted(sources.items()):
                 r = f.circle('DOY', plot_var, source=source, **plot_args)
+                r.hover_glyph = hover_circle
                 r.selection_glyph = selected_circle
                 r.nonselection_glyph = nonselected_circle
                 r.muted_glyph = nonselected_circle
+
                 # DEADBEEF - This will display high QA points as muted
                 # if qa > ini['SUMMARY']['max_qa']:
                 #     r.muted = True
                 #     # r.visible = False
 
-            f.add_tools(
-                HoverTool(tooltips=[("DATE", "@DATE_STR"), ("DOY", "@DOY")]))
+            f.add_tools(bokeh.models.HoverTool(tooltips=tooltips))
 
             # if ini['SUMMARY']['max_qa'] > 0:
             f.legend.location = "top_left"
@@ -370,17 +393,19 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             if plot_var == 'TS':
                 f.y_range.bounds = (270, None)
 
-            for qa, source in sorted(qa_sources.items()):
+            for qa, source in sorted(sources.items()):
                 r = f.circle('DATE', plot_var, source=source, **plot_args)
+                r.hover_glyph = hover_circle
                 r.selection_glyph = selected_circle
                 r.nonselection_glyph = nonselected_circle
                 r.muted_glyph = nonselected_circle
+
                 # DEADBEEF - This will display high QA points as muted
                 # if qa > ini['SUMMARY']['max_qa']:
                 #     r.muted = True
                 #     # r.visible = False
-            f.add_tools(
-                HoverTool(tooltips=[("DATE", "@DATE_STR"), ("DOY", "@DOY")]))
+
+            f.add_tools(bokeh.models.HoverTool(tooltips=tooltips))
 
             # if ini['SUMMARY']['max_qa'] > 0:
             f.legend.location = "top_left"

@@ -75,6 +75,15 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         ini['INPUTS']['zone_shp_path'], zone_field=ini['INPUTS']['zone_field'],
         reverse_flag=False)
 
+    # Check if the zone_names are unique
+    # Eventually support merging common zone_names
+    if len(set([z[1] for z in zone_geom_list])) != len(zone_geom_list):
+        logging.error(
+            '\nERROR: There appear to be duplicate zone ID/name values.'
+            '\n  Currently, the values in "{}" must be unique.'
+            '\n  Exiting.'.format(ini['INPUTS']['zone_field']))
+        return False
+
     # Filter features by FID before merging geometries
     if ini['INPUTS']['fid_keep_list']:
         zone_geom_list = [

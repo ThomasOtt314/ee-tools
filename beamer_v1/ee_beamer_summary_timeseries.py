@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_summary_timeseries.py
 # Purpose:      Generate interactive timeseries figures
-# Created       2017-07-16
+# Created       2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -12,9 +12,9 @@ import logging
 import os
 import sys
 
-from bokeh.io import output_file, save, show
+from bokeh.io import output_file, show, save
 from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, Range1d, TapTool
+import bokeh.models
 from bokeh.models.glyphs import Circle
 from bokeh.plotting import figure
 import matplotlib as mpl
@@ -59,15 +59,6 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
     #     'NDVI_TOA', 'ALBEDO_SUR', 'TS', 'NDWI_TOA',
     #     'CLOUD_SCORE', 'FMASK_PCT']
     output_folder = 'figures'
-
-    # List of possible field names
-    # landsat_beamer_fields = [
-    #     'EVI_SUR',
-    #     'NDVI_TOA', 'NDWI_TOA', 'NDVI_SUR', 'ALBEDO_SUR', 'TS',
-    #     'ETSTAR_MEAN', 'ETSTAR_LPI', 'ETSTAR_UPI', 'ETSTAR_LCI', 'ETSTAR_UCI',
-    #     # 'ETG_MEAN', 'ETG_LPI', 'ETG_UPI', 'ETG_LCI', 'ETG_UCI',
-    #     # 'ET_MEAN', 'ET_LPI', 'ET_UPI', 'ET_LCI', 'ET_UCI'
-    # ]
 
     # Read config file
     ini = inputs.read(ini_path)
@@ -255,7 +246,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             # logging.debug('    Maximum pixel count: {}'.format(
             #     max_pixel_count))
             slc_off_mask = (
-                (landsat_df['PLATFORM'] == 'LE7') &
+                (landsat_df['PLATFORM'] == 'LE07') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
             slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
@@ -407,11 +398,18 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             ', '.join(map(str, qa_values))))
 
         # Unpack the data by QA type to support interactive legends
-        qa_sources = dict()
+        sources = dict()
+        # sources = defaultdict(dict)
+        # platform_list = ['LT04', 'LT05', 'LE07', 'LC08']
         for qa_value in qa_values:
+            # for platform in platform_list:
+            # qa_df = zone_df[
+            #     (zone_df['PLATFORM'] == platform) &
+            #     (zone_df['QA'] == qa_value)]
             qa_df = zone_df[zone_df['QA'] == qa_value]
             qa_data = {
                 'INDEX': list(range(len(qa_df.index))),
+                'PLATFORM': qa_df['PLATFORM'],
                 'DATE': pd.to_datetime(qa_df['DATE']),
                 'TIME': pd.to_datetime(qa_df['DATE']).map(
                     lambda x: x.strftime('%Y-%m-%d')),
@@ -422,14 +420,31 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             for plot_var in plot_var_list:
                 if plot_var in qa_df.columns.values:
                     qa_data.update({plot_var: qa_df[plot_var].values})
-            qa_sources[qa_value] = ColumnDataSource(qa_data)
+            sources[qa_value] = bokeh.models.ColumnDataSource(qa_data)
+            # sources[qa_value][platform] = bokeh.models.ColumnDataSource(
+            #     qa_data)
+
+        tooltips = [
+            ("LANDSAT", "@PLATFORM"),
+            ("DATE", "@TIME"),
+            ("DOY", "@DOY")]
+        # hover_tool = bokeh.models.HoverTool(tooltips=tooltips)
+        # tools="xwheel_zoom,xpan,xbox_zoom,reset,box_select"
+        # tools = [
+        #     hover_tool,
+        #     bokeh.models.WheelZoomTool(dimensions='width'),
+        #     bokeh.models.PanTool(dimensions='width'),
+        #     bokeh.models.BoxZoomTool(dimensions='width'),
+        #     bokeh.models.ResetTool(),
+        #     bokeh.models.BoxSelectTool()]
 
         # Selection
+        hover_circle = Circle(
+            fill_color='#ff0000', line_color='#ff0000')
         selected_circle = Circle(
             fill_color='COLOR', line_color='COLOR')
         nonselected_circle = Circle(
             fill_color='#aaaaaa', line_color='#aaaaaa')
-
 
         # Plot the data by DOY
         logging.debug('  Building DOY timeseries figure')
@@ -451,24 +466,47 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         for plot_i, plot_var in enumerate(plot_var_list):
             if plot_i == 0:
                 f = figure(
-                    # x_range=Range1d(1, 366, bounds=(1, 366)),
+                    # x_range=bokeh.models.Range1d(1, 366, bounds=(1, 366)),
                     y_axis_label=plot_var, **figure_args)
             else:
                 f = figure(
                     x_range=f.x_range, y_axis_label=plot_var, **figure_args)
 
-            for qa, source in sorted(qa_sources.items()):
+            # # Add each QA level as a separate object
+            # for qa, platform_sources in sorted(sources.items()):
+            #     for platform, source in platform_sources.items():
+            #         if platform == 'LT05':
+            #             r = f.triangle(
+            #                 'DOY', plot_var, source=source, **plot_args)
+            #         elif platform == 'LE07':
+            #             r = f.square(
+            #                 'DOY', plot_var, source=source, **plot_args)
+            #         elif platform == 'LC08':
+            #             r = f.circle(
+            #                 'DOY', plot_var, source=source, **plot_args)
+            #         else:
+            #             r = f.diamond(
+            #                 'DOY', plot_var, source=source, **plot_args)
+            #         r.hover_glyph = hover_circle
+            #         r.selection_glyph = selected_circle
+            #         r.nonselection_glyph = nonselected_circle
+            #         r.muted_glyph = nonselected_circle
+            #         hover_tool.renderers.append(r)
+
+            # Add each QA level as a separate object
+            for qa, source in sorted(sources.items()):
                 r = f.circle('DOY', plot_var, source=source, **plot_args)
+                r.hover_glyph = hover_circle
                 r.selection_glyph = selected_circle
                 r.nonselection_glyph = nonselected_circle
                 r.muted_glyph = nonselected_circle
-                # DEADBEEF - This will display high QA points as muted
+
+                # # DEADBEEF - This will display high QA points as muted
                 # if qa > ini['SUMMARY']['max_qa']:
                 #     r.muted = True
                 #     # r.visible = False
 
-            f.add_tools(
-                HoverTool(tooltips=[("DATE", "@TIME"), ("DOY", "@DOY")]))
+            f.add_tools(bokeh.models.HoverTool(tooltips=tooltips))
 
             # if ini['SUMMARY']['max_qa'] > 0:
             f.legend.location = "top_left"
@@ -477,6 +515,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             f.legend.orientation = "horizontal"
 
             figures.append(f)
+        del f
 
         # Try to not allow more than 4 plots in a column
         p = gridplot(
@@ -509,7 +548,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
         for plot_i, plot_var in enumerate(plot_var_list):
             if plot_i == 0:
                 f = figure(
-                    # x_range=Range1d(x_limit[0], x_limit[1], bounds=x_limit),
+                    # x_range=bokeh.models.Range1d(x_limit[0], x_limit[1], bounds=x_limit),
                     y_axis_label=plot_var, **figure_args)
             else:
                 f = figure(
@@ -518,17 +557,40 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             if plot_var == 'TS':
                 f.y_range.bounds = (270, None)
 
-            for qa, source in sorted(qa_sources.items()):
+            # # Add each QA level as a separate object
+            # for qa, platform_sources in sorted(sources.items()):
+            #     for platform, source in sorted(platform_sources.items()):
+            #         if platform == 'LT05':
+            #             r = f.triangle(
+            #                 'DATE', plot_var, source=source, **plot_args)
+            #         elif platform == 'LE07':
+            #             r = f.square(
+            #                 'DATE', plot_var, source=source, **plot_args)
+            #         elif platform == 'LC08':
+            #             r = f.circle(
+            #                 'DATE', plot_var, source=source, **plot_args)
+            #         else:
+            #             r = f.diamond(
+            #                 'DATE', plot_var, source=source, **plot_args)
+            #         r.hover_glyph = hover_circle
+            #         r.selection_glyph = selected_circle
+            #         r.nonselection_glyph = nonselected_circle
+            #         r.muted_glyph = nonselected_circle
+            #         hover_tool.renderers.append(r)
+
+            # Add each QA level as a separate object
+            for qa, source in sorted(sources.items()):
                 r = f.circle('DATE', plot_var, source=source, **plot_args)
+                r.hover_glyph = hover_circle
                 r.selection_glyph = selected_circle
                 r.nonselection_glyph = nonselected_circle
                 r.muted_glyph = nonselected_circle
-                # DEADBEEF - This will display high QA points as muted
+
+                # # DEADBEEF - This will display high QA points as muted
                 # if qa > ini['SUMMARY']['max_qa']:
                 #     r.muted = True
                 #     # r.visible = False
-            f.add_tools(
-                HoverTool(tooltips=[("DATE", "@TIME"), ("DOY", "@DOY")]))
+            f.add_tools(bokeh.models.HoverTool(tooltips=tooltips))
 
             # if ini['SUMMARY']['max_qa'] > 0:
             f.legend.location = "top_left"
@@ -537,6 +599,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
             f.legend.orientation = "horizontal"
 
             figures.append(f)
+        del f
 
         # Try to not allow more than 4 plots in a column
         p = gridplot(

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-07-13
+# Updated:      2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -683,7 +683,7 @@ def raster_path_set_nodata(raster_path, input_nodata):
 def raster_ds_set_nodata(raster_ds, input_nodata):
     """Set raster dataset nodata value for all bands"""
     band_cnt = raster_ds.RasterCount
-    for band_i in xrange(band_cnt):
+    for band_i in range(band_cnt):
         band = raster_ds.GetRasterBand(band_i + 1)
         band.SetNoDataValue(input_nodata)
 

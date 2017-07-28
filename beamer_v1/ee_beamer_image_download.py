@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_beamer_image_download.py
 # Purpose:      Compute and download Beamer ETg images using Earth Engine
-# Created       2017-07-26
+# Created       2017-07-27
 # Python:       3.6
 #--------------------------------
 
@@ -58,8 +58,16 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     """
     logging.info('\nEarth Engine Beamer ETg Image Download')
 
+    # Read config file
+    ini = inputs.read(ini_path)
+    inputs.parse_section(ini, section='INPUTS')
+    inputs.parse_section(ini, section='SPATIAL')
+    inputs.parse_section(ini, section='IMAGES')
+    inputs.parse_section(ini, section='BEAMER')
+
+    ini['IMAGES']['download_bands'] = [
+        'etg_mean', 'etg_lci', 'etg_uci', 'etg_lpi', 'etg_upi']
     stat_list = ['median', 'mean']
-    band_list = ['etg_mean', 'etg_lci', 'etg_uci', 'etg_lpi', 'etg_upi']
     nodata_value = -9999
     zips_folder = 'zips'
     images_folder = 'images'
@@ -68,13 +76,6 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
     # Regular expression is only used to extract year from SCENE_ID
     landsat_re = re.compile(
         'L[ETC]0[4578]_\d{3}XXX_(?P<YEAR>\d{4})\d{2}\d{2}')
-
-    # Read config file
-    ini = inputs.read(ini_path)
-    inputs.parse_section(ini, section='INPUTS')
-    inputs.parse_section(ini, section='SPATIAL')
-    inputs.parse_section(ini, section='IMAGES')
-    inputs.parse_section(ini, section='BEAMER')
 
     # if end_doy and end_doy > 273:
     #     logging.error(
@@ -153,12 +154,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         logging.debug('  Output Cellsize: {}'.format(
             ini['SPATIAL']['cellsize']))
 
-    # Use ArcPy to compute the median
-    # arcpy.CheckOutExtension('Spatial')
-    # arcpy.env.overwriteOutput = True
-
     # Initialize Earth Engine API key
+    logging.info('\nInitializing Earth Engine')
     ee.Initialize()
+    utils.ee_request(ee.Number(1).getInfo())
 
     # Get list of path/row strings to centroid coordinates
     if ini['INPUTS']['tile_keep_list']:
@@ -208,7 +207,6 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list', 'tile_geom',
             'adjust_method', 'mosaic_method', 'refl_sur_method']}
-    # landsat_args['products'] = ['evi_sur']
     landsat = ee_common.Landsat(landsat_args)
 
 
@@ -302,7 +300,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                         pass
                     logging.debug('    Output already exists, skipping')
                     continue
-                except:
+                except Exception as e:
                     logging.warning('    Zip file error, removing')
                     os.remove(zip_path)
 
@@ -403,21 +401,21 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             # Convert output units from mm
             wy_ppt_output = wy_ppt_input
             wy_eto_output = wy_eto_input
-            if ini['BEAMER']['output_ppt_units'] == 'mm':
+            if ini['IMAGES']['ppt_units'] == 'mm':
                 pass
-            elif ini['BEAMER']['output_ppt_units'] == 'inches':
+            elif ini['IMAGES']['ppt_units'] == 'in':
                 wy_ppt_output /= 25.4
-            elif ini['BEAMER']['output_ppt_units'] == 'feet':
+            elif ini['IMAGES']['ppt_units'] == 'ft':
                 wy_ppt_output /= (25.4 * 12)
-            if ini['BEAMER']['output_eto_units'] == 'mm':
+            if ini['IMAGES']['eto_units'] == 'mm':
                 pass
-            elif ini['BEAMER']['output_eto_units'] == 'inches':
+            elif ini['IMAGES']['eto_units'] == 'in':
                 wy_eto_output /= 25.4
-            elif ini['BEAMER']['output_eto_units'] == 'feet':
+            elif ini['IMAGES']['eto_units'] == 'ft':
                 wy_eto_output /= (25.4 * 12)
             logging.debug('  Output ETO: {} {} PPT: {} {}'.format(
-                wy_eto_output, ini['BEAMER']['output_eto_units'],
-                wy_ppt_output, ini['BEAMER']['output_ppt_units']))
+                wy_eto_output, ini['IMAGES']['eto_units'],
+                wy_ppt_output, ini['IMAGES']['ppt_units']))
 
             # Add water year ETo and PPT values to each image
             def eto_ppt_func(img):
@@ -430,10 +428,10 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             # Compute EVI_SUR, add ETo and PPT, then Compute ETg
             # Set the masked values to a nodata value
             # so that the TIF can have a nodata value other than 0 set
-            landsat_image = landsat.get_image(
+            landsat_image = eto_ppt_func(landsat.get_image(
                 landsat, image_start_dt.year, image_start_dt.strftime('%j'),
-                path=image_id[5:8], row=None)
-            etg_image = ee.Image(landsat_etg_func(eto_ppt_func(landsat_image))) \
+                path=image_id[5:8], row=None))
+            etg_image = ee.Image(ee_common.beamer_func(landsat_image)) \
                 .clip(zone['geom']) \
                 .unmask(nodata_value, False)
 
@@ -445,22 +443,6 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 'crs_transform': output_transform,
                 'dimensions': output_shape
             }))
-            # zip_url = None
-            # for i in range(1, 10):
-            #     try:
-            #         zip_url = etg_image.getDownloadURL({
-            #             'name': image_id,
-            #             'crs': ini['SPATIAL']['crs'],
-            #             'crs_transform': output_transform,
-            #             'dimensions': output_shape
-            #         })
-            #     except Exception as e:
-            #         logging.info('  Resending query')
-            #         logging.debug('  {}'.format(e))
-            #         sleep(i ** 2)
-            #         zip_url = None
-            #     if zip_url:
-            #         break
             del etg_image
 
             # Remove the scene from scen list if it's not going to work
@@ -500,7 +482,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             image_band_list = [
                 os.path.join(
                     zone_images_ws, '{}.{}.tif'.format(image_id, band))
-                for band in band_list]
+                for band in ini['IMAGES']['download_bands']]
             if (not overwrite_flag and
                     all(os.path.isfile(x) for x in image_band_list)):
                 logging.debug('  all images present, skipping')
@@ -526,20 +508,21 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             # Set nodata value
             for item in os.listdir(zone_images_ws):
                 if item.startswith(image_id) and item.endswith('.tif'):
-                    raster_path_set_nodata(
+                    gdc.raster_path_set_nodata(
                         os.path.join(zone_images_ws, item), nodata_value)
                     raster_statistics(
                         os.path.join(zone_images_ws, item))
 
         logging.info('\nComputing annual means')
-        for band in band_list:
+        for band in ini['IMAGES']['download_bands']:
             logging.info('  {}'.format(band))
             for year in range(
                     ini['INPUTS']['start_year'],
                     ini['INPUTS']['end_year'] + 1):
                 logging.info('  {}'.format(year))
                 mean_path = os.path.join(
-                    zone_annuals_ws, 'etg_{}_{}.{}.tif'.format(
+                    # zone_annuals_ws, 'etg_{}_{}.{}.tif'.format(
+                    zone_annuals_ws, '{}_{}.{}.tif'.format(
                         zone_name.lower().replace(' ', '_'), year, band))
                 logging.debug('  {}'.format(mean_path))
                 # if os.path.isfile(mean_path) and not overwrite_flag:
@@ -558,23 +541,12 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
 
                 # Use GDAL to compute the composite
                 cell_statistics(image_band_list, mean_path, 'mean')
-
-                # # Use ArcPy to compute the composite
-                # mean_obj = arcpy.sa.CellStatistics(
-                #     image_band_list, 'MEAN', 'DATA')
-                # mean_obj.save(mean_path)
-                # mean_obj = None
-
                 raster_statistics(mean_path)
-
-                # # Remove inputs after computing composite
-                # for image_path in image_band_list:
-                #     arcpy.Delete_management(image_path)
 
         logging.info('\nComputing composite rasters from annual means')
         for stat in stat_list:
             logging.info('  Stat: {}'.format(stat))
-            for band in band_list:
+            for band in ini['IMAGES']['download_bands']:
                 logging.info('  {}'.format(band))
                 image_band_list = [
                     os.path.join(zone_annuals_ws, item)
@@ -584,92 +556,14 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 #     raster_path_set_nodata(image_path, nodata_value)
 
                 output_path = os.path.join(
-                    zone_output_ws, 'etg_{}_{}.{}.tif'.format(
+                    zone_output_ws, '{}_{}.{}.tif'.format(
                         zone_name.lower().replace(' ', '_'),
                         stat.lower(), band.lower()))
                 logging.debug('  {}'.format(output_path))
 
                 # Use GDAL to compute the composite raster
                 cell_statistics(image_band_list, output_path, 'mean')
-
-                # Use ArcPy to compute the composite raster
-                # output_obj = arcpy.sa.CellStatistics(
-                #     image_band_list, stat.upper(), 'DATA')
-                # output_obj.save(output_path)
-                # output_obj = None
-
                 raster_statistics(output_path)
-
-                # Remove after computing median
-                # for image_path in image_band_list:
-                #     arcpy.Delete_management(image_path)
-
-
-def landsat_etg_func(img):
-    """Compute Beamer ET*/ET/ETg
-
-    Properties:
-        wy_eto
-        wy_ppt
-
-    """
-    # ET*
-    evi_sur = ee.Image(img).select(['evi_sur'])
-    etstar_mean = etstar_func(evi_sur, 'mean').rename(['etstar_mean'])
-    etstar_lpi = etstar_func(evi_sur, 'lpi').rename(['etstar_lpi'])
-    etstar_upi = etstar_func(evi_sur, 'upi').rename(['etstar_upi'])
-    etstar_lci = etstar_func(evi_sur, 'lci').rename(['etstar_lci'])
-    etstar_uci = etstar_func(evi_sur, 'uci').rename(['etstar_uci'])
-
-    # For each Landsat scene, I need to calculate water year PPT and ETo sums
-    ppt = ee.Image.constant(ee.Number(img.get('wy_ppt')))
-    eto = ee.Image.constant(ee.Number(img.get('wy_eto')))
-
-    # ETg
-    etg_mean = etg_func(etstar_mean, eto, ppt).rename(['etg_mean'])
-    etg_lpi = etg_func(etstar_lpi, eto, ppt).rename(['etg_lpi'])
-    etg_upi = etg_func(etstar_upi, eto, ppt).rename(['etg_upi'])
-    etg_lci = etg_func(etstar_lci, eto, ppt).rename(['etg_lci'])
-    etg_uci = etg_func(etstar_uci, eto, ppt).rename(['etg_uci'])
-
-    # ET
-    # et_mean = ee_common.et_func(etg_mean, gridmet_ppt)
-    # et_lpi = ee_common.et_func(etg_lpi, gridmet_ppt)
-    # et_upi = ee_common.et_func(etg_upi, gridmet_ppt)
-    # et_lci = ee_common.et_func(etg_lci, gridmet_ppt)
-    # et_uci = ee_common.et_func(etg_uci, gridmet_ppt)
-
-    return ee.Image([etg_mean, etg_lpi, etg_upi, etg_lci, etg_uci]) \
-        .rename(['etg_mean', 'etg_lpi', 'etg_upi', 'etg_lci', 'etg_uci']) \
-        .copyProperties(img, ['system:index', 'system:time_start'])
-
-
-def etstar_func(evi, etstar_type='mean'):
-    """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
-    def etstar(img, c0, c1, c2, evi_min=0.075):
-        """Beamer ET*"""
-        return ee.Image(img) \
-            .max(evi_min) \
-            .expression(
-                'c0 + c1 * b(0) + c2 * (b(0) ** 2)',
-                {'c0': c0, 'c1': c1, 'c2': c2}) \
-            .max(0)
-
-    if etstar_type == 'mean':
-        return etstar(evi, -0.1955, 2.9042, -1.5916)
-    elif etstar_type == 'lpi':
-        return etstar(evi, -0.2871, 2.9192, -1.6263)
-    elif etstar_type == 'upi':
-        return etstar(evi, -0.1039, 2.8893, -1.5569)
-    elif etstar_type == 'lci':
-        return etstar(evi, -0.2142, 2.9175, -1.6554)
-    elif etstar_type == 'uci':
-        return etstar(evi, -0.1768, 2.8910, -1.5278)
-
-
-def etg_func(etstar, eto, ppt):
-    """Compute groundwater ET (ETg) (ET* x (ETo - PPT))"""
-    return etstar.multiply(eto.subtract(ppt))
 
 
 def cell_statistics(image_list, output_path, stat='mean'):
@@ -690,7 +584,7 @@ def cell_statistics(image_list, output_path, stat='mean'):
     input_proj = input_ds.GetProjection()
     input_nodata = input_band.GetNoDataValue()
     input_gtype = input_band.DataType
-    input_dtype = gdal_to_numpy_type(input_gtype)
+    input_dtype = gdc.gdal_to_numpy_type(input_gtype)
     input_rows, input_cols = input_ds.RasterYSize, input_ds.RasterXSize
     input_ds = None
 
@@ -722,7 +616,7 @@ def cell_statistics(image_list, output_path, stat='mean'):
         sys.exit()
 
     # Write the composite array to disk
-    output_driver = raster_driver(output_path)
+    output_driver = gdc.raster_driver(output_path)
     output_ds = output_driver.Create(
         output_path, input_cols, input_rows, 1, input_gtype)
     # output_raster_ds = output_driver.Create(
@@ -738,69 +632,6 @@ def cell_statistics(image_list, output_path, stat='mean'):
     # output_band.GetHistogram(stats[0], stats[1])
     output_ds = None
     return True
-
-
-def raster_driver(raster_path):
-    """Return the GDAL driver from a raster path
-
-    Currently supports ERDAS Imagine format, GeoTiff,
-    HDF-EOS (HDF4), BSQ/BIL/BIP, and memory drivers.
-
-    Args:
-        raster_path (str): filepath to a raster
-
-
-    Returns:
-        GDAL driver: GDAL raster driver
-
-    """
-    if raster_path.upper().endswith('IMG'):
-        return gdal.GetDriverByName('HFA')
-    elif raster_path.upper().endswith('TIF'):
-        return gdal.GetDriverByName('GTiff')
-    elif raster_path.upper().endswith('TIFF'):
-        return gdal.GetDriverByName('GTiff')
-    elif raster_path == '':
-        return gdal.GetDriverByName('MEM')
-    else:
-        sys.exit()
-
-
-def gdal_to_numpy_type(gdal_type):
-    """Return the NumPy array data type based on a GDAL type
-
-    Args:
-        gdal_type (:class:`gdal.type`): GDAL data type
-
-    Returns:
-        numpy_type: NumPy datatype (:class:`np.dtype`)
-
-    """
-    if gdal_type == gdal.GDT_Unknown:
-        numpy_type = np.float64
-    elif gdal_type == gdal.GDT_Byte:
-        numpy_type = np.uint8
-    elif gdal_type == gdal.GDT_UInt16:
-        numpy_type = np.uint16
-    elif gdal_type == gdal.GDT_Int16:
-        numpy_type = np.int16
-    elif gdal_type == gdal.GDT_UInt32:
-        numpy_type = np.uint32
-    elif gdal_type == gdal.GDT_Int32:
-        numpy_type = np.int32
-    elif gdal_type == gdal.GDT_Float32:
-        numpy_type = np.float32
-    elif gdal_type == gdal.GDT_Float64:
-        numpy_type = np.float64
-    # elif gdal_type == gdal.GDT_CInt16:
-    #     numpy_type = np.complex64
-    # elif gdal_type == gdal.GDT_CInt32:
-    #     numpy_type = np.complex64
-    # elif gdal_type == gdal.GDT_CFloat32:
-    #     numpy_type = np.complex64
-    # elif gdal_type == gdal.GDT_CFloat64:
-    #     numpy_type = np.complex64
-    return numpy_type
 
 
 def raster_statistics(raster_path):
@@ -823,21 +654,6 @@ def raster_statistics(raster_path):
                 raster_path, band_i + 1))
             continue
     raster_ds = None
-
-
-def raster_path_set_nodata(raster_path, raster_nodata):
-    """Set raster nodata value for all bands"""
-    raster_ds = gdal.Open(raster_path, 1)
-    raster_ds_set_nodata(raster_ds, raster_nodata)
-    del raster_ds
-
-
-def raster_ds_set_nodata(raster_ds, raster_nodata):
-    """Set raster dataset nodata value for all bands"""
-    band_cnt = raster_ds.RasterCount
-    for band_i in range(band_cnt):
-        band = raster_ds.GetRasterBand(band_i + 1)
-        band.SetNoDataValue(raster_nodata)
 
 
 def arg_parse():

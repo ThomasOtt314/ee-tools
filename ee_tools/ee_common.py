@@ -1192,9 +1192,51 @@ def landsat_msavi_func(refl_image):
     #     .copyProperties(refl_image, system_properties)
 
 
-def etstar_func(evi, etstar_type='mean'):
+def beamer_func(img):
+    """Compute Beamer ET*/ET/ETg directly from EVI
+
+    Args:
+        img (ee.Image): Image with "evi_sur" band.
+            Must have properties of "wy_eto" and "wy_ppt"
+
+    Returns:
+        ee.Image() of ETg
+    """
+    # EVI
+    evi_sur = ee.Image(img).select(['evi_sur'])
+
+    # ET*
+    etstar_mean = etstar_func(evi_sur, 'mean').rename(['etstar_mean'])
+    etstar_lpi = etstar_func(evi_sur, 'lpi').rename(['etstar_lpi'])
+    etstar_upi = etstar_func(evi_sur, 'upi').rename(['etstar_upi'])
+    etstar_lci = etstar_func(evi_sur, 'lci').rename(['etstar_lci'])
+    etstar_uci = etstar_func(evi_sur, 'uci').rename(['etstar_uci'])
+
+    # For each Landsat scene, I need to calculate water year PPT and ETo sums
+    ppt = ee.Image.constant(ee.Number(img.get('wy_ppt')))
+    eto = ee.Image.constant(ee.Number(img.get('wy_eto')))
+
+    # ETg
+    etg_mean = etg_func(etstar_mean, eto, ppt).rename(['etg_mean'])
+    etg_lpi = etg_func(etstar_lpi, eto, ppt).rename(['etg_lpi'])
+    etg_upi = etg_func(etstar_upi, eto, ppt).rename(['etg_upi'])
+    etg_lci = etg_func(etstar_lci, eto, ppt).rename(['etg_lci'])
+    etg_uci = etg_func(etstar_uci, eto, ppt).rename(['etg_uci'])
+
+    # ET
+    # et_mean = et_func(etg_mean, ppt).rename(['et_mean'])
+    # et_lpi = et_func(etg_lpi, ppt).rename(['et_lpi'])
+    # et_upi = et_func(etg_upi, ppt).rename(['et_upi'])
+    # et_lci = et_func(etg_lci, ppt).rename(['et_lci'])
+    # et_uci = et_func(etg_uci, ppt).rename(['et_uci'])
+
+    return ee.Image([etg_mean, etg_lpi, etg_upi, etg_lci, etg_uci]) \
+        .copyProperties(img, ['system:index', 'system:time_start'])
+
+
+def etstar_func(evi, etstar_type='mean', evi_min=0.075):
     """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
-    def etstar(img, c0, c1, c2, evi_min=0.075):
+    def etstar(img, c0, c1, c2):
         """Beamer ET*"""
         return ee.Image(img) \
             .max(evi_min) \

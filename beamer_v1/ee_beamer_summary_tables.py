@@ -1,14 +1,13 @@
 #--------------------------------
 # Name:         ee_beamer_summary_tables.py
 # Purpose:      Generate Beamer ETg summary figures
-# Author:       Charles Morton
-# Created       2017-07-16
+# Created       2017-07-27
 # Python:       3.6
 #--------------------------------
 
 import argparse
 from builtins import input
-import datetime as dt
+import datetime
 import logging
 import os
 import sys
@@ -30,12 +29,13 @@ import ee_tools.inputs as inputs
 import ee_tools.utils as utils
 
 
-def main(ini_path, overwrite_flag=False):
+def main(ini_path, overwrite_flag=True):
     """Generate Beamer ETg summary tables
 
     Args:
         ini_path (str):
         overwrite_flag (bool): if True, overwrite existing tables
+            Default is True (for now)
     """
 
     logging.info('\nGenerate Beamer ETg summary tables')
@@ -263,7 +263,7 @@ def main(ini_path, overwrite_flag=False):
             # logging.debug('    Maximum pixel count: {}'.format(
             #     max_pixel_count))
             slc_off_mask = (
-                (landsat_df['PLATFORM'] == 'LE7') &
+                (landsat_df['PLATFORM'] == 'LE07') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
             slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
@@ -490,9 +490,9 @@ def arg_parse():
     parser.add_argument(
         '-d', '--debug', default=logging.INFO, const=logging.DEBUG,
         help='Debug level logging', action='store_const', dest='loglevel')
-    parser.add_argument(
-        '-o', '--overwrite', default=False, action='store_true',
-        help='Force overwrite of existing files')
+    # parser.add_argument(
+    #     '-o', '--overwrite', default=False, action='store_true',
+    #     help='Force overwrite of existing files')
     args = parser.parse_args()
 
     if args.ini and os.path.isfile(os.path.abspath(args.ini)):
@@ -508,8 +508,9 @@ if __name__ == '__main__':
     logging.basicConfig(level=args.loglevel, format='%(message)s')
     logging.info('\n{}'.format('#' * 80))
     log_f = '{:<20s} {}'
-    logging.info(log_f.format('Start Time:', dt.datetime.now().isoformat(' ')))
+    logging.info(log_f.format(
+        'Start Time:', dt.datetime.now().isoformat(' ')))
     logging.info(log_f.format('Current Directory:', os.getcwd()))
     logging.info(log_f.format('Script:', os.path.basename(sys.argv[0])))
 
-    main(ini_path=args.ini, overwrite_flag=args.overwrite)
+    main(ini_path=args.ini)
