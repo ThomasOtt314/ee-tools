@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
-# Modified:     2017-07-26
+# Modified:     2017-07-28
 # Python:       3.6
 #--------------------------------
 
@@ -9,6 +9,7 @@ from builtins import input
 import datetime
 import logging
 import math
+import pprint
 import sys
 
 import ee
@@ -146,6 +147,11 @@ class Landsat():
             setattr(self, str(key), value)
             # if key not in ['zone_geom']:
             #     logging.debug('  {}: {}'.format(key, value))
+
+        # DEADBEEF
+        # There is missing NLDAS data on 2017-03-28 causing problems
+        self.scene_id_skip_list.extend([
+            'LC08_042032_20170328', 'LC08_042033_20170328'])
 
         # Is there a cleaner way of building a list of Landsat types
         #   from the flags?
@@ -359,6 +365,19 @@ class Landsat():
                     fmask_coll = fmask_coll.filter(
                         ee.Filter.calendarRange(1984, 2011, 'year'))
 
+            # # Exclude 2017+ Landsat 7/8 USGS_SR images (for now)
+            # # This is needed until Collection 1 SR is ingested
+            # if landsat in ['LE07'] and self.refl_sur_method == 'usgs_sr':
+            #     # landsat_toa_coll = landsat_toa_coll.filterDate(
+            #     #     ee.Filter.calendarRange(1999, 2016, 'year'))
+            #     landsat_sur_coll = landsat_sur_coll.filter(
+            #         ee.Filter.calendarRange(1999, 2016, 'year'))
+            # if landsat in ['LC08'] and self.refl_sur_method == 'usgs_sr':
+            #     # landsat_toa_coll = landsat_toa_coll.filter(
+            #     #     ee.Filter.calendarRange(2013, 2016, 'year'))
+            #     landsat_sur_coll = landsat_sur_coll.filter(
+            #         ee.Filter.calendarRange(2013, 2016, 'year'))
+
             # Filter by date
             if self.start_date and self.end_date:
                 # End date is inclusive but filterDate is exclusive
@@ -542,14 +561,6 @@ class Landsat():
             # webbrowser.open(output_url)
             # # webbrowser.read(output_url)
 
-            # # Set properties
-            # # These could be combined with SCENE_ID function above?
-            # def landsat_properties(input_image):
-            #     return input_image.setMulti({
-            #         'type': landsat
-            #     })
-            # landsat_coll = landsat_coll.map(scene_id_func)
-
             # Compute derived images
             if landsat in ['LT04', 'LT05']:
                 landsat_coll = landsat_coll.map(self.landsat5_images_func)
@@ -563,8 +574,10 @@ class Landsat():
                     self.mosaic_method in self.mosaic_options):
                 landsat_coll = mosaic_landsat_images(
                     landsat_coll, self.mosaic_method)
+            # logging.info(landsat, landsat_coll.size().getInfo())
             # logging.info('{}'.format(', '.join(sorted(
             #     landsat_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
+            # input('ENTER')
 
             # Merge Landsat specific collection into output collection
             output_coll = ee.ImageCollection(
@@ -1481,8 +1494,8 @@ def landsat_qa_band_func(refl_img):
 
 def landsat_sur_band_func(refl_img):
     """Get at-surface reflectance bands from the joined properties"""
-    return refl_img.addBands(
-        ee.Image(refl_img.get('sur')).rename(refl_sur_bands))
+    return refl_img \
+        .addBands(ee.Image(refl_img.get('sur')).rename(refl_sur_bands))
 
 
 def landsat5_toa_band_func(refl_img):
@@ -1867,7 +1880,7 @@ def mosaic_landsat_images(landsat_coll, mosaic_method):
         Using GEE Collection 1 system:index naming convention
         LT05_PPPRRR_YYYYMMDD
         """
-        scene_id = ee.String(image.get('SCENE_ID'))
+        scene_id = ee.String(ee.Image(image).get('SCENE_ID'))
         mosaic_id = scene_id.slice(0, 8).cat('XXX').cat(scene_id.slice(11, 20))
         # If mosaicing after merging, SCENE_ID is at end
         # scene_id = ee.String(ee.List(ee.String(
@@ -1879,17 +1892,18 @@ def mosaic_landsat_images(landsat_coll, mosaic_method):
         #     .cat(scene_id.slice(3, 9)).cat('_') \
         #     .cat(ee.Date(img.get('system:time_start')).format('yyyyMMdd'))
         return image.setMulti({'MOSAIC_ID': mosaic_id})
-    landsat_coll = landsat_coll.map(mosaic_id_func)
+    landsat_mosaic_coll = ee.ImageCollection(
+        landsat_coll.map(mosaic_id_func))
 
     mosaic_id_list = ee.List(ee.Dictionary(ee.FeatureCollection(
-        landsat_coll.aggregate_histogram('MOSAIC_ID'))).keys())
+        landsat_mosaic_coll.aggregate_histogram('MOSAIC_ID'))).keys())
 
     def set_mosaic_id(mosaic_id):
         return ee.Feature(None, {'MOSAIC_ID': ee.String(mosaic_id)})
     mosaic_id_coll = ee.FeatureCollection(mosaic_id_list.map(set_mosaic_id))
 
     join_coll = ee.Join.saveAll('join').apply(
-        mosaic_id_coll, landsat_coll,
+        mosaic_id_coll, landsat_mosaic_coll,
         ee.Filter.equals(leftField='MOSAIC_ID', rightField='MOSAIC_ID'))
 
     def aggregate_func(ftr):

@@ -419,38 +419,43 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
 
         # ORIGINAL PLOTTING CODE
         # Convert ETo units
-        if (ini['BEAMER']['eto_units'] == 'mm' and
-                ini['FIGURES']['eto_units'] == 'mm'):
-            pass
-        elif (ini['BEAMER']['eto_units'] == 'mm' and
-                ini['FIGURES']['eto_units'] == 'in'):
-            zone_df[eto_fields] /= (25.4)
-        elif (ini['BEAMER']['eto_units'] == 'mm' and
-                ini['FIGURES']['eto_units'] == 'ft'):
-            zone_df[eto_fields] /= (12 * 25.4)
-        else:
-            logging.error(
-                ('\nERROR: Input units {} and output units {} are not '
-                 'currently supported, exiting').format(
-                    ini['BEAMER']['eto_units'], ini['FIGURES']['eto_units']))
-            sys.exit()
+        zone_eto_fields = list(set(eto_fields) & set(zone_df.columns.values))
+        if zone_eto_fields:
+            if (ini['BEAMER']['eto_units'] == 'mm' and
+                    ini['FIGURES']['eto_units'] == 'mm'):
+                pass
+            elif (ini['BEAMER']['eto_units'] == 'mm' and
+                    ini['FIGURES']['eto_units'] == 'in'):
+                zone_df[zone_eto_fields] /= (25.4)
+            elif (ini['BEAMER']['eto_units'] == 'mm' and
+                    ini['FIGURES']['eto_units'] == 'ft'):
+                zone_df[zone_eto_fields] /= (12 * 25.4)
+            else:
+                logging.error(
+                    ('\nERROR: Input units {} and output units {} are not '
+                     'currently supported, exiting').format(
+                        ini['BEAMER']['eto_units'],
+                        ini['FIGURES']['eto_units']))
+                sys.exit()
 
         # Convert PPT units
-        if (ini['BEAMER']['ppt_units'] == 'mm' and
-                ini['FIGURES']['ppt_units'] == 'mm'):
-            pass
-        elif (ini['BEAMER']['ppt_units'] == 'mm' and
-                ini['FIGURES']['ppt_units'] == 'in'):
-            zone_df[ppt_fields] /= (25.4)
-        elif (ini['BEAMER']['ppt_units'] == 'mm' and
-                ini['FIGURES']['ppt_units'] == 'ft'):
-            zone_df[ppt_fields] /= (12 * 25.4)
-        else:
-            logging.error(
-                ('\nERROR: Input units {} and output units {} are not '
-                 'currently supported, exiting').format(
-                    ini['BEAMER']['ppt_units'], ini['FIGURES']['ppt_units']))
-            sys.exit()
+        zone_ppt_fields = list(set(ppt_fields) - set(zone_df.columns.values))
+        if zone_ppt_fields:
+            if (ini['BEAMER']['ppt_units'] == 'mm' and
+                    ini['FIGURES']['ppt_units'] == 'mm'):
+                pass
+            elif (ini['BEAMER']['ppt_units'] == 'mm' and
+                    ini['FIGURES']['ppt_units'] == 'in'):
+                zone_df[zone_ppt_fields] /= (25.4)
+            elif (ini['BEAMER']['ppt_units'] == 'mm' and
+                    ini['FIGURES']['ppt_units'] == 'ft'):
+                zone_df[zone_ppt_fields] /= (12 * 25.4)
+            else:
+                logging.error(
+                    ('\nERROR: Input units {} and output units {} are not '
+                     'currently supported, exiting').format(
+                        ini['BEAMER']['ppt_units'], ini['FIGURES']['ppt_units']))
+                sys.exit()
 
 
         logging.debug('  Generating figures')

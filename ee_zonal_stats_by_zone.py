@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-25
+# Modified:     2017-07-28
 # Python:       3.6
 #--------------------------------
 
@@ -352,7 +352,7 @@ def main(ini_path=None, overwrite_flag=False):
         logging.debug('    Zone Extent: {}'.format(zone['extent']))
         # logging.debug('  Zone Geom: {}'.format(zone['geom'].getInfo()))
 
-        # Assume all pixels in all 14+2 images could be reduced
+        # Assume all pixels in all images could be reduced
         zone['max_pixels'] = zone['shape'][0] * zone['shape'][1]
         logging.debug('    Max Pixels: {}'.format(zone['max_pixels']))
 
@@ -442,7 +442,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'refl_sur_method']}
+            'adjust_method', 'mosaic_method',
+            'refl_sur_method']}
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']
@@ -674,14 +675,19 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         else:
             landsat.update_scene_id_keep(missing_all_ids)
         landsat_coll = landsat.get_collection()
+
         # Get the SCENE_IDs that intersect the zone
+        logging.debug('    Getting intersecting SCENE_IDs')
         missing_zone_ids = set(utils.ee_getinfo(
             landsat_coll.aggregate_histogram('SCENE_ID')))
+
         # Difference of sets are SCENE_IDs that don't intersect
         missing_skip_ids = missing_all_ids - missing_zone_ids
+
         # Updating missing all SCENE_ID list to not include
         #   non-intersecting scenes
         missing_all_ids = set(missing_zone_ids)
+
         # Remove skipped/empty SCENE_IDs from possible SCENE_ID list
         export_ids = export_ids - missing_skip_ids
         # logging.debug('  Missing Include: {}'.format(

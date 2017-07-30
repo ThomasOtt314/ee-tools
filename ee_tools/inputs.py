@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-27
+# Modified:     2017-07-30
 # Python:       3.6
 #--------------------------------
 
@@ -728,9 +728,11 @@ def parse_figures(ini, section='FIGURES'):
         ['ppt_units', 'ppt_units', str, 'mm'],
         ['ppt_plot_type', 'ppt_plot_type', str, 'LINE'],
         ['best_fit_flag', 'scatter_best_fit', bool, False],
-        ['timeseries_bands', 'timeseries_bands', str, 'ndvi_toa'],
+        ['figure_bands', 'figure_bands', str, 'ndvi_toa'],
         ['scatter_bands', 'scatter_bands', str, 'ppt:ndvi_sur, ppt:evi_sur'],
-        ['complementary_bands', 'complementary_bands', str, 'evi_sur']
+        ['complementary_bands', 'complementary_bands', str, 'evi_sur'],
+        # Bokeh timeseries figures
+        ['timeseries_bands', 'timeseries_bands', str, 'ndvi_toa, albedo_sur, ts']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -738,16 +740,18 @@ def parse_figures(ini, section='FIGURES'):
     standardize_depth_units(ini, section, 'eto_units', 'ETo')
     standardize_depth_units(ini, section, 'ppt_units', 'PPT')
 
-    ini[section]['timeseries_bands'] = list(map(
+    ini[section]['figure_bands'] = list(map(
         lambda x: x.strip().lower(),
-        ini[section]['timeseries_bands'].split(',')))
-
+        ini[section]['figure_bands'].split(',')))
     ini[section]['scatter_bands'] = [
         list(map(lambda x: x.strip().lower(), b.split(':')))
         for b in ini[section]['scatter_bands'].split(',')]
     ini[section]['complementary_bands'] = list(map(
         lambda x: x.strip().lower(),
         ini[section]['complementary_bands'].split(',')))
+    ini[section]['timeseries_bands'] = list(map(
+        lambda x: x.strip().lower(),
+        ini[section]['timeseries_bands'].split(',')))
 
     if ini[section]['ppt_plot_type'].upper() not in ['LINE', 'BAR']:
         logging.error('\nERROR: ppt_plot_type must be "LINE" or "BAR"')

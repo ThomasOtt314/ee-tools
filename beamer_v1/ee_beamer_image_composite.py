@@ -299,37 +299,29 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 wy_ppt_coll = ee.ImageCollection(ee_years.map(gridmet_wy_ppt))
 
                 # Get GRIDMET value at centroid of geometry
-                wy_ppt_input = None
-                for i in range(1, 10):
-                    try:
-                        wy_ppt_input = {
-                            int(x[5]): x[4]
-                            for x in wy_ppt_coll.getRegion(
-                                zone['geom'].centroid(1), 500).getInfo()[1:]}
-                        break
-                    except Exception as e:
-                        logging.info('  Resending query')
-                        logging.debug('  {}'.format(e))
-                        sleep(i ** 2)
+                wy_ppt_input = {
+                    int(x[5]): float(x[4])
+                    for x in utils.ee_getinfo(wy_ppt_coll.getRegion(
+                        zone['geom'].centroid(1), 500))[1:]}
                 # # Calculate GRIDMET zonal mean of geometry
-                # wy_ppt_input = float(ee.ImageCollection(
+                # wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
                 #     gridmet_coll.map(gridmet_ppt_func)).reduceRegion(
                 #         reducer=ee.Reducer.sum(),
                 #         geometry=zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],
                 #         crsTransform=zone['transform'],
                 #         bestEffort=False,
-                #         tileScale=1).getInfo()['PPT']
+                #         tileScale=1))['PPT']
             # elif ini['BEAMER']['ppt_source'] == 'prism':
             #     # Calculate PRISM zonal mean of geometry
-            #     wy_ppt_input = float(ee.ImageCollection(
+            #     wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
             #         prism_coll.map(ee_common.prism_ppt_func)).sum().reduceRegion(
             #             reducer=ee.Reducer.mean(),
             #             geometry=zone['geom'],
             #             crs=ini['SPATIAL']['crs'],
             #             crsTransform=zone['transform'],
             #             bestEffort=False,
-            #             tileScale=1).getInfo()['PPT'])
+            #             tileScale=1))['PPT'])
 
             # Get water year ETo read from file
             # Convert all input data to mm for Beamer Method
@@ -361,26 +353,18 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                 wy_eto_coll = ee.ImageCollection(ee_years.map(gridmet_wy_eto))
 
                 # Get GRIDMET value at centroid of geometry
-                wy_eto_input = None
-                for i in range(1, 10):
-                    try:
-                        wy_eto_input = {
-                            int(x[5]): x[4]
-                            for x in wy_eto_coll.getRegion(
-                                zone['geom'].centroid(1), 500).getInfo()[1:]}
-                        break
-                    except Exception as e:
-                        logging.info('  Resending query')
-                        logging.debug('  {}'.format(e))
-                        sleep(i ** 2)
-                # wy_eto_input = float(ee.ImageCollection(
+                wy_eto_input = {
+                    int(x[5]): float(x[4])
+                    for x in utils.ee_getinfo(wy_eto_coll.getRegion(
+                        zone['geom'].centroid(1), 500))[1:]}
+                # wy_eto_input = float(utils.ee_getinfo(ee.ImageCollection(
                 #     gridmet_coll.map(gridmet_eto_func)).reduceRegion(
                 #         ee.Reducer.sum(),
                 #         zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],
                 #         crsTransform=zone['transform'],
                 #         bestEffort=False,
-                #         tileScale=1).getInfo()
+                #         tileScale=1))['ETO'])
             # logging.debug('   Input ETO [{}]  PPT [{}]'.format(
             #     ini['BEAMER']['eto_units'],
             #     ini['BEAMER']['ppt_units']))
