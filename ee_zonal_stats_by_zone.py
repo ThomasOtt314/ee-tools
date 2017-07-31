@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-28
+# Modified:     2017-07-31
 # Python:       3.6
 #--------------------------------
 
@@ -329,16 +329,24 @@ def main(ini_path=None, overwrite_flag=False):
         zone['geom'] = ee.Geometry(
             geo_json=zone['json'], opt_proj=zone_wkt, opt_geodesic=False)
         # logging.debug('  Centroid: {}'.format(
-        #     zone['geom'].centroid(100).getInfo()['coordinates']))
+        #     zone['geom'].centroid(1).getInfo()['coordinates']))
 
         # Use feature geometry to build extent, transform, and shape
-        zone_poly = ogr.CreateGeometryFromJson(json.dumps(zone['json']))
-        # Adjusting area up to nearest multiple of cellsize to account for
-        #   polygons that were modified to avoid interior holes
-        zone['area'] = ini['SPATIAL']['cellsize'] * math.ceil(
-            zone_poly.GetArea() / ini['SPATIAL']['cellsize'])
-        # zone['area'] = zone_poly.GetArea()
-        zone['extent'] = gdc.Extent(zone_poly.GetEnvelope())
+        zone_geom = ogr.CreateGeometryFromJson(json.dumps(zone['json']))
+        if zone_geom.GetGeometryName() in ['POINT', 'MULTIPOINT']:
+            # Compute area as cellsize * number of points
+            point_count = 0
+            for i in range(0, zone_geom.GetGeometryCount()):
+                point_count += zone_geom.GetGeometryRef(i).GetPointCount()
+            zone['area'] = ini['SPATIAL']['cellsize'] * point_count
+        else:
+            # Adjusting area up to nearest multiple of cellsize to account for
+            #   polygons that were modified to avoid interior holes
+            zone['area'] = ini['SPATIAL']['cellsize'] * math.ceil(
+                zone_geom.GetArea() / ini['SPATIAL']['cellsize'])
+
+        # zone['area'] = zone_geom.GetArea()
+        zone['extent'] = gdc.Extent(zone_geom.GetEnvelope())
         # zone['extent'] = gdc.Extent(zone['geom'].GetEnvelope())
         zone['extent'] = zone['extent'].ogrenv_swap()
         zone['extent'] = zone['extent'].adjust_to_snap(
@@ -350,7 +358,7 @@ def main(ini_path=None, overwrite_flag=False):
         logging.debug('    Zone Shape: {}'.format(zone['shape']))
         logging.debug('    Zone Transform: {}'.format(zone['transform']))
         logging.debug('    Zone Extent: {}'.format(zone['extent']))
-        # logging.debug('  Zone Geom: {}'.format(zone['geom'].getInfo()))
+        # logging.debug('    Zone Geom: {}'.format(zone['geom'].getInfo()))
 
         # Assume all pixels in all images could be reduced
         zone['max_pixels'] = zone['shape'][0] * zone['shape'][1]
@@ -662,24 +670,42 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     if missing_all_ids:
         # Get SCENE_ID list mimicking a full extract below
         #   (but without products)
+        # Start with INI path/row keep list but update based on SCENE_ID later
         landsat.products = []
         landsat.path_keep_list = landsat_args['path_keep_list']
         landsat.row_keep_list = landsat_args['row_keep_list']
         landsat.zone_geom = zone['geom']
         landsat.mosaic_method = landsat_args['mosaic_method']
-        # SCENE_ID keep list must be non-mosaiced IDs
-        if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
-            landsat.update_scene_id_keep([
-                scene_id for mosaic_id in missing_all_ids
-                for scene_id in mosaic_id_dict[mosaic_id]])
-        else:
-            landsat.update_scene_id_keep(missing_all_ids)
-        landsat_coll = landsat.get_collection()
+
+        # Only use the scene_id_keep_list if there was already data in the DF
+        if output_df.index.values.any():
+            # SCENE_ID keep list must be non-mosaiced IDs
+            if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
+                landsat.scene_id_keep_list = sorted(set([
+                    scene_id for mosaic_id in missing_all_ids
+                    for scene_id in mosaic_id_dict[mosaic_id]]))
+            else:
+                landsat.scene_id_keep_list = sorted(missing_all_ids)
+            landsat.set_landsat_from_scene_id()
+            landsat.set_tiles_from_scene_id()
 
         # Get the SCENE_IDs that intersect the zone
+        # Process each Landsat type independently
+        # Was having issues getting the full scene list at once
         logging.debug('    Getting intersecting SCENE_IDs')
-        missing_zone_ids = set(utils.ee_getinfo(
-            landsat_coll.aggregate_histogram('SCENE_ID')))
+        missing_zone_ids = set()
+        landsat_type_list = landsat._landsat_list[:]
+        for landsat_str in landsat_type_list:
+            landsat._landsat_list = [landsat_str]
+            missing_zone_ids.update(set(utils.ee_getinfo(
+                landsat.get_collection().aggregate_histogram('SCENE_ID'))))
+            logging.debug('      {} {}'.format(
+                landsat_str, len(missing_zone_ids)))
+
+        # # Get the SCENE_IDs that intersect the zone
+        # logging.debug('    Getting intersecting SCENE_IDs')
+        # missing_zone_ids = set(utils.ee_getinfo(
+        #     landsat.get_collection().aggregate_histogram('SCENE_ID')))
 
         # Difference of sets are SCENE_IDs that don't intersect
         missing_skip_ids = missing_all_ids - missing_zone_ids
@@ -810,11 +836,11 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         return True
     elif missing_scene_ids or missing_all_products:
         logging.info('    Exporting all products for specific SCENE_IDs')
-        landsat.update_scene_id_keep(missing_scene_ids)
+        landsat.scene_id_keep_list = sorted(list(missing_scene_ids))
         landsat.products = ini['ZONAL_STATS']['landsat_products']
     elif missing_scene_ids and missing_products:
         logging.info('    Exporting specific missing products/SCENE_IDs')
-        landsat.update_scene_id_keep(missing_scene_ids)
+        landsat.scene_id_keep_list = sorted(list(missing_scene_ids))
         landsat.products = list(missing_products)
     elif not missing_scene_ids and missing_products:
         # This conditional will happen when images are missing Ts only
@@ -829,11 +855,17 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
 
     # Reset the Landsat collection args
-    landsat.path_keep_list = landsat_args['path_keep_list']
-    landsat.row_keep_list = landsat_args['row_keep_list']
+    # Use SCENE_ID list to set Landsat type and tile filters
+    landsat.set_landsat_from_scene_id()
+    landsat.set_tiles_from_scene_id()
+    # landsat.set_landsat_from_flags()
+    # landsat.path_keep_list = landsat_args['path_keep_list']
+    # landsat.row_keep_list = landsat_args['row_keep_list']
     landsat.mosaic_method = landsat_args['mosaic_method']
+    # Originally this was set to None to capture all scenes
+    #   including the non-intersecting ones
     landsat.zone_geom = None
-    # landsat.zone_geom = zone['geom']
+    # landsat.zone_geom s= zone['geom']
     # pp.pprint(vars(landsat))
     # input('ENTER')
 

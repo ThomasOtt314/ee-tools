@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
-# Modified:     2017-07-28
+# Modified:     2017-07-31
 # Python:       3.6
 #--------------------------------
 
@@ -82,6 +82,7 @@ class Landsat():
                 Example: "LT05_041032_1984214"
             path_keep_list (list): Landsat path numbers (as int)
             row_keep_list (list): Landsat row numbers (as int)
+            tile_keep_list (list): Landsat WRS2 tile strings ('p042r33')
             tile_geom (ee.Geometry):
             adjust_method (str): Adjust Landsat red and NIR bands.
                 Choices: 'etm_2_oli' or 'oli_2_etm'.
@@ -103,7 +104,7 @@ class Landsat():
             'start_date', 'end_date', 'start_year', 'end_year',
             'start_month', 'end_month', 'start_doy', 'end_doy',
             'zone_geom', 'scene_id_keep_list', 'scene_id_skip_list',
-            'path_keep_list', 'row_keep_list', 'tile_geom',
+            'path_keep_list', 'row_keep_list', 'tile_keep_list', 'tile_geom',
             'adjust_method', 'mosaic_method', 'refl_sur_method', 'products',
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag'
@@ -153,19 +154,9 @@ class Landsat():
         self.scene_id_skip_list.extend([
             'LC08_042032_20170328', 'LC08_042033_20170328'])
 
-        # Is there a cleaner way of building a list of Landsat types
-        #   from the flags?
-        landsat_list = []
-        if self.landsat4_flag:
-            landsat_list.append('LT04')
-        if self.landsat5_flag:
-            landsat_list.append('LT05')
-        if self.landsat7_flag:
-            landsat_list.append('LE07')
-        if self.landsat8_flag:
-            landsat_list.append('LC08')
-        self.landsat_list = sorted(landsat_list)
-
+        # Landsat list should not be directly set by the user
+        # It will be computed from the flags
+        self.set_landsat_from_flags()
 
         today = datetime.date.today().isoformat()
         self.dates = {
@@ -175,25 +166,36 @@ class Landsat():
             'LC08': {'start': '2013-01-01', 'end': today}
         }
 
-    def update_scene_id_keep(self, scene_id_keep_list):
-        """Update SCENE_ID keep list and flags"""
-        self.scene_id_keep_list = sorted(list(scene_id_keep_list))
+    def set_landsat_from_flags(self):
+        """Set Landsat type list based on INI flags"""
+        landsat_list = []
+        if self.landsat4_flag:
+            landsat_list.append('LT04')
+        if self.landsat5_flag:
+            landsat_list.append('LT05')
+        if self.landsat7_flag:
+            landsat_list.append('LE07')
+        if self.landsat8_flag:
+            landsat_list.append('LC08')
+        self._landsat_list = sorted(landsat_list)
 
-        # Modify the Landsat types based on SCENE_ID keep list
-        if scene_id_keep_list:
-            self.landsat_list = sorted(list(
-                set(self.landsat_list) &
-                set([str(x[:4]) for x in scene_id_keep_list])))
+    def set_landsat_from_scene_id(self):
+        """Set Landsat type list based on SCENE_ID keep list"""
+        if self.scene_id_keep_list:
+            self._landsat_list = sorted(list(set(
+                [str(x[:4]) for x in self.scene_id_keep_list])))
 
-        # Clear flags if possible/necessary
-        if 'LT04' not in self.landsat_list:
-            self.landsat4_flag = False
-        if 'LT05' not in self.landsat_list:
-            self.landsat5_flag = False
-        if 'LE07' not in self.landsat_list:
-            self.landsat7_flag = False
-        if 'LC08' not in self.landsat_list:
-            self.landsat8_flag = False
+    def set_tiles_from_scene_id(self):
+        # Remove path/rows that aren't needed
+        if self.scene_id_keep_list:
+            self.path_keep_list = sorted(list(set([
+                int(x[5:8]) for x in self.scene_id_keep_list])))
+            self.row_keep_list = sorted(list(set([
+                int(x[8:11]) for x in self.scene_id_keep_list])))
+            # Tile keep list is not supported yet in get_collection()
+            # self.tile_keep_list = sorted(list(set([
+            #     'p{:03d}r{:03d}'.format(x[5:8], x[8:11])
+            #     for x in self.scene_id_keep_list])))
 
     def get_image(self, landsat, year, doy, path=None, row=None):
         """Return a single Landsat image
@@ -245,7 +247,7 @@ class Landsat():
 
         # Process each Landsat type and append to the output collection
         output_coll = ee.ImageCollection([])
-        for landsat in self.landsat_list:
+        for landsat in self._landsat_list:
             # Assume ieration will be controlled by changing start_date and end_date
             # Skip Landsat collections that are outside these date ranges
             if self.end_date and self.end_date < self.dates[landsat]['start']:
@@ -568,13 +570,16 @@ class Landsat():
                 landsat_coll = landsat_coll.map(self.landsat7_images_func)
             elif landsat in ['LC08']:
                 landsat_coll = landsat_coll.map(self.landsat8_images_func)
+            # logging.info('{} {}'.format(landsat, landsat_coll.size().getInfo()))
+            # logging.info('{}'.format(', '.join(sorted(
+            #     landsat_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
 
             # Mosaic overlapping images
             if (self.mosaic_method and
                     self.mosaic_method in self.mosaic_options):
                 landsat_coll = mosaic_landsat_images(
                     landsat_coll, self.mosaic_method)
-            # logging.info(landsat, landsat_coll.size().getInfo())
+            # logging.info('{} {}'.format(landsat, landsat_coll.size().getInfo()))
             # logging.info('{}'.format(', '.join(sorted(
             #     landsat_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
             # input('ENTER')
