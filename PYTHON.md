@@ -4,14 +4,14 @@ The cloud free scene count Python scripts have been tested using both Python 3.6
 
 ## Anaconda
 
-The easiest way of obtaining Python and all of the necessary external modules, is to install [Anaconda](https://www.continuum.io/downloads).
+The easiest way of obtaining Python and all of the necessary external modules, is to install [Anaconda](https://www.continuum.io/downloads). Another (more prefereable) option is to download miniconda.
 
 It is important to double check that you are calling the Anaconda version, especially if you have two or more version of Python installed (e.g. Anaconda and ArcGIS).
 
 + Windows: "where python"
 + Linux/Mac: "which python"
 
-(Note, this step not be necessary any more) After installing Anaconda, add the conda-forge channel by entering the following in the command prompt or terminal:
+ After installing Anaconda and/or miniconda, add the conda-forge channel by entering the following in the command prompt or terminal:
 ```
 > conda config --add channels conda-forge
 ```
