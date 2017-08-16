@@ -11,7 +11,7 @@ It is important to double check that you are calling the Anaconda version, espec
 + Windows: "where python"
 + Linux/Mac: "which python"
 
- After installing Anaconda and/or miniconda, add the conda-forge channel by entering the following in the command prompt or terminal:
+ After installing Anaconda or miniconda, add the conda-forge channel by entering the following in the command prompt or terminal:
 ```
 > conda config --add channels conda-forge
 ```
