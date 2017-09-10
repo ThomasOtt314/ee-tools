@@ -120,7 +120,7 @@ def main(ini_path, show_flag=False, overwrite_flag=True):
 
     if ini['INPUTS']['path_keep_list']:
         input_df = input_df[
-            landsat_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
+            input_df['PATH'].isin(ini['INPUTS']['path_keep_list'])]
     if (ini['INPUTS']['row_keep_list'] and
             ini['INPUTS']['row_keep_list'] != ['XXX']):
         input_df = input_df[
