@@ -1477,7 +1477,7 @@ def landsat_qa_band_func(refl_img):
     # terrain_mask = getQABits(qa_img, 1, 1, 'terrain_occlusion')
     # saturation_mask = getQABits(qa_img, 2, 3, 'saturation_confidence').gte(2)
     # cloud_mask = getQABits(qa_img, 4, 4, 'cloud')
-    cloud_mask = getQABits(qa_img, 7, 8, 'cloud_confidence').gte(2)
+    cloud_mask = getQABits(qa_img, 5, 6, 'cloud_confidence').gte(2)
     shadow_mask = getQABits(qa_img, 7, 8, 'shadow_confidence').gte(3)
     snow_mask = getQABits(qa_img, 9, 10, 'snow_confidence').gte(3)
     # Landsat 8 only
