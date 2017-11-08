@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-07-30
+# Modified:     2017-11-07
 # Python:       3.6
 #--------------------------------
 
@@ -167,14 +167,11 @@ def parse_inputs(ini, section='INPUTS'):
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
-        ['fmask_source', 'fmask_source', str, None],
-        #
+        # Default to Tasumi at-surface reflectance (for beamer calculation)
+        ['refl_sur_method', 'refl_sur_method', str, 'tasumi'],
         ['mosaic_method', 'mosaic_method', str, 'mean'],
         ['adjust_method', 'adjust_method', str, None],
         ['merge_geometries_flag', 'merge_geom_flag', bool, False],
-        # Default to Tasumi at-surface reflectance
-        #   until SR Collection 1 is ingested into Earth Engine
-        ['refl_sur_method', 'refl_sur_method', str, 'tasumi']
     ]
     for input_name, output_name, get_type, default in param_list:
         get_param(ini, section, input_name, output_name, get_type, default)
@@ -296,18 +293,15 @@ def parse_inputs(ini, section='INPUTS'):
         except Exception as e:
             logging.error('\nUnhanded Exception: {}'.format(e))
 
-    # Fmask source type
-    if ini[section]['fmask_flag'] and not ini[section]['fmask_source']:
-        logging.error(
-            '\nERROR: Fmask source type must be set if fmask_flag = True')
-        sys.exit()
-    if ini[section]['fmask_source']:
-        ini[section]['fmask_source'] = ini[section]['fmask_source'].lower()
-        if ini[section]['fmask_source'] not in ['fmask', 'cfmask', 'none']:
+    # At-surface reflectance source type
+    if ini[section]['refl_sur_method']:
+        ini[section]['refl_sur_method'] = ini[section]['refl_sur_method'].lower()
+        options = ['tasumi', 'usgs_sr', 'none']
+        if ini[section]['refl_sur_method'] not in options:
             logging.error(
-                '\nERROR: Invalid Fmask source type: {}\n'
-                '  Must be "fmask" or "cfmask"'.format(
-                    ini[section]['fmask_source']))
+                '\nERROR: Invalid at-surface reflectance_method: {}\n'
+                '  Must be: {}'.format(
+                    ini[section]['refl_sur_method'], ', '.join(options)))
             sys.exit()
 
     # Mosaic method
@@ -328,17 +322,6 @@ def parse_inputs(ini, section='INPUTS'):
             logging.error(
                 '\nERROR: Invalid adjust method: {}\n  Must be: {}'.format(
                     ini[section]['adjust_method'], ', '.join(options)))
-            sys.exit()
-
-    # At-surface reflectance method
-    if ini[section]['refl_sur_method']:
-        ini[section]['refl_sur_method'] = ini[section]['refl_sur_method'].lower()
-        options = ['tasumi', 'usgs_sr']
-        if ini[section]['refl_sur_method'] not in options:
-            logging.error(
-                '\nERROR: Invalid at-surface reflectance method: {}\n'
-                '  Must be: {}'.format(
-                    ini[section]['refl_sur_method'], ', '.join(options)))
             sys.exit()
 
 

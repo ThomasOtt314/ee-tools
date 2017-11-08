@@ -145,14 +145,13 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
         if k in [
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag',
-            'fmask_flag', 'acca_flag', 'fmask_source',
+            'fmask_flag', 'acca_flag',
             'start_year', 'end_year',
             'start_month', 'end_month',
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method', 'refl_sur_method'
-        ]}
+            'refl_sur_method', 'adjust_method', 'mosaic_method']}
     # landsat_args['start_date'] = start_date
     # landsat_args['end_date'] = end_date
 

@@ -111,7 +111,8 @@ def get_ee_tasks(states=['RUNNING', 'READY']):
     logging.debug('\nActive Tasks')
     tasks = {}
     task_list = sorted([
-        [t['state'], t['description'], t['id']] for t in ee.data.getTaskList()
+        [t['state'], t['description'], t['id']]
+        for t in ee.data.getTaskList()
         if t['state'] in states])
     if task_list:
         logging.debug('  {:8s} {}'.format('STATE', 'DESCRIPTION'))

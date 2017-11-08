@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_image.py
 # Purpose:      Download zonal stats by image using Earth Engine
-# Modified:     2017-07-06
+# Modified:     2017-11-07
 # Python:       3.6
 #--------------------------------
 
@@ -9,19 +9,15 @@ import argparse
 from builtins import input
 from collections import defaultdict
 import datetime
-from io import StringIO
 import json
 import logging
-import math
 import os
 import pprint
 import re
-import requests
 from subprocess import check_output
 import sys
 
 import ee
-import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -210,7 +206,7 @@ def main(ini_path=None, overwrite_flag=False):
             # Ingested shapefiles have lower case field names
             tile_field = 'wrs2_tile'
             wrs2_coll = ee.FeatureCollection(
-                    'users/cgmorton/wrs2_descending_conus_custom') \
+                    'projects/usgs-ssebop/wrs2_descending_custom') \
                 .filterBounds(zone_coll.geometry())
 
             # Extract tile values from joined collection
@@ -466,14 +462,13 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
         if k in [
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag',
-            'fmask_flag', 'acca_flag', 'fmask_source',
+            'fmask_flag', 'acca_flag',
             'start_year', 'end_year',
             'start_month', 'end_month',
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method'
-        ]}
+            'refl_sur_method', 'adjust_method', 'mosaic_method']}
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']

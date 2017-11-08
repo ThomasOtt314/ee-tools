@@ -9,10 +9,11 @@ import pytest
 import ee_tools.ee_common as ee_common
 
 
-
 # system_properties = ['system:index', 'system:time_start', 'system:time_end']
 
 refl_bands = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
+refl_toa_bands = [b + '_toa' for b in refl_bands]
+refl_sur_bands = [b + '_sur' for b in refl_bands]
 
 # nldas_filter = ee.Filter.maxDifference(
 #     1000 * 60 * 60 * 4,
@@ -121,9 +122,9 @@ def image_value(image, band_name):
 
 #     Args:
 #         refl_toa_orig (ee.ImageCollection): Landsat TOA reflectance collection
-#         landsat (str): Landsat type ('LT5', 'LE7', or 'LC8')
+#         landsat (str): Landsat type ('LT05', 'LE07', or 'LC08')
 #         adjust_mode (str): Adjust Landsat red and NIR bands
-#             'ETM_2_OLI' or 'OLI_2_ETM'
+#             'etm_2_oli' or 'oli_2_etm'
 #             This could probably be simplifed to a simple flag
 
 #     Returns:
@@ -336,15 +337,15 @@ def image_value(image, band_name):
 @pytest.mark.parametrize(
     "refl_sur,landsat,expected",
     [
-        [[1.0] * 6, 'LT5', sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])],
-        [[2.0] * 6, 'LE7', 2 * sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])],
-        [[1.0] * 6, 'LC8', sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])]
+        [[1.0] * 6, 'LT05', sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])],
+        [[2.0] * 6, 'LE07', 2 * sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])],
+        [[1.0] * 6, 'LC08', sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])]
     ]
 )
 def test_albedo_func(refl_sur, landsat, expected, tol=0.0001):
     """At-surface albedo"""
-    refl_sur_image = ee.Image.constant(refl_sur).rename(refl_bands)
-    albedo_image = ee_common.albedo_func(refl_sur_image, landsat).rename(['albedo'])
+    refl_sur_image = ee.Image.constant(refl_sur).rename(refl_sur_bands)
+    albedo_image = ee_common.albedo_sur_func(refl_sur_image).rename(['albedo'])
     output = image_value(albedo_image, 'albedo')
     logging.debug('  Target values: {}'.format(expected))
     logging.debug('  Output values: {}'.format(output))
@@ -404,9 +405,9 @@ def test_albedo_func(refl_sur, landsat, expected, tol=0.0001):
 
 #     Top of atmosphere (at-satellite) reflectance
 
-#     LT5 - http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf
-#     LE7 - http://landcover.usgs.gov/pdf/tasseled.pdf
-#     LC8 - http://www.tandfonline.com/doi/abs/10.1080/2150704X.2014.915434
+#     LT05 - http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf
+#     LE07 - http://landcover.usgs.gov/pdf/tasseled.pdf
+#     LC08 - http://www.tandfonline.com/doi/abs/10.1080/2150704X.2014.915434
 #     https://www.researchgate.net/publication/262005316_Derivation_of_a_tasselled_cap_transformation_based_on_Landsat_8_at-_satellite_reflectance
 #     """
 #     assert False

@@ -107,6 +107,7 @@ The following modules must be present to run all of the EE-Tools:
 * [gdal](http://gdal.org/)
 * [dateutil](http://dateutil.readthedocs.io/en/stable/relativedelta.html)
 * [earthengine-api](https://github.com/google/earthengine-api)
+* [requests](http://docs.python-requests.org/en/master/)
 
 The following module is used to run the test suite
 * [pytest](http://doc.pytest.org/en/latest/)

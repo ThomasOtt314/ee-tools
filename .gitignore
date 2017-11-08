@@ -3,7 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-*.cache
+*.bak
+.cache
+.idea
 *.log
 *.lock
 schema.ini
@@ -17,3 +19,6 @@ beamer_v*/annual*
 beamer_v*/composite*
 beamer_v*/images*
 beamer_v*/stats*
+
+example_tasumi*
+example_usgs_sr*

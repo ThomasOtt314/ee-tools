@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-07-31
+# Modified:     2017-11-07
 # Python:       3.6
 #--------------------------------
 
@@ -222,7 +222,7 @@ def main(ini_path=None, overwrite_flag=False):
             # Ingested shapefiles have lower case field names
             tile_field = 'wrs2_tile'
             wrs2_coll = ee.FeatureCollection(
-                    'users/cgmorton/wrs2_descending_conus_custom') \
+                    'projects/usgs-ssebop/wrs2_descending_custom') \
                 .filterBounds(zone_coll.geometry())
 
             # Extract tile values from joined collection
@@ -444,14 +444,13 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         if k in [
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag',
-            'fmask_flag', 'acca_flag', 'fmask_source',
+            'fmask_flag', 'acca_flag',
             'start_year', 'end_year',
             'start_month', 'end_month',
             'start_doy', 'end_doy',
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
-            'adjust_method', 'mosaic_method',
-            'refl_sur_method']}
+            'refl_sur_method', 'adjust_method', 'mosaic_method']}
     landsat = ee_common.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']
