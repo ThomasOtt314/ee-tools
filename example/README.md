@@ -3,12 +3,12 @@ To run EE-Tools example, execute the following scripts in order.
 
 Compute zonal statistics and export CSV files to Google Drive
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
+> python ee_zonal_stats_by_zone.py -i example\example_ee_zs.ini
 ```
 
 Rerun the zonal stats script to copy the CSV files from Google Drive to the local folder
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
+> python ee_zonal_stats_by_zone.py -i example\example_ee_zs.ini
 ```
 
 Compute QA/QC flags

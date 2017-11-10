@@ -52,13 +52,12 @@ Currently, the output spatial reference set in the INI file (EXPORT parameter "o
 ## Zonal Stats
 To initiate Earth Engine zonal statistics export tasks, execute the following:
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
+> python ee_zonal_stats_by_zone.py -i example\example_ee_zs.ini
 ```
 
 As the export tasks finish, the zonal stats CSV files will be written to your Google drive.  Once all of the exports have finished, rerun the script, and the CSV files will be copied to the output workspace set in the INI file.
 
 #### Output
-
 EE Output field desciptions:
 PIXEL_TOTAL - Number of pixels that could nominally be in the zone.
 PIXEL_COUNT - Number of pixels with data used in the computation of mean NDVI, Ts, etc.  PIXEL_COUNT should always be <= PIXEL_TOTAL.  PIXEL_COUNT will be lower than PIXEL_TOTAL for zones that are near the edge of the image or cross the scan-line corrector gaps in Landsat 7 images.  Zones that are fully contained within cloud free Landsat 5 and 8 images can have PIXEL_COUNTS equal to PIXEL_TOTAL.

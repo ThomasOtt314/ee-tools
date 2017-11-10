@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_common.py
 # Purpose:      Common EarthEngine support functions
-# Modified:     2017-11-07
+# Modified:     2017-11-09
 # Python:       3.6
 #--------------------------------
 
@@ -18,7 +18,6 @@ import ee
 ee.Initialize()
 
 system_properties = ['system:index', 'system:time_start']
-image_properties = system_properties + ['SCENE_ID', 'SPACECRAFT_ID']
 
 refl_bands = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
 refl_toa_bands = [b + '_toa' for b in refl_bands]
@@ -339,22 +338,15 @@ class Landsat():
                 toa_coll = toa_coll.filterBounds(self.zone_geom)
                 sur_coll = sur_coll.filterBounds(self.zone_geom)
 
-            # Set SCENE_ID property for joining and filtering
-            toa_coll = toa_coll.map(scene_id_func)
-            sur_coll = sur_coll.map(scene_id_func)
-            print(toa_coll.first().getInfo())
-            print(sur_coll.first().getInfo())
-            input('ENTER')
-
             # Filter by SCENE_ID
             if self.scene_id_keep_list:
                 scene_id_keep_filter = ee.Filter.inList(
-                    'SCENE_ID', self.scene_id_keep_list)
+                    'system:index', self.scene_id_keep_list)
                 toa_coll = toa_coll.filter(scene_id_keep_filter)
                 sur_coll = sur_coll.filter(scene_id_keep_filter)
             if self.scene_id_skip_list:
                 scene_id_skip_filter = ee.Filter.inList(
-                    'SCENE_ID', self.scene_id_skip_list).Not()
+                    'system:index', self.scene_id_skip_list).Not()
                 toa_coll = toa_coll.filter(scene_id_skip_filter)
                 sur_coll = sur_coll.filter(scene_id_skip_filter)
 
@@ -378,19 +370,21 @@ class Landsat():
             # Compute Tasumi SR (if necessary) after filtering collections
             # DEADBEEF - This may need to be moved before band functions
             if self.refl_sur_method == 'tasumi':
-                if landsat in ['LT04', 'LT05']:
-                    sur_coll = sur_coll.map(self.landsat5_tasumi_func)
-                elif landsat == 'LE07':
-                    sur_coll = sur_coll.map(self.landsat7_tasumi_func)
-                elif landsat == 'LC08':
-                    sur_coll = sur_coll.map(self.landsat8_tasumi_func)
+                sur_coll = sur_coll.map(self.refl_sur_tasumi_func)
+                # if landsat in ['LT04', 'LT05']:
+                #     sur_coll = sur_coll.map(self.landsat5_tasumi_func)
+                # elif landsat == 'LE07':
+                #     sur_coll = sur_coll.map(self.landsat7_tasumi_func)
+                # elif landsat == 'LC08':
+                #     sur_coll = sur_coll.map(self.landsat8_tasumi_func)
 
             # Join the TOA and SR collections
             scene_id_filter = ee.Filter.equals(
-                leftField='SCENE_ID', rightField='SCENE_ID')
+                leftField='system:index', rightField='system:index')
             landsat_coll = ee.ImageCollection(
                 ee.Join.saveFirst('sur').apply(
                     toa_coll, sur_coll, scene_id_filter))
+
             # Add SR bands from joined property
             landsat_coll = ee.ImageCollection(
                 landsat_coll.map(landsat_sur_band_func))
@@ -413,13 +407,7 @@ class Landsat():
 
             # Compute derived images
             landsat_coll = landsat_coll.map(self.landsat_images_func)
-
-            # if landsat in ['LT04', 'LT05']:
-            #     landsat_coll = landsat_coll.map(self.landsat5_images_func)
-            # elif landsat in ['LE07']:
-            #     landsat_coll = landsat_coll.map(self.landsat7_images_func)
-            # elif landsat in ['LC08']:
-            #     landsat_coll = landsat_coll.map(self.landsat8_images_func)
+            # pprint.pprint(ee.Image(landsat_coll.first()).getInfo())
             # logging.info('{} {}'.format(landsat, landsat_coll.size().getInfo()))
             # logging.info('{}'.format(', '.join(sorted(
             #     landsat_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
@@ -442,28 +430,14 @@ class Landsat():
         #     output_coll.aggregate_histogram('SCENE_ID').getInfo().keys()))))
         return output_coll
 
-    def landsat5_images_func(self, image):
-        """EE mappable function to call landsat_image_func for Landsat 4/5"""
-        return self.landsat_images_func(image, landsat='LT05')
-
-    def landsat7_images_func(self, image):
-        """EE mappable function to call landsat_image_func for Landsat 7"""
-        return self.landsat_images_func(image, landsat='LE07')
-
-    def landsat8_images_func(self, image):
-        """EE mappable function to call landsat_image_func for Landsat 8"""
-        return self.landsat_images_func(image, landsat='LC08')
-
-    def landsat_images_func(self, image, landsat):
+    def landsat_images_func(self, input_image):
         """Calculate Landsat products
 
         Send Landsat ROW number back as an image for determining "dominant"
             row in zones that overlap multiple images.
 
         Args:
-            image (ee.Image): Landsat merged TOA/SR image
-            landsat (str): Landsat type ('LT04', 'LT05', 'LE07', or 'LC08')
-                This is not an input argument
+            input_image (ee.Image): Landsat merged TOA/SR image
 
         Self Properties
             adjust_method (str): Adjust Landsat red and NIR bands.
@@ -485,51 +459,31 @@ class Landsat():
         output_images = []
         for band in refl_toa_bands:
             if band in self.products:
-                output_images.append(image.select([band]))
+                output_images.append(input_image.select([band]))
         for band in refl_sur_bands:
             if band in self.products:
-                output_images.append(image.select([band]))
-        # output_images.append(
-        #     image.select(list(set(refl_sur_bands) - set(self.products))))
+                output_images.append(input_image.select([band]))
 
-        # TOA reflectance composite
+        # Separate TOA and SR reflectance composites
         # Rename bands back to standard reflectance band names (without "_toa")
         # This is needed so that index functions will work for either composite
-        # if any([p for p in self.products if '_toa' in p]):
-        refl_toa = image.select(
-            refl_toa_bands, [b.replace('_toa', '') for b in refl_toa_bands])
-
-        # At-surface reflectance composite
-        # Rename bands back to standard reflectance band names (without "_sur")
-        # This is needed so that index functions will work for either composite
-        # if any([p for p in self.products if '_sur' in p]):
-        refl_sur = image.select(
-            refl_sur_bands, [b.replace('_sur', '') for b in refl_sur_bands])
-
-        # Output individual TOA and SR reflectance bands after renaming
-        # for band in refl_toa_bands:
-        #     if band + '_toa' in self.products:
-        #         output_images.append(refl_toa.select([band]))
-        # for band in refl_sur_bands:
-        #     if band + '_sur' in self.products:
-        #         output_images.append(refl_sur.select([band]))
+        refl_toa = input_image.select(refl_toa_bands, refl_bands)
+        refl_sur = input_image.select(refl_sur_bands, refl_bands)
 
         # At-surface albedo
         if 'albedo_sur' in self.products:
-            albedo_sur = ee.Image(albedo_func(refl_sur, refl_bands)) \
+            albedo_sur = ee.Image(albedo_func(refl_sur)) \
                 .rename(['albedo_sur'])
-            # albedo_sur = ee.Image(albedo_func(refl_sur, refl_bands, landsat)) \
-            #     .rename(['albedo_sur'])
             output_images.append(albedo_sur)
 
         # NDVI (used to compute LAI)
         if ('ndvi_toa' in self.products or 'lai_toa' in self.products or
                 'ts' in self.products):
-            ndvi_toa = input_img.normalizedDifference(['nir_toa', 'red_toa']) \
+            ndvi_toa = refl_toa.normalizedDifference(['nir', 'red']) \
                 .rename(['ndvi_toa'])
             output_images.append(ndvi_toa)
         if 'ndvi_sur' in self.products or 'lai_sur' in self.products:
-            ndvi_sur = input_img.normalizedDifference(['nir_sur', 'red_sur']) \
+            ndvi_sur = refl_sur.normalizedDifference(['nir', 'red']) \
                 .rename(['ndvi_sur'])
             output_images.append(ndvi_sur)
 
@@ -537,7 +491,7 @@ class Landsat():
         if ('evi_sur' in self.products or
                 any([True for p in self.products if 'etstar_' in p]) or
                 any([True for p in self.products if 'etg_' in p])):
-            evi_sur = ee.Image(landsat_evi_func(refl_sur.select(['red_sur']))) \
+            evi_sur = ee.Image(landsat_evi_func(refl_sur)) \
                 .rename(['evi_sur'])
             output_images.append(evi_sur)
 
@@ -638,7 +592,7 @@ class Landsat():
         # Surface temperature
         if 'ts' in self.products:
             ts = ee.Image(ts_func(
-                ts_brightness=image.select('lst'),
+                ts_brightness=input_image.select('lst'),
                 em_nb=em_nb_func(ndvi_toa, lai_toa),
                 k1=ee.Number(refl_toa.get('k1_constant')),
                 k2=ee.Number(refl_toa.get('k2_constant'))))
@@ -646,13 +600,13 @@ class Landsat():
 
         # Tasseled cap
         if 'tc_bright' in self.products:
-            tc_bright = ee.Image(tc_bright_func(refl_toa, landsat))
+            tc_bright = ee.Image(tc_bright_func(refl_toa))
             output_images.append(tc_bright)
         if 'tc_green' in self.products:
-            tc_green = ee.Image(tc_green_func(refl_toa, landsat))
+            tc_green = ee.Image(tc_green_func(refl_toa))
             output_images.append(tc_green)
         if 'tc_wet' in self.products:
-            tc_wet = ee.Image(tc_wet_func(refl_toa, landsat))
+            tc_wet = ee.Image(tc_wet_func(refl_toa))
             output_images.append(tc_wet)
 
         # Beamer ET* and ETg
@@ -713,39 +667,28 @@ class Landsat():
 
         # Add additional bands
         output_images.extend([
-            image.select('cloud_score'),
-            image.select('fmask'),
-            image.metadata('WRS_ROW', 'row')
+            input_image.select('cloud_score'),
+            input_image.select('fmask'),
+            input_image.metadata('WRS_ROW', 'row')
         ])
 
         return ee.Image(output_images) \
-            .copyProperties(image, image_properties)
+            .copyProperties(input_image, system_properties) \
+            .set('SCENE_ID', input_image.get('system:index'))
 
-    def landsat5_tasumi_func(self, refl_toa):
-        """EE mappable function to call refl_sur_tasumi_func for Landsat 4/5"""
-        return self.refl_sur_tasumi_func(refl_toa, landsat='LT05')
-
-    def landsat7_tasumi_func(self, refl_toa):
-        """EE mappable function to call refl_sur_tasumi_func for Landsat 7"""
-        return self.refl_sur_tasumi_func(refl_toa, landsat='LE07')
-
-    def landsat8_tasumi_func(self, refl_toa):
-        """EE mappable function to call refl_sur_tasumi_func for Landsat 8"""
-        return self.refl_sur_tasumi_func(refl_toa, landsat='LC08')
-
-    def refl_sur_tasumi_func(self, refl_toa, landsat, adjust_method=None):
+    def refl_sur_tasumi_func(self, refl_toa):
         """Tasumi at-surface reflectance
 
+        adjust_method class property is used.
+
         Args:
-            refl_toa (ee.Image):
-            landsat (str): Landsat type
-            adjust_method (str): Adjust Landsat red and NIR bands.
-                Choices are 'etm_2_oli', 'oli_2_etm', 'none'.
-                Default is 'none'.
+            refl_toa (ee.Image): Landsat top-of-atmosphere reflectance image
 
         Returns:
             ee.Image: at-surface reflectance
         """
+        landsat = ee.String(refl_toa.get('system:index')).slice(0, 2)
+
         scene_date = ee.Date(refl_toa.get('system:time_start'))
         doy = ee.Number(scene_date.getRelative('day', 'year')).add(1).double()
         hour = ee.Number(scene_date.getFraction('day')).multiply(24)
@@ -767,32 +710,39 @@ class Landsat():
         # Precipitable water?
         w = pair.multiply(0.14).multiply(ea).add(2.1)
 
-        if landsat in ['LT05', 'LT04', 'LE07']:
-            c1 = [0.987, 2.319, 0.951, 0.375, 0.234, 0.365]
-            c2 = [-0.00071, -0.000164, -0.000329, -0.000479, -0.001012, -0.000966]
-            c3 = [0.000036, 0.000105, 0.00028, 0.005018, 0.004336, 0.004296]
-            c4 = [0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155]
-            c5 = [0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639]
-            cb = [0.640, 0.31, 0.286, 0.189, 0.274, -0.186]
-            # c1 = ee.Image([0.987, 2.319, 0.951, 0.375, 0.234, 0.365])
-            # c2 = ee.Image([-0.00071, -0.000164, -0.000329, -0.000479, -0.001012, -0.000966])
-            # c3 = ee.Image([0.000036, 0.000105, 0.00028, 0.005018, 0.004336, 0.004296])
-            # c4 = ee.Image([0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155])
-            # c5 = ee.Image([0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639])
-            # cb = ee.Image([0.640, 0.31, 0.286, 0.189, 0.274, -0.186])
-        elif landsat in ['LC08']:
-            c1 = [0.987, 2.148, 0.942, 0.248, 0.260, 0.315]
-            c2 = [-0.000727, -0.000199, -0.000261, -0.000410, -0.001084, -0.000975]
-            c3 = [0.000037, 0.000058, 0.000406, 0.000563, 0.000675, 0.004012]
-            c4 = [0.0869, 0.0464, 0.0928, 0.2256, 0.0632, 0.0116]
-            c5 = [0.0788, -1.0962, 0.1125, 0.7991, 0.7549, 0.6906]
-            cb = [0.640, 0.310, 0.286, 0.189, 0.274, -0.186]
-            # c1 = ee.Image([0.987, 2.148, 0.942, 0.248, 0.260, 0.315])
-            # c2 = ee.Image([-0.000727, -0.000199, -0.000261, -0.000410, -0.001084, -0.000975])
-            # c3 = ee.Image([0.000037, 0.000058, 0.000406, 0.000563, 0.000675, 0.004012])
-            # c4 = ee.Image([0.0869, 0.0464, 0.0928, 0.2256, 0.0632, 0.0116])
-            # c5 = ee.Image([0.0788, -1.0962, 0.1125, 0.7991, 0.7549, 0.6906])
-            # cb = ee.Image([0.640, 0.310, 0.286, 0.189, 0.274, -0.186])
+        # Lookup coefficients based on system:index property
+        # Need to make sure this hasn't been modified form a merge
+        # Could also add a split on the -2 "_"
+        c1_dict = ee.Dictionary({
+            'LT': [0.987, 2.319, 0.951, 0.375, 0.234, 0.365],
+            'LE': [0.987, 2.319, 0.951, 0.375, 0.234, 0.365],
+            'LC': [0.987, 2.148, 0.942, 0.248, 0.260, 0.315]})
+        c2_dict = ee.Dictionary({
+            'LT': [-0.00071, -0.000164, -0.000329, -0.000479, -0.001012, -0.000966],
+            'LE': [-0.00071, -0.000164, -0.000329, -0.000479, -0.001012, -0.000966],
+            'LC': [-0.000727, -0.000199, -0.000261, -0.000410, -0.001084, -0.000975]})
+        c3_dict = ee.Dictionary({
+            'LT': [0.000036, 0.000105, 0.00028, 0.005018, 0.004336, 0.004296],
+            'LE': [0.000036, 0.000105, 0.00028, 0.005018, 0.004336, 0.004296],
+            'LC': [0.000037, 0.000058, 0.000406, 0.000563, 0.000675, 0.004012]})
+        c4_dict = ee.Dictionary({
+            'LT': [0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155],
+            'LE': [0.088, 0.0437, 0.0875, 0.1355, 0.056, 0.0155],
+            'LC': [0.0869, 0.0464, 0.0928, 0.2256, 0.0632, 0.0116]})
+        c5_dict = ee.Dictionary({
+            'LT': [0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639],
+            'LE': [0.0789, -1.2697, 0.1014, 0.6621, 0.7757, 0.639],
+            'LC': [0.0788, -1.0962, 0.1125, 0.7991, 0.7549, 0.6906]})
+        cb_dict = ee.Dictionary({
+            'LT': [0.640, 0.31, 0.286, 0.189, 0.274, -0.186],
+            'LE': [0.640, 0.31, 0.286, 0.189, 0.274, -0.186],
+            'LC': [0.640, 0.310, 0.286, 0.189, 0.274, -0.186]})
+        c1 = ee.Image.constant(ee.List(c1_dict.get(landsat)))
+        c2 = ee.Image.constant(ee.List(c2_dict.get(landsat)))
+        c3 = ee.Image.constant(ee.List(c3_dict.get(landsat)))
+        c4 = ee.Image.constant(ee.List(c4_dict.get(landsat)))
+        c5 = ee.Image.constant(ee.List(c5_dict.get(landsat)))
+        cb = ee.Image.constant(ee.List(cb_dict.get(landsat)))
 
         # Incoming/outgoing narrowband transmittance
         # IN  (C1*exp(((C2*pair)/(Kt*cos_theta))-((C3*W+C4)/cos_theta))+C5)
@@ -802,45 +752,52 @@ class Landsat():
             .divide(cos_theta).exp().multiply(c1).add(c5)
         tau_out = pair.multiply(c2).subtract(w.multiply(c3)).subtract(c4) \
             .exp().multiply(c1).add(c5)
+
+        # refl_toa bands should have already been renamed to "_sur" band names
+        # before this function is called
         refl_sur = ee.Image(refl_toa).select(refl_sur_bands) \
             .expression(
                 '(b() + cb * (tau_in - 1.0)) / (tau_in * tau_out)',
-                {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out})
+                {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out}) \
+            .rename(refl_sur_bands)
 
-        if (self.adjust_method and
-                self.adjust_method.lower() == 'etm_2_oli' and
-                landsat in ['LT05', 'LT04', 'LE07']):
-            # http://www.sciencedirect.com/science/article/pii/S0034425716302619
-            # Coefficients for scaling ETM+ to OLI
-            refl_sur = ee.Image(refl_sur) \
-                .subtract([0, 0, 0.0024, -0.0003, 0, 0]) \
-                .divide([1, 1, 1.0047, 1.0036, 1, 1])
-        elif (self.adjust_method and
-                self.adjust_method.lower() == 'oli_2_etm' and
-                landsat in ['LC08']):
+        if self.adjust_method:
             # http://www.sciencedirect.com/science/article/pii/S0034425716302619
             # Coefficients for scaling OLI to ETM+
-            refl_sur = ee.Image(refl_sur) \
-                .multiply([1, 1, 1.0047, 1.0036, 1, 1]) \
-                .add([0, 0, 0.0024, -0.0003, 0, 0])
+            # Invert the calculation for ETM+ to OLI
+            m_dict = ee.Dictionary({
+                'LT': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
+                'LE': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
+                'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
+            b_dict = ee.Dictionary({
+                'LT': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
+                'LE': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
+                'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
+            m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+            b = ee.Image.constant(ee.List(b_dict.get(landsat)))
+            if self.adjust_method.lower() == 'etm_2_oli':
+                refl_sur = ee.Image(refl_sur).subtract(b).divide(m)
+            elif self.adjust_method.lower() == 'oli_2_etm':
+                refl_sur = ee.Image(refl_sur).multiply(m).add(b)
+
         return refl_sur \
             .clamp(0.0001, 1) \
-            .copyProperties(refl_toa, image_properties)
+            .copyProperties(refl_toa, system_properties)
 
 
-def scene_id_func(img):
-    """Construct Collecton 1 short SCENE_ID for collection 1 images
-
-    LT05_PPPRRR_YYYYMMDD
-    Format matches EE collection 1 system:index
-    Split on '_' in case the collection was merged first
-    """
-    scene_id = ee.List(ee.String(
-        img.get('system:index')).split('_')).slice(-3)
-    scene_id = ee.String(scene_id.get(0)).cat('_') \
-        .cat(ee.String(scene_id.get(1))).cat('_') \
-        .cat(ee.String(scene_id.get(2)))
-    return img.setMulti({'SCENE_ID': scene_id})
+# def scene_id_func(img):
+#     """Construct Collecton 1 short SCENE_ID for collection 1 images
+#
+#     LT05_PPPRRR_YYYYMMDD
+#     Format matches EE collection 1 system:index
+#     Split on '_' in case the collection was merged first
+#     """
+#     scene_id = ee.List(ee.String(
+#         img.get('system:index')).split('_')).slice(-3)
+#     scene_id = ee.String(scene_id.get(0)).cat('_') \
+#         .cat(ee.String(scene_id.get(1))).cat('_') \
+#         .cat(ee.String(scene_id.get(2)))
+#     return img.setMulti({'SCENE_ID': scene_id})
 
 
 def cos_theta_flat_func(acq_doy, acq_time, lat=None, lon=None):
@@ -957,11 +914,10 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
     return cos_theta.rename(['cos_theta'])
 
 
-def albedo_func(refl_img, bands=refl_sur_bands):
-    """At-surface albedo"""
+def albedo_func(refl_img):
+    """Albedo"""
     wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-    return ee.Image(refl_img).select(bands).multiply(wb_coef) \
-        .reduce(ee.Reducer.sum())
+    return ee.Image(refl_img).multiply(wb_coef).reduce(ee.Reducer.sum())
 
 
 # def albedo_func(refl_img, bands, landsat):
@@ -1122,7 +1078,7 @@ def et_func(etg, ppt):
 #         .select([0, 1, 2], ['tc_bright', 'tc_green', 'tc_wet'])
 
 
-def tc_bright_func(refl_toa, landsat):
+def tc_bright_func(refl_toa):
     """Tasseled cap brightness
 
     Top of atmosphere (at-satellite) reflectance
@@ -1132,49 +1088,40 @@ def tc_bright_func(refl_toa, landsat):
     LC08 - http://www.tandfonline.com/doi/abs/10.1080/2150704X.2014.915434
     https://www.researchgate.net/publication/262005316_Derivation_of_a_tasselled_cap_transformation_based_on_Landsat_8_at-_satellite_reflectance
     """
-    if landsat in ['LT04', 'LT05']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        tc_bright_coef = [0.2043, 0.4158, 0.5524, 0.5741, 0.3124, 0.2303]
-    elif landsat in ['LE07']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        tc_bright_coef = [0.3561, 0.3972, 0.3904, 0.6966, 0.2286, 0.1596]
-    elif landsat in ['LC08']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        # refl_toa_sub = refl_toa_sub.multiply(0.0001)
-        tc_bright_coef = [0.3029, 0.2786, 0.4733, 0.5599, 0.5080, 0.1872]
-    return refl_toa_sub.multiply(tc_bright_coef).reduce(ee.Reducer.sum()) \
+    landsat = ee.String(refl_toa.get('system:index')).slice(0, 2)
+    bright_coef = ee.Dictionary({
+        'LT': [0.2043, 0.4158, 0.5524, 0.5741, 0.3124, 0.2303],
+        'LE': [0.3561, 0.3972, 0.3904, 0.6966, 0.2286, 0.1596],
+        'LC': [0.3029, 0.2786, 0.4733, 0.5599, 0.5080, 0.1872],
+    })
+    return refl_toa.multiply(ee.Image.constant(ee.List(bright_coef.get(landsat)))) \
+        .reduce(ee.Reducer.sum()) \
         .rename(['tc_bright'])
 
 
-def tc_green_func(refl_toa, landsat):
+def tc_green_func(refl_toa):
     """Tasseled cap greeness"""
-    if landsat in ['LT04', 'LT05']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        tc_green_coef = [-0.1603, -0.2819, -0.4934, 0.7940, -0.0002, -0.1446]
-    elif landsat in ['LE07']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        tc_green_coef = [-0.3344, -0.3544, -0.4556, 0.6966, -0.0242, -0.2630]
-    elif landsat in ['LC08']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        # refl_toa_sub = refl_toa_sub.multiply(0.0001)
-        tc_green_coef = [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608]
-    return refl_toa_sub.multiply(tc_green_coef).reduce(ee.Reducer.sum()) \
+    landsat = ee.String(refl_toa.get('system:index')).slice(0, 2)
+    green_coef = ee.Dictionary({
+        'LT': [-0.1603, -0.2819, -0.4934, 0.7940, -0.0002, -0.1446],
+        'LE': [-0.3344, -0.3544, -0.4556, 0.6966, -0.0242, -0.2630],
+        'LC': [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608],
+    })
+    return refl_toa.multiply(ee.Image.constant(ee.List(green_coef.get(landsat)))) \
+        .reduce(ee.Reducer.sum()) \
         .rename(['tc_green'])
 
 
-def tc_wet_func(refl_toa, landsat):
+def tc_wet_func(refl_toa):
     """Tasseled cap wetness"""
-    if landsat in ['LT04', 'LT05']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        tc_wet_coef = [0.0315, 0.2021, 0.3102, 0.1594, -0.6806, -0.6109]
-    elif landsat in ['LE07']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        tc_wet_coef = [0.2626, 0.2141, 0.0926, 0.0656, -0.7629, -0.5388]
-    elif landsat in ['LC08']:
-        refl_toa_sub = refl_toa.select(refl_toa_bands)
-        # refl_toa_sub = refl_toa_sub.multiply(0.0001)
-        tc_wet_coef = [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559]
-    return refl_toa_sub.multiply(tc_wet_coef).reduce(ee.Reducer.sum()) \
+    landsat = ee.String(refl_toa.get('system:index')).slice(0, 2)
+    wet_coef = ee.Dictionary({
+        'LT': [0.0315, 0.2021, 0.3102, 0.1594, -0.6806, -0.6109],
+        'LE': [0.2626, 0.2141, 0.0926, 0.0656, -0.7629, -0.5388],
+        'LC': [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559],
+    })
+    return refl_toa.multiply(ee.Image.constant(ee.List(wet_coef.get(landsat)))) \
+        .reduce(ee.Reducer.sum()) \
         .rename(['tc_wet'])
 
 
@@ -1293,26 +1240,28 @@ def landsat_bqa_fmask_func(refl_toa_img):
         1 - Clear water (not available in BQA)
         2 - Cloud shadow
         3 - Snow
-        4 - Cloud
+        4 - Cloud (with L8 cirrus)
     """
     qa_img = ee.Image(refl_toa_img.select(['BQA']))
 
-    # Extracting cloud masks from BQA using rightShift() and  bitwiseAnd()
-    # Cloud (med & high confidence), then snow, then shadow, then fill
-    # Low confidence clouds tend to be the FMask buffer
-    # Bits 11/12 will pull cirrus mask from Landsat 8
-    fmask_img = qa_img.rightShift(4).bitwiseAnd(1).neq(0) \
-        .And(qa_img.rightShift(5).bitwiseAnd(3).gte(2)) \
-        .Or(qa_img.rightShift(7).bitwiseAnd(3).gte(3)) \
-        .Or(qa_img.rightShift(9).bitwiseAnd(3).gte(3)) \
-        .Or(qa_img.rightShift(11).bitwiseAnd(3).gte(3))
+    # # Extracting cloud masks from BQA using rightShift() and  bitwiseAnd()
+    # # Cloud (med & high confidence), then snow, then shadow, then fill
+    # # Low confidence clouds tend to be the FMask buffer
+    # # Bits 11/12 will pull cirrus mask from Landsat 8
+    fill_mask = qa_img.bitwiseAnd(1).neq(0)                        # bits: 0
+    # drop_mask = qa_img.rightShift(1).bitwiseAnd(2).neq(0);       # bits: 1
+    # saturation_mask = qa_img.rightShift(3).bitwiseAnd(3).gte(8)  # bits: 2, 3
+    cloud_mask = qa_img.rightShift(4).bitwiseAnd(1).neq(0)         # bits: 4
+    cloud_conf = qa_img.rightShift(5).bitwiseAnd(3).gte(2)         # bits: 5, 6
+    shadow_mask = qa_img.rightShift(7).bitwiseAnd(3).gte(3)        # bits: 7, 8
+    snow_mask = qa_img.rightShift(9).bitwiseAnd(3).gte(3)          # bits: 9, 10
+    cirrus_mask = qa_img.rightShift(11).bitwiseAnd(3).gte(3)       # bits: 11 12
+    fmask_img = fill_mask \
+        .add(shadow_mask.multiply(2)) \
+        .add(snow_mask.multiply(3)) \
+        .add(cloud_mask.And(cloud_conf).Or(cirrus_mask).multiply(4))
 
     return refl_toa_img.addBands(fmask_img.rename(['fmask']))
-
-    # fmask_img = fill_mask \
-    #     .add(shadow_mask.multiply(2)) \
-    #     .add(snow_mask.multiply(3)) \
-    #     .add(cloud_mask.multiply(4))
 
 
 def landsat_pixel_qa_fmask_func(refl_sur_img):
@@ -1323,7 +1272,7 @@ def landsat_pixel_qa_fmask_func(refl_sur_img):
 
     Set fmask band to old style Fmask values
         0 - Clear land
-        1 - Clear water (not available in BQA)
+        1 - Clear water
         2 - Cloud shadow
         3 - Snow
         4 - Cloud
@@ -1333,11 +1282,18 @@ def landsat_pixel_qa_fmask_func(refl_sur_img):
     # Extracting cloud masks from pixel_qa using rightShift() and bitwiseAnd()
     # Cloud (med & high confidence), then snow, then shadow, then fill
     # Low confidence clouds tend to be the FMask buffer
-    fmask_img = qa_img.bitwiseAnd(32).neq(0) \
-        .And(qa_img.bitwiseAnd(64 + 128).gte(64)) \
-        .Or(qa_img.bitwiseAnd(16).neq(0)) \
-        .Or(qa_img.bitwiseAnd(8).neq(0)) \
-        .Or(qa_img.bitwiseAnd(1).neq(0))
+    fill_mask = qa_img.bitwiseAnd(1).neq(0)                   # bits: 0
+    # clear_mask = qa_img.rightShift(1).bitwiseAnd(2).neq(0)  # bits: 1
+    water_mask = qa_img.rightShift(2).bitwiseAnd(1).neq(0)    # bits: 2
+    shadow_mask = qa_img.rightShift(3).bitwiseAnd(1).neq(0)   # bits: 3
+    snow_mask = qa_img.rightShift(4).bitwiseAnd(1).neq(0)     # bits: 4
+    cloud_mask = qa_img.rightShift(5).bitwiseAnd(1).neq(0)    # bits: 5
+    cloud_conf = qa_img.rightShift(6).bitwiseAnd(3).gte(1)    # bits: 6, 7
+    fmask_img = fill_mask \
+        .add(water_mask.multiply(1)) \
+        .add(shadow_mask.multiply(2)) \
+        .add(snow_mask.multiply(3)) \
+        .add(cloud_mask.And(cloud_conf).multiply(4))
 
     return refl_sur_img.addBands(fmask_img.rename(['fmask']))
 
@@ -1347,7 +1303,6 @@ def landsat_pixel_qa_fmask_func(refl_sur_img):
     #     .Or(qa_img.eq(72).Or(qa_img.eq(136))) \
     #     .Or(qa_img.eq(80).Or(qa_img.eq(112)).Or(qa_img.eq(144)).Or(qa_img.eq(176))) \
     #     .Or(qa_img.eq(1))
-
 
 
 # def landsat_qa_band_func(refl_img):
@@ -1416,12 +1371,11 @@ def landsat5_toa_band_func(refl_img):
     return refl_img \
         .select(
             ['B1', 'B2', 'B3', 'B4', 'B5', 'B7', 'B6', 'cloud_score', 'fmask'],
-            refl_toa_bands + ['lst', 'cloud_score', 'fmask'])\
+            refl_toa_bands + ['lst', 'cloud_score', 'fmask']) \
+        .copyProperties(refl_img, system_properties) \
         .setMulti({
             'k1_constant': refl_img.get('K1_CONSTANT_BAND_6'),
-            'k2_constant': refl_img.get('K2_CONSTANT_BAND_6')}) \
-        .copyProperties(refl_img, image_properties)
-        # .setMulti({'k1_constant': 607.76, 'k2_constant': 1260.56})\
+            'k2_constant': refl_img.get('K2_CONSTANT_BAND_6')})
 
 
 def landsat7_toa_band_func(refl_img):
@@ -1442,11 +1396,10 @@ def landsat7_toa_band_func(refl_img):
             ['B1', 'B2', 'B3', 'B4', 'B5', 'B7',
              'B6_VCID_1', 'cloud_score', 'fmask'],
             refl_toa_bands + ['lst', 'cloud_score', 'fmask']) \
+        .copyProperties(refl_img, system_properties) \
         .setMulti({
             'k1_constant': refl_img.get('K1_CONSTANT_BAND_6_VCID_1'),
-            'k2_constant': refl_img.get('K2_CONSTANT_BAND_6_VCID_1')}) \
-        .copyProperties(refl_img, image_properties)
-        # .setMulti({'k1_constant': 666.09, 'k2_constant': 1282.71}) \
+            'k2_constant': refl_img.get('K2_CONSTANT_BAND_6_VCID_1')})
 
 
 def landsat8_toa_band_func(refl_img):
@@ -1466,10 +1419,10 @@ def landsat8_toa_band_func(refl_img):
             ['B2', 'B3', 'B4', 'B5', 'B6', 'B7',
              'B10', 'cloud_score', 'fmask'],
             refl_toa_bands + ['lst', 'cloud_score', 'fmask']) \
+        .copyProperties(refl_img, system_properties) \
         .setMulti({
             'k1_constant': refl_img.get('K1_CONSTANT_BAND_10'),
-            'k2_constant': refl_img.get('K2_CONSTANT_BAND_10')}) \
-        .copyProperties(refl_img, image_properties)
+            'k2_constant': refl_img.get('K2_CONSTANT_BAND_10')})
 
 
 def landsat5_sur_band_func(refl_img):
@@ -1481,7 +1434,7 @@ def landsat5_sur_band_func(refl_img):
     return refl_img \
         .select(['B1', 'B2', 'B3', 'B4', 'B5', 'B7'], refl_sur_bands) \
         .divide(10000.0) \
-        .copyProperties(refl_img, image_properties)
+        .copyProperties(refl_img, system_properties)
 
 
 def landsat7_sur_band_func(refl_img):
@@ -1494,7 +1447,7 @@ def landsat7_sur_band_func(refl_img):
     return refl_img \
         .select(['B1', 'B2', 'B3', 'B4', 'B5', 'B7'], refl_sur_bands) \
         .divide(10000.0) \
-        .copyProperties(refl_img, image_properties)
+        .copyProperties(refl_img, system_properties)
 
 
 def landsat8_sur_band_func(refl_img):
@@ -1506,7 +1459,7 @@ def landsat8_sur_band_func(refl_img):
     return refl_img \
         .select(['B2', 'B3', 'B4', 'B5', 'B6', 'B7'], refl_sur_bands) \
         .divide(10000.0) \
-        .copyProperties(refl_img, image_properties)
+        .copyProperties(refl_img, system_properties)
 
 
 # def common_area_func(img):
@@ -1545,7 +1498,7 @@ def landsat_acca_cloud_mask_func(img):
 
 
 def landsat_fmask_cloud_mask_func(img):
-    """Apply the Fmask band in the TOA FMASK reflectance collections
+    """Apply the Fmask band in the reflectance collections
 
     Only apply Fmask cloud mask to Landsat reflectance bands
 
@@ -1563,37 +1516,6 @@ def landsat_fmask_cloud_mask_func(img):
         .updateMask(cloud_mask) \
         .addBands(img.select(['cloud_score', 'fmask'])) \
         .copyProperties(img, system_properties)
-
-
-def landsat_cfmask_cloud_mask_func(img):
-    """Apply the CFmask band in the at-surface reflectance collections
-
-    Only apply Fmask cloud mask to reflectance bands
-
-    0 - Clear land
-    1 - Clear water
-    2 - Cloud shadow
-    3 - Snow
-    4 - Cloud
-    """
-    fmask = ee.Image(img.select(['cfmask']))
-    cloud_mask = fmask.lt(2)
-    # cloud_mask = fmask.eq(2).Or(fmask.eq(3)).Or(fmask.eq(4)).Not()
-    refl_img = img \
-        .select(refl_toa_bands + refl_sur_bands) \
-        .updateMask(cloud_mask)
-    return refl_img \
-        .addBands(img.select(
-            ['cloud_score', 'cfmask'], ['cloud_score', 'fmask'])) \
-        .copyProperties(img, system_properties)
-
-
-# def acca_mask_func(refl_toa):
-#     """Apply ACCA cloud mask function"""
-#     cloud_mask = ee.Algorithms.Landsat.simpleCloudScore(refl_toa) \
-#         .select(['cloud']).lt(ee.Image.constant(50))
-#     cloud_mask = cloud_mask.updateMask(cloud_mask)
-#     return refl_toa.updateMask(cloud_mask)
 
 
 def prism_ppt_func(prism_image):
@@ -1790,7 +1712,7 @@ def mosaic_landsat_images(landsat_coll, mosaic_method):
         Using GEE Collection 1 system:index naming convention
         LT05_PPPRRR_YYYYMMDD
         """
-        scene_id = ee.String(ee.Image(image).get('SCENE_ID'))
+        scene_id = ee.String(ee.Image(image).get('system:index'))
         mosaic_id = scene_id.slice(0, 8).cat('XXX').cat(scene_id.slice(11, 20))
         # If mosaicing after merging, SCENE_ID is at end
         # scene_id = ee.String(ee.List(ee.String(

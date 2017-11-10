@@ -1,5 +1,5 @@
 configparser=3.5.0
-earthengine-api>=0.1.110
+earthengine-api>=0.1.125
 gdal>=2.2.0
 numpy
 pandas

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-07-26
+# Created       2017-11-09
 # Python:       3.6
 #--------------------------------
 
@@ -100,10 +100,10 @@ def main(ini_path=None, overwrite_flag=False):
     ee.Initialize()
 
     coll_dict = {
-        'LT04': 'LANDSAT/LT4_SR',
-        'LT05': 'LANDSAT/LT5_SR',
-        'LE07': 'LANDSAT/LE7_SR',
-        'LC08': 'LANDSAT/LC8_SR'
+        'LT04': 'LANDSAT/LT04/C01/T1_SR',
+        'LT05': 'LANDSAT/LT05/C01/T1_SR',
+        'LE07': 'LANDSAT/LE07/C01/T1_SR',
+        'LC08': 'LANDSAT/LC08/C01/T1_SR'
     }
 
     logging.info('\nProcessing zones')
@@ -257,7 +257,7 @@ def main(ini_path=None, overwrite_flag=False):
             # logging.debug('    Maximum pixel count: {}'.format(
             #     max_pixel_count))
             slc_off_mask = (
-                (landsat_df['LANDSAT'] == 'LE7') &
+                (landsat_df['PLATFORM'] == 'LE07') &
                 ((landsat_df['YEAR'] >= 2004) |
                  ((landsat_df['YEAR'] == 2003) & (landsat_df['DOY'] > 151))))
             slc_off_pct = 100 * (landsat_df['PIXEL_COUNT'] / landsat_df['PIXEL_TOTAL'])
@@ -273,7 +273,7 @@ def main(ini_path=None, overwrite_flag=False):
 
 
         logging.debug('  Downloading thumbnails')
-        for landsat, start_date in zip(landsat_df['LANDSAT'], landsat_df['DATE']):
+        for landsat, start_date in zip(landsat_df['PLATFORM'], landsat_df['DATE']):
             start_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
             end_dt = start_dt + datetime.timedelta(days=1)
             end_date = end_dt.strftime('%Y-%m-%d')
