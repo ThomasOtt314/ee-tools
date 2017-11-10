@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-11-07
+# Modified:     2017-11-09
 # Python:       3.6
 #--------------------------------
 
@@ -1074,7 +1074,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         # print('Bands: {}'.format(
         #     [x['id'] for x in ee.Image(landsat_coll.first()).getInfo()['bands']]))
         # print('SceneID: {}'.format(
-        #     ee.Image(landsat_coll.first()).getInfo()['properties']['SCENE_ID'])
+        #     ee.Image(landsat_coll.first()).getInfo()['properties']['SCENE_ID']))
         # input('ENTER')
         # if ee.Image(landsat_coll.first()).getInfo() is None:
         #     logging.info('    No images, skipping')
