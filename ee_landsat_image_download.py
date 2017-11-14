@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-07-26
+# Created       2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -14,7 +14,6 @@ import os
 import subprocess
 import sys
 
-# import arcpy
 import ee
 import numpy as np
 from osgeo import ogr
@@ -63,12 +62,6 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     int_output_type = 'Byte'
     int_nodata_value = 255
     int_bands = ['cloud_score', 'fmask']
-
-    # # Use ArcPy to compute the raster statistics
-    # arcpy.CheckOutExtension('Spatial')
-    # arcpy.env.overwriteOutput = True
-    # arcpy.env.pyramid = 'PYRAMIDS 0'
-    # arcpy.env.compression = 'LZW'
 
     # Get ee features from shapefile
     zone_geom_list = gdc.shapefile_2_geom_list_func(

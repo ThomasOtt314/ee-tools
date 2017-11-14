@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-07-26
+# Created       2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -13,7 +13,6 @@ import os
 import shutil
 import sys
 
-# import arcpy
 from dateutil.relativedelta import relativedelta
 import ee
 from osgeo import ogr
@@ -250,7 +249,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         logging.debug('  Export image already exists, moving')
                         shutil.move(export_path, output_path)
                         gdc.raster_path_set_nodata(output_path, nodata_value)
-                        # arcpy.CalculateStatistics_management(output_path)
+                        # DEADBEEF - should raster stats be computed?
                         # gdc.raster_statistics(output_path)
                         # subprocess.check_output([
                         #         'gdalwarp',
@@ -371,7 +370,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         logging.debug('  Export image already exists, moving')
                         shutil.move(export_path, output_path)
                         gdc.raster_path_set_nodata(output_path, nodata_value)
-                        # arcpy.CalculateStatistics_management(output_path)
+                        # DEADBEEF - should raster stats be computed?
                         # gdc.raster_statistics(output_path)
                         continue
                     elif os.path.isfile(output_path):

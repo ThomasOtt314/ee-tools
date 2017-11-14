@@ -144,9 +144,6 @@ If GDAL_DATA is not set, it can be set from the command prompt (note, your path 
 
 The GDAL_DATA environment variable can also be set through the Windows Control Panel (System -> Advanced system settings -> Environment Variables).
 
-#### ArcPy
-Currently the ArcGIS ArcPy module is used for computing raster statistics in some of the modules.  This dependency will eventually be removed.
-
 ## Code
 
 #### Style Guide
