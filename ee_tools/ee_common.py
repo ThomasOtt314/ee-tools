@@ -472,7 +472,7 @@ class Landsat():
 
         # At-surface albedo
         if 'albedo_sur' in self.products:
-            albedo_sur = ee.Image(albedo_func(refl_sur)) \
+            albedo_sur = ee.Image(landsat_albedo_func(refl_sur)) \
                 .rename(['albedo_sur'])
             output_images.append(albedo_sur)
 
@@ -754,8 +754,10 @@ class Landsat():
             .exp().multiply(c1).add(c5)
 
         # refl_toa bands should have already been renamed to "_sur" band names
-        # before this function is called
+        #   before this function is called
+        # SR bands needs to be un-scaled by 0.0001 (from refl_sur_band_func)
         refl_sur = ee.Image(refl_toa).select(refl_sur_bands) \
+            .multiply(10000.0) \
             .expression(
                 '(b() + cb * (tau_in - 1.0)) / (tau_in * tau_out)',
                 {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out}) \
@@ -765,19 +767,29 @@ class Landsat():
             # http://www.sciencedirect.com/science/article/pii/S0034425716302619
             # Coefficients for scaling OLI to ETM+
             # Invert the calculation for ETM+ to OLI
-            m_dict = ee.Dictionary({
-                'LT': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
-                'LE': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
-                'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
-            b_dict = ee.Dictionary({
-                'LT': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
-                'LE': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
-                'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
-            m = ee.Image.constant(ee.List(m_dict.get(landsat)))
-            b = ee.Image.constant(ee.List(b_dict.get(landsat)))
             if self.adjust_method.lower() == 'etm_2_oli':
+                m_dict = ee.Dictionary({
+                    'LT': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                    'LE': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                    'LC': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0]})
+                b_dict = ee.Dictionary({
+                    'LT': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    'LE': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
+                m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+                b = ee.Image.constant(ee.List(b_dict.get(landsat)))
                 refl_sur = ee.Image(refl_sur).subtract(b).divide(m)
             elif self.adjust_method.lower() == 'oli_2_etm':
+                m_dict = ee.Dictionary({
+                    'LT': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
+                    'LE': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
+                    'LC': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]})
+                b_dict = ee.Dictionary({
+                    'LT': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
+                    'LE': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
+                    'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
+                m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+                b = ee.Image.constant(ee.List(b_dict.get(landsat)))
                 refl_sur = ee.Image(refl_sur).multiply(m).add(b)
 
         return refl_sur \
@@ -914,23 +926,10 @@ def cos_theta_mountain_func(acq_doy, acq_time, lat=None, lon=None,
     return cos_theta.rename(['cos_theta'])
 
 
-def albedo_func(refl_img):
+def landsat_albedo_func(refl_img):
     """Albedo"""
     wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
     return ee.Image(refl_img).multiply(wb_coef).reduce(ee.Reducer.sum())
-
-
-# def albedo_func(refl_img, bands, landsat):
-#     """At-surface albedo"""
-#     if landsat in ['LT05', 'LT04']:
-#         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-#     elif landsat in ['LE07']:
-#         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-#     elif landsat in ['LC08']:
-#         wb_coef = [0.254, 0.149, 0.147, 0.311, 0.103, 0.036]
-#     return ee.Image(refl_img).select(bands).multiply(wb_coef) \
-#         .reduce(ee.Reducer.sum())
-#     #     .rename(['albedo'])
 
 
 # def landsat_ndvi_func(refl_img, bands):
@@ -1208,18 +1207,6 @@ def landsat_acca_band_func(refl_toa_img):
     return refl_toa_img.addBands(cloud_score)
 
 
-# def landsat_fmask_band_func(refl_img):
-#     """Get Fmask band from the joined properties"""
-#     return refl_img.addBands(
-#         ee.Image(refl_img.get('fmask')).rename(['fmask']))
-#
-#
-# def landsat_empty_fmask_band_func(refl_img):
-#     """Add an empty fmask band"""
-#     return refl_img.addBands(
-#         refl_img.select([0]).multiply(0).rename(['fmask']))
-
-
 def landsat_bqa_fmask_func(refl_toa_img):
     """Extract Fmask image from Landsat TOA Collection 1 QA band
 
@@ -1429,11 +1416,11 @@ def landsat5_sur_band_func(refl_img):
     """Rename Landsat 4 and 5 bands to common band names
 
     Change band order to match Landsat 8
-    Scale values by 10000
+    Scale values by 0.0001
     """
     return refl_img \
         .select(['B1', 'B2', 'B3', 'B4', 'B5', 'B7'], refl_sur_bands) \
-        .divide(10000.0) \
+        .multiply(0.0001) \
         .copyProperties(refl_img, system_properties)
 
 
@@ -1442,11 +1429,11 @@ def landsat7_sur_band_func(refl_img):
 
     Change band order to match Landsat 8
     For now, don't include pan-chromatic or high gain thermal band
-    Scale values by 10000
+    Scale values by 0.0001
     """
     return refl_img \
         .select(['B1', 'B2', 'B3', 'B4', 'B5', 'B7'], refl_sur_bands) \
-        .divide(10000.0) \
+        .multiply(0.0001) \
         .copyProperties(refl_img, system_properties)
 
 
@@ -1454,11 +1441,11 @@ def landsat8_sur_band_func(refl_img):
     """Rename Landsat 8 bands to common band names
 
     For now, don't include coastal, cirrus, or pan-chromatic
-    Scale values by 10000
+    Scale values by 0.0001
     """
     return refl_img \
         .select(['B2', 'B3', 'B4', 'B5', 'B6', 'B7'], refl_sur_bands) \
-        .divide(10000.0) \
+        .multiply(0.0001) \
         .copyProperties(refl_img, system_properties)
 
 

@@ -80,7 +80,7 @@ def main(ini_path=None, overwrite_flag=False):
         ini['ZONAL_STATS']['landsat_products'].remove('refl_sur')
     if 'tasseled_cap' in ini['ZONAL_STATS']['landsat_products']:
         ini['ZONAL_STATS']['landsat_products'].extend([
-            'tc_green', 'tc_bright', 'tc_wet'])
+            'tc_bright', 'tc_green', 'tc_wet'])
         ini['ZONAL_STATS']['landsat_products'].remove('tasseled_cap')
     landsat_daily_fields.extend(
         [p.upper() for p in ini['ZONAL_STATS']['landsat_products']])
