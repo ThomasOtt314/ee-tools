@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_image.py
 # Purpose:      Download zonal stats by image using Earth Engine
-# Modified:     2017-11-07
+# Modified:     2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -203,8 +203,7 @@ def main(ini_path=None, overwrite_flag=False):
                 for f in zone_ftr_sub])
 
             # Load the WRS2 custom footprint collection
-            # Ingested shapefiles have lower case field names
-            tile_field = 'wrs2_tile'
+            tile_field = 'WRS2_TILE'
             wrs2_coll = ee.FeatureCollection(
                     'projects/usgs-ssebop/wrs2_descending_custom') \
                 .filterBounds(zone_coll.geometry())
@@ -248,9 +247,9 @@ def main(ini_path=None, overwrite_flag=False):
             ftr for ftr in zones['features']
             if ftr['id'] not in ini['INPUTS']['fid_skip_list']]
 
-    # Merge geometries
-    # Merge after filtering by FID
+    # Merge geometries (after filtering by FID above)
     if ini['INPUTS']['merge_geom_flag']:
+        logging.debug('\nMerging geometries')
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone_ftr in zones['features']:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -262,6 +261,13 @@ def main(ini_path=None, overwrite_flag=False):
             'id': 0,
             'properties': {ini['INPUTS']['zone_field']: zones['name']},
             'geometry': json.loads(merge_geom.ExportToJson())}]
+
+        # Collapse WRS2 tile lists for merged geometry
+        ini['ZONAL_STATS']['zone_tile_json'][zones['name']] = sorted(list(set([
+            pr for pr_list in ini['ZONAL_STATS']['zone_tile_json'].values()
+            for pr in pr_list])))
+        logging.debug('  WRS2 Tiles: {}'.format(
+            ini['ZONAL_STATS']['zone_tile_json'][zones['name']]))
 
     # Get list of existing images/files
     if ini['EXPORT']['export_dest'] == 'cloud':

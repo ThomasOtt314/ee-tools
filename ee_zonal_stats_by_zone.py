@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-11-09
+# Modified:     2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -100,8 +100,8 @@ def main(ini_path=None, overwrite_flag=False):
         [p.upper() for p in ini['ZONAL_STATS']['gridmet_products']])
 
     # Convert the shapefile to geojson
-    # if not os.path.isfile(zone_geojson) or overwrite_flag:
-    if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']):
+    # if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']):
+    if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']) or overwrite_flag:
         logging.info('\nConverting zone shapefile to GeoJSON')
         logging.debug('  {}'.format(ini['ZONAL_STATS']['zone_geojson']))
         check_output([
@@ -193,9 +193,9 @@ def main(ini_path=None, overwrite_flag=False):
     #   independent of the INI tile settings
     ini['ZONAL_STATS']['zone_tile_json'] = {}
     ini['ZONAL_STATS']['tile_scene_json'] = {}
-    # if (os.path.isfile(ini['ZONAL_STATS']['zone_tile_path']) and
-    #         not overwrite_flag):
-    if os.path.isfile(ini['ZONAL_STATS']['zone_tile_path']):
+    # if os.path.isfile(ini['ZONAL_STATS']['zone_tile_path']):
+    if (os.path.isfile(ini['ZONAL_STATS']['zone_tile_path']) and
+            not overwrite_flag):
         logging.debug('\nReading zone tile lists\n  {}'.format(
             ini['ZONAL_STATS']['zone_tile_path']))
         with open(ini['ZONAL_STATS']['zone_tile_path'], 'r') as f:
@@ -219,8 +219,7 @@ def main(ini_path=None, overwrite_flag=False):
                 for f in zone_ftr_sub])
 
             # Load the WRS2 custom footprint collection
-            # Ingested shapefiles have lower case field names
-            tile_field = 'wrs2_tile'
+            tile_field = 'WRS2_TILE'
             wrs2_coll = ee.FeatureCollection(
                     'projects/usgs-ssebop/wrs2_descending_custom') \
                 .filterBounds(zone_coll.geometry())
@@ -264,9 +263,9 @@ def main(ini_path=None, overwrite_flag=False):
             ftr for ftr in zones['features']
             if ftr['id'] not in ini['INPUTS']['fid_skip_list']]
 
-    # Merge geometries
-    # Merge after filtering by FID
+    # Merge geometries (after filtering by FID above)
     if ini['INPUTS']['merge_geom_flag']:
+        logging.debug('\nMerging geometries')
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
         for zone_ftr in zones['features']:
             zone_multipolygon = ogr.ForceToMultiPolygon(
@@ -278,6 +277,14 @@ def main(ini_path=None, overwrite_flag=False):
             'id': 0,
             'properties': {ini['INPUTS']['zone_field']: zones['name']},
             'geometry': json.loads(merge_geom.ExportToJson())}]
+
+        # Collapse WRS2 tile lists for merged geometry
+        ini['ZONAL_STATS']['zone_tile_json'][zones['name']] = sorted(list(set([
+            pr for pr_list in ini['ZONAL_STATS']['zone_tile_json'].values()
+            for pr in pr_list])))
+        logging.debug('  WRS2 Tiles: {}'.format(
+            ini['ZONAL_STATS']['zone_tile_json'][zones['name']]))
+
 
     # Get list of existing images/files
     if ini['EXPORT']['export_dest'] == 'cloud':
