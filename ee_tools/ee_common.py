@@ -769,18 +769,6 @@ class Landsat():
             # Invert the calculation for ETM+ to OLI
             if self.adjust_method.lower() == 'etm_2_oli':
                 m_dict = ee.Dictionary({
-                    'LT': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                    'LE': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                    'LC': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0]})
-                b_dict = ee.Dictionary({
-                    'LT': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    'LE': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
-                m = ee.Image.constant(ee.List(m_dict.get(landsat)))
-                b = ee.Image.constant(ee.List(b_dict.get(landsat)))
-                refl_sur = ee.Image(refl_sur).subtract(b).divide(m)
-            elif self.adjust_method.lower() == 'oli_2_etm':
-                m_dict = ee.Dictionary({
                     'LT': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
                     'LE': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
                     'LC': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]})
@@ -788,6 +776,18 @@ class Landsat():
                     'LT': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
                     'LE': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
                     'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
+                m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+                b = ee.Image.constant(ee.List(b_dict.get(landsat)))
+                refl_sur = ee.Image(refl_sur).subtract(b).divide(m)
+            elif self.adjust_method.lower() == 'oli_2_etm':
+                m_dict = ee.Dictionary({
+                    'LT': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                    'LE': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                    'LC': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0]})
+                b_dict = ee.Dictionary({
+                    'LT': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    'LE': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
                 m = ee.Image.constant(ee.List(m_dict.get(landsat)))
                 b = ee.Image.constant(ee.List(b_dict.get(landsat)))
                 refl_sur = ee.Image(refl_sur).multiply(m).add(b)
