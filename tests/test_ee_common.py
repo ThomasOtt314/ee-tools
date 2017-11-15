@@ -241,25 +241,6 @@ def image_value(image, band_name):
 #     assert False
 
 
-# def test_landsat_cfmask_cloud_mask_func(img):
-#     """Apply the CFmask band in the at-surface reflectance collections
-
-#     Only apply Fmask cloud mask to reflectance bands
-
-#     0 - Clear land
-#     1 - Clear water
-#     2 - Cloud shadow
-#     3 - Snow
-#     4 - Cloud
-#     """
-#     assert False
-
-
-# # def test_acca_mask_func(refl_toa):
-# #     """Apply ACCA cloud mask function"""
-# #     assert False
-
-
 # def test_cos_theta_flat_func(acq_doy, acq_time, lat=None, lon=None):
 #     """Cos(theta) - Spatially varying flat Model
 
