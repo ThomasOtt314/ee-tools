@@ -151,7 +151,7 @@ class Landsat():
             'LT04': {'start': '1982-01-01', 'end': '1993-12-31'},
             'LT05': {'start': '1984-01-01', 'end': '2011-12-31'},
             'LE07': {'start': '1999-01-01', 'end': today},
-            'LC08': {'start': '2013-01-01', 'end': today}
+            'LC08': {'start': '2013-03-24', 'end': today}
         }
 
     def set_landsat_from_flags(self):
@@ -282,13 +282,18 @@ class Landsat():
                     'DATA_TYPE', 'equals', 'L1TP')
                 # sur_coll = sur_coll.filterMetadata(
                 #     'DATA_TYPE', 'equals', 'L1TP')
-
             # Exclude 2012 Landsat 5 images
-            if landsat in ['LT05']:
+            elif landsat in ['LT05']:
                 toa_coll = toa_coll.filter(
                     ee.Filter.calendarRange(1984, 2011, 'year'))
                 sur_coll = sur_coll.filter(
                     ee.Filter.calendarRange(1984, 2011, 'year'))
+            # Exclude early Landsat 8 images (operational on April 11th, 2013)
+            elif landsat in ['LC08']:
+                toa_coll = toa_coll.filter(ee.Filter.gt(
+                    'system:time_start', ee.Date('2013-03-24').millis()))
+                sur_coll = sur_coll.filter(ee.Filter.gt(
+                    'system:time_start', ee.Date('2013-03-24').millis()))
 
             # Filter by date
             if self.start_date and self.end_date:
