@@ -208,7 +208,7 @@ def main(ini_path, overwrite_flag=True):
         if k in [
             'landsat4_flag', 'landsat5_flag',
             'landsat7_flag', 'landsat8_flag',
-            'fmask_flag', 'acca_flag', 'fmask_source',
+            'fmask_flag', 'acca_flag',
             'start_year', 'end_year',
             'start_month', 'end_month',
             'start_doy', 'end_doy',
