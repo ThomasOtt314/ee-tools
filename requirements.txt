@@ -1,5 +1,6 @@
 configparser=3.5.0
 earthengine-api>=0.1.125
+future
 gdal>=2.2.0
 numpy
 pandas
