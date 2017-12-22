@@ -1483,7 +1483,7 @@ def landsat_acca_cloud_mask_func(img):
     """
     cloud_mask = img.select(['cloud_score']).unmask(0).lt(50)
     return img \
-        .select(refl_toa_bands + refl_sur_bands) \
+        .select(refl_toa_bands + refl_sur_bands + ['lst']) \
         .updateMask(cloud_mask) \
         .addBands(img.select(['cloud_score', 'fmask'])) \
         .copyProperties(img, system_properties)
@@ -1504,7 +1504,7 @@ def landsat_fmask_cloud_mask_func(img):
     cloud_mask = fmask.lt(2)
     # cloud_mask = fmask.eq(2).Or(fmask.eq(3)).Or(fmask.eq(4)).Not()
     return img \
-        .select(refl_toa_bands + refl_sur_bands) \
+        .select(refl_toa_bands + refl_sur_bands + ['lst']) \
         .updateMask(cloud_mask) \
         .addBands(img.select(['cloud_score', 'fmask'])) \
         .copyProperties(img, system_properties)
