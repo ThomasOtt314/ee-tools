@@ -51,6 +51,25 @@ def date_range(start_date, end_date):
         yield (start_dt + datetime.timedelta(n)).strftime('%Y-%m-%d')
 
 
+# def date_range(start_dt, end_dt, days=1, skip_leap_days=True):
+#     """Generate dates within a range (inclusive)
+#     Args:
+#         start_dt (datetime): start date
+#         end_dt (datetime): end date
+#         days (int, optional): step size. Defaults to 1.
+#         skip_leap_days (bool, optional): if True, skip leap days while incrementing.
+#             Defaults to True.
+#     Yields
+#         datetime:
+#     """
+#     import copy
+#     curr_dt = copy.copy(start_dt)
+#     while curr_dt <= end_dt:
+#         if not skip_leap_days or curr_dt.month != 2 or curr_dt.day != 29:
+#             yield curr_dt
+#         curr_dt += datetime.timedelta(days=days)
+
+
 def get_buckets(project_name):
     """Return Google Cloud Storage buckets associated with project
 

@@ -1,7 +1,7 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-11-09
+# Created       2017-11-20
 # Python:       3.6
 #--------------------------------
 
@@ -37,7 +37,7 @@ def main(ini_path=None, overwrite_flag=False):
         ini_path (str):
         overwrite_flag (bool): if True, overwrite existing tables
     """
-    logging.info('\nGenerate summary QA/QC')
+    logging.info('\nGenerate summary thumbnails')
 
     # Inputs (eventually move to INI file?)
     vis_args = {
@@ -169,9 +169,9 @@ def main(ini_path=None, overwrite_flag=False):
         if overwrite_flag and os.path.isdir(output_date_ws):
             for file_name in os.listdir(output_date_ws):
                 os.remove(os.path.join(output_date_ws, file_name))
-        if not os.path.isdir(output_doy_ws):
+        if doy_flag and not os.path.isdir(output_doy_ws):
             os.makedirs(output_doy_ws)
-        if not os.path.isdir(output_date_ws):
+        if date_flag and not os.path.isdir(output_date_ws):
             os.makedirs(output_date_ws)
 
         logging.debug('  Reading Landsat CSV')

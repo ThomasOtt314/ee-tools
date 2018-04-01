@@ -747,7 +747,12 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             missing_df['MONTH'] = missing_df['DATE'].dt.month
             missing_df['DAY'] = missing_df['DATE'].dt.day
             missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
-            missing_df['ROW'] = np.nan
+            # DEADBEEF - Non-intersecting ROW values
+            #   Does it matter what value is used here?
+            #   We don't know the dominate or any ROW value here
+            #   It can't be XXX since the column type is int
+            #   Setting to np.nan causes issues in summary_tables (and qaqc)
+            missing_df['ROW'] = 0
             missing_df['QA'] = np.nan
             # missing_df['QA'] = 0
             missing_df['PIXEL_SIZE'] = landsat.cellsize
@@ -1341,6 +1346,8 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     except Exception as e:
         logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
+
+    # Use the date string as the index
     output_df.set_index('DATE', inplace=True, drop=True)
 
     # # Check for any expected dates not in the output dateframe
