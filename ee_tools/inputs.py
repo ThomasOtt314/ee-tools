@@ -382,7 +382,7 @@ def parse_export(ini, section='EXPORT'):
         get_param(ini, section, input_name, output_name, get_type, default)
 
     # DEADBEEF - CLOUD export options are still experimental
-    export_dest_options = ['gdrive', 'cloud', 'getinfo']
+    export_dest_options = ['gdrive', 'cloud', 'getinfo', 'gsheet']
     ini[section]['export_dest'] = ini[section]['export_dest'].lower()
     if ini[section]['export_dest'] not in export_dest_options:
         logging.error(
@@ -462,6 +462,9 @@ def parse_export(ini, section='EXPORT'):
             #     'gs://{}-{}'.format(
             #         ini[section]['project_name'],
             #         ini[section]['bucket_name'])])
+    elif ini[section]['export_dest'] == 'gsheet':
+        logging.info('  Google Sheet')
+        get_param(ini, section, 'gsheet_id', 'gsheet_id', str)
 
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default

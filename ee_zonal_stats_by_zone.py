@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_zonal_stats_by_zone.py
 # Purpose:      Download zonal stats by zone using Earth Engine
-# Modified:     2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -411,7 +410,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         ini (dict): Input file parameters
         zone (dict): Zone specific parameters
         tasks ():
-        gridmet_end_dt (datetime):
         overwrite_flag (bool): if True, overwrite existing values.
             Don't remove/replace the CSV file directly.
     """

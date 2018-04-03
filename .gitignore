@@ -6,6 +6,7 @@ __pycache__/
 *.bak
 .cache
 .idea
+*.json
 *.log
 *.lock
 schema.ini
