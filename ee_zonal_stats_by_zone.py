@@ -528,15 +528,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 #     lambda x: '{}_{:03d}{:03d}_{}'.format(
                 #         x['PLATFORM'], x['PATH'], x['ROW'],
                 #         x['DATE'].strftime('%Y%m%d')), axis=1)
-        # # DEADBEEF - Code to update old style SCENE_IDs
-        # # This should only need to be run once
-        # old_id_mask = ~output_df['SCENE_ID'].str.contains('_')
-        # if any(old_id_mask):
-        #     output_df.loc[old_id_mask, 'SCENE_ID'] = output_df[old_id_mask].apply(
-        #         lambda x: '{}0{}_{}{}_{}'.format(
-        #             x['SCENE_ID'][0:2], x['SCENE_ID'][2:3],
-        #             x['SCENE_ID'][3:6], x['SCENE_ID'][6:9],
-        #             x['DATE'].strftime('%Y%m%d')), axis=1)
 
         # Move any existing columns not in export_fields to end of CSV
         output_fields.extend([
@@ -1027,6 +1018,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
+                    # output_df = output_df.append(export_df)
                 else:
                     # Combine_first() doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1060,6 +1052,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
+                    # output_df = output_df.append(export_df)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1248,9 +1241,9 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             if not export_df.empty:
                 logging.debug('    Processing data')
                 if overwrite_flag:
-                    output_df = output_df.append(export_df)
                     # Update happens inplace automatically
                     # output_df.update(export_df)
+                    output_df = output_df.append(export_df)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1283,10 +1276,17 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
 
     logging.info('  GRIDMET Daily ETo/PPT')
 
+    export_id = '{}_{}_gridmet_daily'.format(
+        os.path.splitext(ini['INPUTS']['zone_filename'])[0],
+        zone['name'].lower())
     output_id = '{}_gridmet_daily'.format(zone['name'])
-
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('    Output: {}'.format(output_path))
+
+    if ini['EXPORT']['export_dest'] in ['cloud', 'gdrive']:
+        export_path = os.path.join(
+            ini['EXPORT']['export_ws'], export_id + '.csv')
+        logging.debug('    Export: {}'.format(export_id + '.csv'))
 
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
     gridmet_fields = [f.upper() for f in gridmet_products]
@@ -1502,7 +1502,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                     gridmet.select(['pr'], ['ppt']).max(0)))
             if 'eto' in gridmet_products:
                 output_images.append(ee.Image(
-                    gridmet.select(['pet'], ['eto']).max(0)))
+                    gridmet.select(['eto'], ['eto']).max(0)))
             if 'tmin' in gridmet_products:
                 output_images.append(ee.Image(gridmet.select(['tmmn'], ['tmin'])))
             if 'tmax' in gridmet_products:
@@ -1523,11 +1523,6 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         #     gridmet = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate(
         #         ee.Date(start_dt), ee.Date(start_dt).advance(1, 'day'))
 
-        #     # Helper functions
-        #     def negative_adjust(image):
-        #         # GRIDMET PPT zero values are
-        #         return image.where(image.lt(0), 0)
-
         #     def image_mean(image):
         #         # GRIDMET PPT zero values are
         #         return ee.Image(image.reduce(ee.Reducer.mean()))
@@ -1536,10 +1531,10 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         #     output_images = []
         #     if 'ppt' in gridmet_products:
         #         output_images.append(ee.Image(
-        #             gridmet.select(['pr'], ['ppt']).map(negative_adjust).sum()))
+        #             gridmet.select(['pr'], ['ppt']).sum()))
         #     if 'eto' in gridmet_products:
         #         output_images.append(ee.Image(
-        #             gridmet.select(['pet'], ['eto']).map(negative_adjust).sum()))
+        #             gridmet.select(['eto'], ['eto']).sum()))
         #     # Average other units
         #     if 'tmin' in gridmet_products:
         #         output_images.append(ee.Image(
@@ -1595,6 +1590,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
+                    # output_df = output_df.append(export_df)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1625,6 +1621,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
+                    # output_df = output_df.append(export_df)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1710,9 +1707,9 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 logging.debug('    Processing data')
                 export_df.set_index('DATE', inplace=True, drop=True)
                 if overwrite_flag:
-                    output_df = output_df.append(export_df)
                     # Update happens inplace automatically
-                    # output_df.update(export_df)
+                    output_df.update(export_df)
+                    # output_df = output_df.append(export_df)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1741,7 +1738,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         os.path.splitext(ini['INPUTS']['zone_filename'])[0],
         zone['name'].lower())
     output_id = '{}_gridmet_monthly'.format(zone['name'])
-
     output_path = os.path.join(zone['output_ws'], output_id + '.csv')
     logging.debug('    Output: {}'.format(output_path))
 
@@ -1783,10 +1779,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     # Read in existing data if possible
     try:
         output_df = pd.read_csv(output_path, parse_dates=False)
-        # Convert old date format of 2003-01 to 2003-01-01
-        output_df['DATE'] = pd.to_datetime(
-            output_df['DATE'], format='%Y-%m').dt.strftime('%Y-%m-%d')
-
         # Move any existing columns not in export_fields to end of CSV
         # output_fields.extend([
         #     f for f in output_df.columns.values if f not in output_fields])
@@ -1894,12 +1886,8 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     # Compute monthly sums of GRIDMET
     def gridmet_monthly(start_dt):
         gridmet = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate(
-            ee.Date(start_dt), ee.Date(start_dt).advance(1, 'month'))
-
-        # Helper functions
-        def negative_adjust(image):
-            # GRIDMET PPT zero values are
-            return image.where(image.lt(0), 0)
+            ee.Date(start_dt),
+            ee.Date(start_dt).advance(1, 'month'))
 
         def image_mean(image):
             # GRIDMET PPT zero values are
@@ -1909,10 +1897,10 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         output_images = []
         if 'ppt' in gridmet_products:
             output_images.append(ee.Image(
-                gridmet.select(['pr'], ['ppt']).map(negative_adjust).sum()))
+                gridmet.select(['pr'], ['ppt']).sum()))
         if 'eto' in gridmet_products:
             output_images.append(ee.Image(
-                gridmet.select(['pet'], ['eto']).map(negative_adjust).sum()))
+                gridmet.select(['eto'], ['eto']).sum()))
         # Average other units
         if 'tmin' in gridmet_products:
             output_images.append(ee.Image(
@@ -1968,6 +1956,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             if overwrite_flag:
                 # Update happens inplace automatically
                 output_df.update(export_df)
+                # output_df = output_df.append(export_df)
             else:
                 # Combine first doesn't have an inplace parameter
                 output_df = output_df.combine_first(export_df)
@@ -1998,6 +1987,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             if overwrite_flag:
                 # Update happens inplace automatically
                 output_df.update(export_df)
+                # output_df = output_df.append(export_df)
             else:
                 # Combine first doesn't have an inplace parameter
                 output_df = output_df.combine_first(export_df)
@@ -2078,9 +2068,9 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             logging.debug('    Processing data')
             export_df.set_index('DATE', inplace=True, drop=True)
             if overwrite_flag:
-                output_df = output_df.append(export_df)
                 # Update happens inplace automatically
-                # output_df.update(export_df)
+                output_df.update(export_df)
+                # output_df = output_df.append(export_df)
             else:
                 # Combine first doesn't have an inplace parameter
                 output_df = output_df.combine_first(export_df)
@@ -2098,7 +2088,6 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         ini (dict): Input file parameters
         zone (dict): Zone specific parameters
         tasks ():
-        gridmet_end_dt (datetime):
         overwrite_flag (bool): if True, overwrite existing files
     """
 
