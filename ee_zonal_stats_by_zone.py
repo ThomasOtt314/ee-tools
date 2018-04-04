@@ -1291,14 +1291,6 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
     gridmet_fields = [f.upper() for f in gridmet_products]
 
-    # Get INI date range
-    # Insert one additional year the beginning for water year totals
-    start_date = '{}-01-01'.format(ini['INPUTS']['start_year'] - 1)
-    end_date = min(
-        '{:04d}-01-01'.format(ini['INPUTS']['end_year'] + 1),
-        datetime.datetime.today().strftime('%Y-%m-%d'))
-    export_dates = set(utils.date_range(start_date, end_date))
-
     def csv_writer(output_df, output_path, output_fields):
         """Write the dataframe to CSV with custom formatting"""
         csv_df = output_df.copy()
@@ -1369,6 +1361,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     #         ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
     #     for m in range(1, 13)
     #     if datetime.datetime(y, m, 1) <= gridmet_end_dt])
+    # export_dates = set(utils.date_range(start_date, end_date))
     # logging.debug('    Export Dates: {}'.format(
     #     ', '.join(sorted(export_dates))))
 
@@ -1639,7 +1632,6 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             return True
 
         # Calculate values and statistics
-        # Build function in loop to set water year ETo/PPT values
         def zonal_stats_func(image):
             """"""
             date = ee.Date(image.get('system:time_start'))
@@ -1674,6 +1666,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 for p in gridmet_products
             })
             return ee.Feature(None, zs_dict)
+
         stats_coll = gridmet_coll.map(zonal_stats_func)
 
         if ini['EXPORT']['export_dest'] == 'gdrive':
@@ -1890,7 +1883,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             ee.Date(start_dt).advance(1, 'month'))
 
         def image_mean(image):
-            # GRIDMET PPT zero values are
             return ee.Image(image.reduce(ee.Reducer.mean()))
 
         # Sum depth units
@@ -2001,7 +1993,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         return True
 
     # Calculate values and statistics
-    # Build function in loop to set water year ETo/PPT values
     def zonal_stats_func(image):
         """"""
         date = ee.Date(image.get('system:time_start'))
@@ -2034,6 +2025,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             for p in gridmet_products
         })
         return ee.Feature(None, zs_dict)
+
     stats_coll = ee.FeatureCollection(gridmet_coll.map(zonal_stats_func))
 
     if ini['EXPORT']['export_dest'] == 'gdrive':

@@ -44,7 +44,17 @@ def arg_valid_file(file_path):
 
 
 def date_range(start_date, end_date):
-    """Yield datetimes within a date range"""
+    """Yield datetimes within a date range
+
+    Args:
+        start_date (str): ISO format start date (YYYY-MM-DD)
+        end_date (str): ISO format end date (YYYY-MM-DD).
+            End date will NOT be included in range (exclusive).
+
+    Yields
+        datetime:
+
+    """
     start_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
     end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d')
     for n in range(int((end_dt + datetime.timedelta(1) - start_dt).days)):
@@ -53,14 +63,17 @@ def date_range(start_date, end_date):
 
 # def date_range(start_dt, end_dt, days=1, skip_leap_days=True):
 #     """Generate dates within a range (inclusive)
+#
 #     Args:
 #         start_dt (datetime): start date
 #         end_dt (datetime): end date
 #         days (int, optional): step size. Defaults to 1.
 #         skip_leap_days (bool, optional): if True, skip leap days while incrementing.
 #             Defaults to True.
+#
 #     Yields
 #         datetime:
+#
 #     """
 #     import copy
 #     curr_dt = copy.copy(start_dt)
@@ -78,6 +91,7 @@ def get_buckets(project_name):
 
     Returns:
         list of bucket names
+
     """
     # logging.debug('\nGetting cloud storage bucket list')
     try:
@@ -106,6 +120,7 @@ def get_bucket_files(project_name, bucket_name):
 
     Returns:
         list of file names
+
     """
     try:
         file_list = subprocess.check_output(
@@ -125,6 +140,7 @@ def get_ee_tasks(states=['RUNNING', 'READY']):
 
     Returns:
         dict of task descriptions (key) and task IDs (value)
+
     """
 
     logging.debug('\nActive Tasks')

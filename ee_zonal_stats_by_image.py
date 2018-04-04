@@ -8,6 +8,7 @@ import argparse
 from builtins import input
 from collections import defaultdict
 import datetime
+from itertools import groupby
 import json
 import logging
 import os
@@ -1078,13 +1079,29 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
     gridmet_fields = [f.upper() for f in gridmet_products]
 
-    # Get INI date range
-    # Insert one additional year the beginning for water year totals
-    start_date = '{}-01-01'.format(ini['INPUTS']['start_year'] - 1)
-    end_date = min(
-        '{:04d}-01-01'.format(ini['INPUTS']['end_year'] + 1),
-        datetime.datetime.today().strftime('%Y-%m-%d'))
-    export_dates = set(utils.date_range(start_date, end_date))
+    def csv_writer(output_df, output_path, output_fields):
+        """Write the dataframe to CSV with custom formatting"""
+        csv_df = output_df.copy()
+
+        # Convert float fields to objects, set NaN to None
+        for field in csv_df.columns.values:
+            if field.upper() not in gridmet_fields:
+                continue
+            csv_df[field] = csv_df[field].astype(object)
+            null_mask = csv_df[field].isnull()
+            csv_df.loc[null_mask, field] = None
+            csv_df.loc[~null_mask, field] = csv_df.loc[~null_mask, field].map(
+                lambda x: '{0:10.6f}'.format(x).strip())
+
+        # Set field types
+        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR']:
+            csv_df[field] = csv_df[field].astype(int)
+        # if csv_df['ZONE_NAME'].dtype == np.float64:
+        #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
+
+        csv_df.reset_index(drop=False, inplace=True)
+        csv_df.sort_values(by=['DATE'], inplace=True)
+        csv_df.to_csv(output_path, index=False, columns=output_fields)
 
     # Read in existing data if possible
     output_df_list = []
@@ -1133,6 +1150,23 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
     # Use the date string as the index
     output_df.set_index('DATE', inplace=True, drop=True)
 
+    # Get list of possible dates based on INI
+    # Insert one additional year at the beginning for water year totals
+    export_dates = set(
+        date_str for date_str in utils.date_range(
+            '{}-01-01'.format(ini['INPUTS']['start_year'] - 1),
+            '{}-12-31'.format(ini['INPUTS']['end_year']))
+        if datetime.datetime.strptime(date_str, '%Y-%m-%d') <= gridmet_end_dt)
+    # export_dates = set([
+    #     datetime.datetime(y, m, 1).strftime('%Y-%m-%d')
+    #     # (y, m)
+    #     for y in range(
+    #         ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
+    #     for m in range(1, 13)
+    #     if datetime.datetime(y, m, 1) <= gridmet_end_dt])
+    # export_dates = set(utils.date_range(start_date, end_date))
+    # logging.debug('    Export Dates: {}'.format(
+    #     ', '.join(sorted(export_dates))))
 
     # For overwrite, drop all expected entries from existing output DF
     if overwrite_flag:
@@ -1140,8 +1174,8 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
 
     # Check for any expected dates not in the output dateframe
     # For now, if any dates are missing recompute all dates in INI range
-    if not output_df.empty:
-        export_dates = export_dates - set(output_df['DATE'].values)
+    if export_dates and not output_df.empty:
+        export_dates = export_dates - set(output_df.index.values)
     if not export_dates and not overwrite_flag:
         logging.info('    All dates present, skipping')
         return True
@@ -1161,94 +1195,87 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
             }))
     zone_coll = ee.FeatureCollection(zone_ftr_list)
 
-    for export_date in sorted(export_dates):
-        export_dt = datetime.datetime.strptime(export_date, '%Y-%m-%d')
-        logging.info('  {}'.format(export_date))
+    # Write values to file after each year
+    # Group export dates by year
+    export_dates_iter = [
+        [year, list(dates)]
+        for year, dates in groupby(sorted(export_dates), lambda x: x[:4])]
+    for export_year, export_dates in export_dates_iter:
+        logging.debug('  Iter year: {}'.format(export_year))
+        # logging.debug('  Iter dates: {}'.format(
+        #     ', '.join(sorted(export_dates))))
 
-        # Map over features for one image
-        image = ee.Image('IDAHO_EPSCOR/GRIDMET/{}'.format(export_dt.strftime('%Y%m%d'))) \
-            .select(['eto', 'pr'], ['eto', 'ppt'])
+        for export_date in sorted(export_dates):
+            export_dt = datetime.datetime.strptime(export_date, '%Y-%m-%d')
+            logging.info('  {}'.format(export_date))
 
-        # Calculate values and statistics
-        # Build function in loop to set water year ETo/PPT values
-        def gridmet_zonal_stats_func(ftr):
-            """"""
-            date = ee.Date(image.get('system:time_start'))
-            year = ee.Number(date.get('year'))
-            month = ee.Number(date.get('month'))
-            doy = ee.Number(date.getRelative('day', 'year')).add(1)
-            wyear = ee.Number(ee.Date.fromYMD(
-                year, month, 1).advance(3, 'month').get('year'))
-            input_mean = ee.Image(image) \
-                .reduceRegion(
-                    ee.Reducer.mean(),
-                    geometry=ftr.geometry(),
-                    crs=ini['SPATIAL']['crs'],
-                    crsTransform=ini['EXPORT']['transform'],
-                    bestEffort=False,
-                    tileScale=1)
-                    # maxPixels=zone['max_pixels'] * 3)
-            return ee.Feature(
-                None,
-                {
+            # Map over features for one image
+            image = ee.Image('IDAHO_EPSCOR/GRIDMET/{}'.format(export_dt.strftime('%Y%m%d'))) \
+                .select(['eto', 'pr'], ['eto', 'ppt'])
+
+            # Calculate values and statistics
+            def zonal_stats_func(ftr):
+                """"""
+                date = ee.Date(image.get('system:time_start'))
+                year = ee.Number(date.get('year'))
+                month = ee.Number(date.get('month'))
+                wyear = ee.Number(ee.Date.fromYMD(
+                    year, month, 1).advance(3, 'month').get('year'))
+                input_mean = ee.Image(image) \
+                    .reduceRegion(
+                        ee.Reducer.mean(),
+                        geometry=ftr.geometry(),
+                        crs=ini['SPATIAL']['crs'],
+                        crsTransform=ini['EXPORT']['transform'],
+                        bestEffort=False,
+                        tileScale=1)
+                        # maxPixels=zone['max_pixels'] * 3)
+
+                # Standard output
+                zs_dict = {
                     'ZONE_NAME': ee.String(ftr.get('ZONE_NAME')),
                     'ZONE_FID': ee.Number(ftr.get('ZONE_FID')),
                     'DATE': date.format('YYYY-MM-dd'),
                     'YEAR': year,
                     'MONTH': month,
-                    'DAY': date.get('day'),
-                    'DOY': doy,
-                    'WATER_YEAR': wyear,
-                    'ETO': input_mean.get('eto'),
-                    'PPT': input_mean.get('ppt')
+                    'DAY': ee.Number(date.get('day')),
+                    'DOY': ee.Number(date.getRelative('day', 'year')).add(1),
+                    'WATER_YEAR': wyear
+                }
+
+                # Product specific output
+                zs_dict.update({
+                    p.upper(): input_mean.get(p.lower())
+                    for p in gridmet_products
                 })
-        stats_coll = zone_coll.map(gridmet_zonal_stats_func)
+                return ee.Feature(None, zs_dict)
 
-        # DEADBEEF - Only allowing getInfo calls for zonal stats by image
-        if ini['EXPORT']['export_dest'] == 'getinfo':
-            logging.debug('    Requesting data')
-            export_df = pd.DataFrame([
-                ftr['properties']
-                for ftr in utils.ee_getinfo(stats_coll)['features']])
+            stats_coll = zone_coll.map(zonal_stats_func)
 
-            if not export_df.empty:
-                logging.debug('    Processing data')
-                export_df.set_index('DATE', inplace=True, drop=True)
-                if overwrite_flag:
-                    # Update happens inplace automatically
-                    # output_df.update(export_df)
-                    output_df = output_df.append(export_df)
-                else:
-                    # Combine first doesn't have an inplace parameter
-                    output_df = output_df.combine_first(export_df)
+            # DEADBEEF - Only allowing getInfo calls for zonal stats by image
+            if ini['EXPORT']['export_dest'] == 'getinfo':
+                # logging.debug('    Requesting data')
+                export_df = pd.DataFrame([
+                    ftr['properties']
+                    for ftr in utils.ee_getinfo(stats_coll)['features']])
 
-    def csv_writer(output_df, output_path, output_fields):
-        """Write the dataframe to CSV with custom formatting"""
-        csv_df = output_df.copy()
+                if not export_df.empty:
+                    # logging.debug('    Processing data')
+                    export_df.set_index('DATE', inplace=True, drop=True)
+                    if overwrite_flag:
+                        # Update happens inplace automatically
+                        # output_df.update(export_df)
+                        output_df = output_df.append(export_df)
+                    else:
+                        # Combine first doesn't have an inplace parameter
+                        output_df = output_df.combine_first(export_df)
 
-        # Convert float fields to objects, set NaN to None
-        for field in csv_df.columns.values:
-            if field.upper() not in gridmet_fields:
-                continue
-            csv_df[field] = csv_df[field].astype(object)
-            null_mask = csv_df[field].isnull()
-            csv_df.loc[null_mask, field] = None
-            csv_df.loc[~null_mask, field] = csv_df.loc[~null_mask, field].map(
-                lambda x: '{0:10.6f}'.format(x).strip())
+        # Save updated CSVs
+        if output_df.empty:
+            logging.debug('    Empty output df, skipping')
+            continue
 
-        # Set field types
-        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR']:
-            csv_df[field] = csv_df[field].astype(int)
-        # if csv_df['ZONE_NAME'].dtype == np.float64:
-        #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
-
-        csv_df.reset_index(drop=False, inplace=True)
-        csv_df.sort_values(by=['DATE'], inplace=True)
-        csv_df.to_csv(output_path, index=False, columns=output_fields)
-
-    # Save updated CSVs
-    if not export_df.empty:
-        logging.info('  Writing CSVs')
+        logging.info('  Writing zone CSVs')
         for zone_ftr in zones['features']:
             zone = {}
             zone['name'] = str(
@@ -1265,6 +1292,7 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
 
             zone_df = output_df[output_df['ZONE_NAME']==zone['name']]
             if zone_df.empty:
+                logging.debug('    Empty zone df, skipping')
                 continue
             csv_writer(zone_df, output_path, export_fields)
 
@@ -1292,6 +1320,32 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
 
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
     gridmet_fields = [f.upper() for f in gridmet_products]
+
+    def csv_writer(output_df, output_path, output_fields):
+        """Write the dataframe to CSV with custom formatting"""
+        csv_df = output_df.copy()
+
+        # Convert float fields to objects, set NaN to None
+        for field in csv_df.columns.values:
+            if field.upper() not in gridmet_fields:
+                continue
+            csv_df[field] = csv_df[field].astype(object)
+            null_mask = csv_df[field].isnull()
+            csv_df.loc[null_mask, field] = None
+            csv_df.loc[~null_mask, field] = csv_df.loc[
+                ~null_mask, field].map(
+                lambda x: '{0:10.6f}'.format(x).strip())
+
+        # Set field types
+        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'WATER_YEAR']:
+            csv_df[field] = csv_df[field].astype(int)
+        # if csv_df['ZONE_NAME'].dtype == np.float64:
+        #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
+
+        csv_df.reset_index(drop=False, inplace=True)
+        csv_df.sort_values(by=['DATE'], inplace=True)
+        csv_df.to_csv(output_path, index=False,
+                      columns=output_fields)
 
     # Read in existing data if possible
     output_df_list = []
@@ -1391,22 +1445,50 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
     for export_date in export_date_list:
         logging.info('  {}'.format(export_date))
 
-        # Export GRIDMET zonal stats
-        # Insert one additional year the beginning for water year totals
         # Compute monthly sums of GRIDMET
-        def monthly_sum(start_dt):
-            gridmet_coll = ee.ImageCollection(
-                ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
-                    .select(['eto', 'pr']) \
-                    .filterDate(
-                        ee.Date(start_dt),
-                        ee.Date(start_dt).advance(1, 'month')))
-            return ee.Image(gridmet_coll.sum()) \
-                .select([0, 1], ['eto', 'ppt']) \
+        # def monthly_sum(start_dt):
+        #     gridmet_coll = ee.ImageCollection(
+        #         ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
+        #             .select(['eto', 'pr']) \
+        #             .filterDate(
+        #                 ee.Date(start_dt),
+        #                 ee.Date(start_dt).advance(1, 'month')))
+        #     return ee.Image(gridmet_coll.sum()) \
+        #         .select([0, 1], ['eto', 'ppt']) \
+        #         .set('system:time_start', ee.Date(start_dt).millis())
+
+        # Compute monthly sums of GRIDMET
+        def gridmet_monthly(start_dt):
+            gridmet = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate(
+                ee.Date(start_dt),
+                ee.Date(start_dt).advance(1, 'month'))
+
+            def image_mean(image):
+                return ee.Image(image.reduce(ee.Reducer.mean()))
+
+            # Sum depth units
+            output_images = []
+            if 'ppt' in gridmet_products:
+                output_images.append(ee.Image(
+                    gridmet.select(['pr'], ['ppt']).sum()))
+            if 'eto' in gridmet_products:
+                output_images.append(ee.Image(
+                    gridmet.select(['eto'], ['eto']).sum()))
+            # Average other units
+            if 'tmin' in gridmet_products:
+                output_images.append(ee.Image(
+                    gridmet.select(['tmmn'], ['tmin']).mean()))
+            if 'tmax' in gridmet_products:
+                output_images.append(ee.Image(
+                    gridmet.select(['tmmx'], ['tmax']).mean()))
+            if 'tmean' in gridmet_products:
+                output_images.append(ee.Image(gridmet.select(['tmmn', 'tmmx']) \
+                    .map(image_mean).mean()).rename(['tmean']))
+            return ee.Image(output_images) \
                 .set('system:time_start', ee.Date(start_dt).millis())
 
         # Map over features for one image
-        image = monthly_sum(export_date)
+        image = gridmet_monthly(export_date)
 
         # Calculate values and statistics
         # Build function in loop to set water year ETo/PPT values
@@ -1426,30 +1508,36 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
                     bestEffort=False,
                     tileScale=1)
                     # maxPixels=zone['max_pixels'] * 3)
-            return ee.Feature(
-                None,
-                {
-                    'ZONE_NAME': ee.String(ftr.get('ZONE_NAME')),
-                    'ZONE_FID': ee.Number(ftr.get('ZONE_FID')),
-                    'DATE': date.format('YYYY-MM'),
-                    'YEAR': year,
-                    'MONTH': month,
-                    'WATER_YEAR': wyear,
-                    'ETO': input_mean.get('eto'),
-                    'PPT': input_mean.get('ppt')
-                })
+
+            # Standard output
+            zs_dict = {
+                'ZONE_NAME': ee.String(ftr.get('ZONE_NAME')),
+                'ZONE_FID': ee.Number(ftr.get('ZONE_FID')),
+                'DATE': date.format('YYYY-MM-dd'),
+                'YEAR': year,
+                'MONTH': month,
+                'WATER_YEAR': wyear
+            }
+
+            # Product specific output
+            zs_dict.update({
+                p.upper(): input_mean.get(p.lower())
+                for p in gridmet_products
+            })
+            return ee.Feature(None, zs_dict)
+
         stats_coll = zone_coll.map(gridmet_zonal_stats_func)
 
         # DEADBEEF - Only allowing getInfo calls for zonal stats by image
         if ini['EXPORT']['export_dest'] == 'getinfo':
-            logging.debug('    Requesting data')
+            # logging.debug('    Requesting data')
             export_df = pd.DataFrame([
                 ftr['properties']
                 for ftr in utils.ee_getinfo(stats_coll)['features']])
 
             # Save data to main dataframe
             if not export_df.empty:
-                logging.debug('    Processing data')
+                # logging.debug('    Processing data')
                 export_df.set_index('DATE', inplace=True, drop=True)
                 if overwrite_flag:
                     # Update happens inplace automatically
@@ -1459,35 +1547,9 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
 
-    def csv_writer(output_df, output_path, output_fields):
-        """Write the dataframe to CSV with custom formatting"""
-        csv_df = output_df.copy()
-
-        # Convert float fields to objects, set NaN to None
-        for field in csv_df.columns.values:
-            if field.upper() not in gridmet_fields:
-                continue
-            csv_df[field] = csv_df[field].astype(object)
-            null_mask = csv_df[field].isnull()
-            csv_df.loc[null_mask, field] = None
-            csv_df.loc[~null_mask, field] = csv_df.loc[
-                ~null_mask, field].map(
-                lambda x: '{0:10.6f}'.format(x).strip())
-
-        # Set field types
-        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'WATER_YEAR']:
-            csv_df[field] = csv_df[field].astype(int)
-        # if csv_df['ZONE_NAME'].dtype == np.float64:
-        #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
-
-        csv_df.reset_index(drop=False, inplace=True)
-        csv_df.sort_values(by=['DATE'], inplace=True)
-        csv_df.to_csv(output_path, index=False,
-                      columns=output_fields)
-
     # Save updated CSVs
-    if not export_df.empty:
-        logging.info('  Writing CSVs')
+    if not output_df.empty:
+        logging.info('  Writing zone CSVs')
         for zone_ftr in zones['features']:
             zone = {}
             zone['name'] = str(
@@ -1501,10 +1563,10 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
             output_id = '{}_gridmet_monthly'.format(zone['name'])
             output_path = os.path.join(zone['output_ws'], output_id + '.csv')
             logging.debug('    Output: {}'.format(output_path))
-            print()
 
             zone_df = output_df[output_df['ZONE_NAME']==zone['name']]
             if zone_df.empty:
+                logging.debug('    Empty zone df, skipping')
                 continue
             csv_writer(zone_df, output_path, export_fields)
 
