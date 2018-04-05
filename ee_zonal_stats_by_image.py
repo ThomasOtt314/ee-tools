@@ -18,6 +18,7 @@ from subprocess import check_output
 import sys
 
 import ee
+import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -38,6 +39,7 @@ def main(ini_path=None, overwrite_flag=False):
 
     Returns:
         None
+
     """
     logging.info('\nEarth Engine zonal statistics by image')
 
@@ -70,9 +72,9 @@ def main(ini_path=None, overwrite_flag=False):
     gridmet_monthly_fields = [
         'ZONE_NAME', 'ZONE_FID', 'DATE', 'YEAR', 'MONTH', 'WATER_YEAR',
         'ETO', 'PPT']
-    pdsi_dekad_fields = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY',
-        'PDSI']
+    # pdsi_dekad_fields = [
+    #     'ZONE_NAME', 'ZONE_FID', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY',
+    #     'PDSI']
 
     # Concert REFL_TOA, REFL_SUR, and TASSELED_CAP products to bands
     if 'refl_toa' in ini['ZONAL_STATS']['landsat_products']:
@@ -173,12 +175,6 @@ def main(ini_path=None, overwrite_flag=False):
     ee.Initialize()
     utils.ee_getinfo(ee.Number(1))
 
-    # Get current running tasks before getting file lists
-    # tasks = utils.get_ee_tasks()
-
-    # DEADBEEF - Only allowing getInfo calls for zonal stats by image
-    tasks = {}
-
     # Build separate tile lists for each zone
     # Build tile lists before filtering by FID below
     # DEADBEEF - This is a list of all "possible" tile that is
@@ -276,19 +272,6 @@ def main(ini_path=None, overwrite_flag=False):
         logging.debug('  WRS2 Tiles: {}'.format(
             ini['ZONAL_STATS']['zone_tile_json'][zones['name']]))
 
-    # Get list of existing images/files
-    if ini['EXPORT']['export_dest'] == 'cloud':
-        logging.debug('\nGetting cloud storage file list')
-        ini['EXPORT']['cloud_file_list'] = utils.get_bucket_files(
-            ini['EXPORT']['project_name'], ini['EXPORT']['export_ws'])
-        # logging.debug(ini['EXPORT']['cloud_file_list'])
-    # if ini['EXPORT']['export_dest'] == 'gdrive':
-    #     logging.debug('\nGetting Google drive file list')
-    #     ini['EXPORT']['gdrive_file_list'] = [
-    #         os.path.join(ini['ZONAL_STATS']['output_ws'], x)
-    #         for x in os.listdir(ini['ZONAL_STATS']['output_ws'])]
-    #     logging.debug(ini['EXPORT']['gdrive_file_list'])
-
     # Get end date of GRIDMET (if needed)
     # This could be moved to inside the INI function
     if ini['ZONAL_STATS']['gridmet_monthly_flag']:
@@ -302,28 +285,27 @@ def main(ini_path=None, overwrite_flag=False):
             ).get('system:time_start')).format('YYYY-MM-dd'))
         gridmet_end_dt = datetime.datetime.strptime(
             gridmet_end_dt, '%Y-%m-%d')
-        logging.debug('    Last GRIDMET date: {}'.format(gridmet_end_dt))
-
+        logging.debug('\nLast GRIDMET date: {}'.format(gridmet_end_dt))
 
     # Calculate zonal stats for each image separately
+    logging.debug('\nComputing zonal stats')
     if ini['ZONAL_STATS']['landsat_flag']:
         landsat_func(
-            landsat_daily_fields, ini, zones, zone_wkt, tasks, overwrite_flag)
+            landsat_daily_fields, ini, zones, zone_wkt, overwrite_flag)
     if ini['ZONAL_STATS']['gridmet_daily_flag']:
         gridmet_daily_func(
-            gridmet_daily_fields, ini, zones, zone_wkt, tasks, gridmet_end_dt,
+            gridmet_daily_fields, ini, zones, zone_wkt, gridmet_end_dt,
             overwrite_flag)
     if ini['ZONAL_STATS']['gridmet_monthly_flag']:
         gridmet_monthly_func(
-            gridmet_monthly_fields, ini, zones, zone_wkt, tasks, gridmet_end_dt,
+            gridmet_monthly_fields, ini, zones, zone_wkt, gridmet_end_dt,
             overwrite_flag)
     # if ini['ZONAL_STATS']['pdsi_flag']:
-    #     pdsi_func(pdsi_dekad_fields, ini, zones, zone_wkt, tasks,
+    #     pdsi_func(pdsi_dekad_fields, ini, zones, zone_wkt,
     #     overwrite_flag)
 
 
-def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
-                 overwrite_flag=False):
+def landsat_func(export_fields, ini, zones, zone_wkt, overwrite_flag=False):
     """
 
     Function will attempt to generate export tasks only for missing SCENE_IDs
@@ -334,68 +316,77 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
         ini (dict): Input file parameters
         zones (dict): Zone specific parameters
         zone_wkt (str): Zones spatial reference Well Known Text
-        tasks ():
         overwrite_flag (bool): if True, overwrite existing values.
             Don't remove/replace the CSV file directly.
+
     """
-    logging.info('  Landsat')
-
-    # # Build EE geometry object for zonal stats
-    # zone['json'] = zone_ftr['geometry']
-    # zone['geom'] = ee.Geometry(
-    #     geo_json=zone['json'], opt_proj=zone_wkt, opt_geodesic=False)
-    # # logging.debug('  Centroid: {}'.format(
-    # #     zone['geom'].centroid(100).getInfo()['coordinates']))
-
-    # # Use feature geometry to build extent, transform, and shape
-    # zone_poly = ogr.CreateGeometryFromJson(json.dumps(zone['json']))
-    # zone['area'] = zone_poly.GetArea()
-    # zone['extent'] = gdc.Extent(zone_poly.GetEnvelope())
-    # # zone['extent'] = gdc.Extent(zone['geom'].GetEnvelope())
-    # zone['extent'] = zone['extent'].ogrenv_swap()
-    # zone['extent'] = zone['extent'].adjust_to_snap(
-    #     'EXPAND', ini['SPATIAL']['snap_x'], ini['SPATIAL']['snap_y'],
-    #     ini['SPATIAL']['cellsize'])
-    # zone['geo'] = zone['extent'].geo(ini['SPATIAL']['cellsize'])
-    # zone['transform'] = gdc.geo_2_ee_transform(zone['geo'])
-    # zone['shape'] = zone['extent'].shape(ini['SPATIAL']['cellsize'])
-    # logging.debug('    Zone Shape: {}'.format(zone['shape']))
-    # logging.debug('    Zone Transform: {}'.format(zone['transform']))
-    # logging.debug('    Zone Extent: {}'.format(zone['extent']))
-    # # logging.debug('  Zone Geom: {}'.format(zone['geom'].getInfo()))
-
-    # # Assume all pixels in all 14+2 images could be reduced
-    # zone['max_pixels'] = zone['shape'][0] * zone['shape'][1]
-    # logging.debug('    Max Pixels: {}'.format(zone['max_pixels']))
-
-    # # Set output spatial reference
-    # # Eventually allow user to manually set these
-    # # output_crs = zone['proj']
-    # ini['EXPORT']['transform'] = zone['transform']
-    # logging.debug('    Output Projection: {}'.format(
-    #     ini['SPATIAL']['crs']))
-    # logging.debug('    Output Transform: {}'.format(
-    #     ini['EXPORT']['transform']))
+    logging.info('\nLandsat')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
     ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
     logging.debug('    Output Transform: {}'.format(
         ini['EXPORT']['transform']))
 
+    def csv_writer(output_df, output_path, output_fields):
+        """Write the dataframe to CSV with custom formatting"""
+        csv_df = output_df.copy()
+
+        # Convert float fields to objects, set NaN to None
+        float_fields = (
+            [f.upper() for f in ini['ZONAL_STATS']['landsat_products']] +
+            ['CLOUD_SCORE', 'FMASK_PCT'])
+        for field in csv_df.columns.values:
+            if field.upper() not in float_fields:
+                continue
+            csv_df[field] = csv_df[field].astype(object)
+            null_mask = csv_df[field].isnull()
+            csv_df.loc[null_mask, field] = None
+            csv_df.loc[~null_mask, field] = csv_df.loc[~null_mask, field].map(
+                lambda x: '{0:10.6f}'.format(x).strip())
+            # csv_df.loc[~null_mask, [field]] = csv_df.loc[~null_mask, [field]].apply(
+            #     lambda x: '{0:10.6f}'.format(x[0]).strip(), axis=1)
+
+        # Set field types
+        # Don't set the following since they may contain NaN/None?
+        # 'QA', 'PIXEL_TOTAL', 'PIXEL_COUNT', 'FMASK_TOTAL', 'FMASK_COUNT']
+        for field in ['ZONE_FID', 'PATH', 'YEAR', 'MONTH', 'DAY', 'DOY']:
+            csv_df[field] = csv_df[field].astype(int)
+        # if csv_df['ZONE_NAME'].dtype == np.float64:
+        #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
+
+        # DEADBEEF
+        # if csv_df['QA'].isnull().any():
+        #     csv_df.loc[csv_df['QA'].isnull(), 'QA'] = 0
+        # fmask_mask = csv_df['FMASK_TOTAL'] > 0
+        # if fmask_mask.any():
+        #     csv_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
+        #         csv_df.loc[fmask_mask, 'FMASK_COUNT'] /
+        #         csv_df.loc[fmask_mask, 'FMASK_TOTAL'])
+
+        csv_df.reset_index(drop=False, inplace=True)
+        csv_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+        csv_df.to_csv(output_path, index=False, columns=output_fields)
+
+    # List of all zone names to iterate over
+    zone_list = []
+    for z_ftr in zones['features']:
+        zone_name = str(
+            z_ftr['properties'][ini['INPUTS']['zone_field']]).replace(' ', '_')
+        zone_output_path = os.path.join(
+            ini['ZONAL_STATS']['output_ws'], zone_name,
+            '{}_landsat_daily.csv'.format(zone_name))
+        zone_list.append([zone_name, int(z_ftr['id']), zone_output_path])
+
     # Read in all output CSV files
     output_tiles = set()
     output_df_list = []
-    for zone_ftr in zones['features']:
-        zone = {}
-        zone['fid'] = zone_ftr['id']
-        zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
-            .replace(' ', '_')
-        logging.debug('  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
+    for zone_name, zone_fid, zone_output_path in zone_list:
+        logging.debug('  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
 
         # Pre-filter by tile
         # First get the list of possible tiles for each zone
         try:
-            zone_tile_list = ini['ZONAL_STATS']['zone_tile_json'][zone['name']]
+            zone_tile_list = ini['ZONAL_STATS']['zone_tile_json'][zone_name]
         except KeyError:
             logging.info('    No matching tiles, skipping zone')
             continue
@@ -417,27 +408,24 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
         output_tiles.update(zone_tile_list)
 
         # Build output folder if necessary
-        zone['output_ws'] = os.path.join(
-            ini['ZONAL_STATS']['output_ws'], zone['name'])
-        if not os.path.isdir(zone['output_ws']):
-            os.makedirs(zone['output_ws'])
+        if not os.path.isdir(os.path.dirname(zone_output_path)):
+            os.makedirs(os.path.dirname(zone_output_path))
 
         # Make copy of export field list in order to retain existing columns
         output_fields = export_fields[:]
 
         # Read existing output table if possible
         logging.debug('    Reading CSV')
-        output_id = output_id = '{}_landsat_daily'.format(zone['name'])
-        output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-        logging.debug('    {}'.format(output_path))
+        logging.debug('    {}'.format(zone_output_path))
         try:
-            output_df = pd.read_csv(output_path, parse_dates=['DATE'])
+            zone_df = pd.read_csv(zone_output_path, parse_dates=['DATE'])
+            zone_df['DATE'] = zone_df['DATE'].dt.strftime('%Y-%m-%d')
             # Move any existing columns not in export_fields to end of CSV
             output_fields.extend([
-                f for f in output_df.columns.values if f not in export_fields])
-            output_df = output_df.reindex(columns=output_fields)
-            output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-            output_df_list.append(output_df)
+                f for f in zone_df.columns.values if f not in export_fields])
+            zone_df = zone_df.reindex(columns=output_fields)
+            zone_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+            output_df_list.append(zone_df)
         except IOError:
             logging.debug('    Output path doesn\'t exist, skipping')
         except Exception as e:
@@ -455,11 +443,8 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
         logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
     del output_df_list
-    # logging.debug(output_df.head())
-    # logging.debug(output_df.tail())
 
-    # Use the date string as the index
-    output_df.set_index('DATE', inplace=True, drop=True)
+    output_df.set_index(['ZONE_NAME', 'SCENE_ID'], inplace=True, drop=True)
 
     # Initialize the Landsat object
     # For getting SCENE_ID lists, don't use zone_geom or products
@@ -524,6 +509,89 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
             mosaic_id = '{}XXX{}'.format(scene_id[:8], scene_id[11:])
             mosaic_id_dict[mosaic_id].append(scene_id)
         export_ids = set(mosaic_id_dict.keys())
+
+
+
+
+
+    print(export_ids)
+    input('ENTER')
+
+
+
+    # # # Get the SCENE_IDs that intersect the zone
+    # # logging.debug('    Getting intersecting SCENE_IDs')
+    # # missing_zone_ids = set(utils.ee_getinfo(
+    # #     landsat.get_collection().aggregate_histogram('SCENE_ID')))
+    #
+    # # Difference of sets are SCENE_IDs that don't intersect
+    # missing_skip_ids = missing_all_ids - missing_zone_ids
+    #
+    # # Updating missing all SCENE_ID list to not include
+    # #   non-intersecting scenes
+    # missing_all_ids = set(missing_zone_ids)
+    #
+    # # Remove skipped/empty SCENE_IDs from possible SCENE_ID list
+    # export_ids = export_ids - missing_skip_ids
+    # # logging.debug('  Missing Include: {}'.format(
+    # #     ', '.join(sorted(missing_zone_ids))))
+    # # logging.debug('  Missing Exclude: {}'.format(
+    # #     ', '.join(sorted(missing_skip_ids))))
+    # logging.info('    Include ID count: {}'.format(
+    #     len(missing_zone_ids)))
+    # logging.info('    Exclude ID count: {}'.format(
+    #     len(missing_skip_ids)))
+    #
+    # if missing_skip_ids:
+    #     logging.debug('    Appending empty non-intersecting SCENE_IDs')
+    #     missing_df = pd.DataFrame(
+    #         index=missing_skip_ids, columns=output_df.columns)
+    #     missing_df.index.name = 'SCENE_ID'
+    #     missing_df['ZONE_NAME'] = str(zone['name'])
+    #     missing_df['ZONE_FID'] = zone['fid']
+    #     missing_df['AREA'] = zone['area']
+    #     missing_df['PLATFORM'] = missing_df.index.str.slice(0, 4)
+    #     missing_df['PATH'] = missing_df.index.str.slice(5, 8).astype(int)
+    #     missing_df['DATE'] = pd.to_datetime(
+    #         missing_df.index.str.slice(12, 20), format='%Y%m%d')
+    #     missing_df['YEAR'] = missing_df['DATE'].dt.year
+    #     missing_df['MONTH'] = missing_df['DATE'].dt.month
+    #     missing_df['DAY'] = missing_df['DATE'].dt.day
+    #     missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
+    #     # DEADBEEF - Non-intersecting ROW values
+    #     #   Does it matter what value is used here?
+    #     #   We don't know the dominate or any ROW value here
+    #     #   It can't be XXX since the column type is int
+    #     #   Setting to np.nan causes issues in summary_tables (and qaqc)
+    #     missing_df['ROW'] = 0
+    #     missing_df['QA'] = np.nan
+    #     # missing_df['QA'] = 0
+    #     missing_df['PIXEL_SIZE'] = landsat.cellsize
+    #     missing_df['PIXEL_COUNT'] = 0
+    #     missing_df['PIXEL_TOTAL'] = 0
+    #     missing_df['FMASK_COUNT'] = 0
+    #     missing_df['FMASK_TOTAL'] = 0
+    #     missing_df['FMASK_PCT'] = np.nan
+    #     if 'etstar_mean' in landsat.products:
+    #         missing_df['ETSTAR_COUNT'] = np.nan
+    #     missing_df['CLOUD_SCORE'] = np.nan
+    #     # missing_df[f] = missing_df[f].astype(int)
+    #
+    #     # Remove the overlapping missing entries
+    #     # Then append the new missing entries
+    #     if output_df.index.intersection(missing_df.index).any():
+    #         output_df.drop(
+    #             output_df.index.intersection(missing_df.index),
+    #             inplace=True)
+    #     output_df = output_df.append(missing_df)
+    #     csv_writer(output_df, output_path, output_fields)
+
+
+
+
+
+
+
 
     # # If export_ids is empty, all SCENE_IDs may have been filtered
     # if not export_ids:
@@ -699,40 +767,6 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
     landsat.products = ini['ZONAL_STATS']['landsat_products']
     landsat.mosaic_method = landsat_args['mosaic_method']
 
-    def export_update(data_df):
-        """Set/modify ancillary field values in the export CSV dataframe"""
-        # First remove any extra rows that were added for exporting
-        data_df.drop(
-            data_df[data_df.SCENE_ID == 'DEADBEEF'].index, inplace=True)
-
-        # Add additional fields to the export data frame
-        data_df.set_index('SCENE_ID', inplace=True, drop=True)
-        if not data_df.empty:
-            data_df['ZONE_FID'] = zone['fid']
-            data_df['PLATFORM'] = data_df.index.str.slice(0, 4)
-            data_df['PATH'] = data_df.index.str.slice(5, 8).astype(int)
-            data_df['DATE'] = pd.to_datetime(
-                data_df.index.str.slice(12, 20), format='%Y%m%d')
-            data_df['YEAR'] = data_df['DATE'].dt.year
-            data_df['MONTH'] = data_df['DATE'].dt.month
-            data_df['DAY'] = data_df['DATE'].dt.day
-            data_df['DOY'] = data_df['DATE'].dt.dayofyear.astype(int)
-            data_df['AREA'] = zone['area']
-            data_df['PIXEL_SIZE'] = landsat.cellsize
-            fmask_mask = data_df['FMASK_TOTAL'] > 0
-            if fmask_mask.any():
-                data_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
-                    data_df.loc[fmask_mask, 'FMASK_COUNT'] /
-                    data_df.loc[fmask_mask, 'FMASK_TOTAL'])
-            data_df['QA'] = 0
-
-        # Remove unused export fields
-        if 'system:index' in data_df.columns.values:
-            del data_df['system:index']
-        if '.geo' in data_df.columns.values:
-            del data_df['.geo']
-        return data_df
-
     # These can be mosaiced or single scene IDs depending on mosaic method
     for export_id in sorted(export_ids):
         logging.debug('  {}'.format(export_id))
@@ -752,8 +786,12 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
                 ee.Geometry(
                     geo_json=z['geometry'], opt_proj=zone_wkt,
                     opt_geodesic=False),
-                {'ZONE_NAME': str(z['properties'][ini['INPUTS']['zone_field']]) \
-                    .replace(' ', '_')}))
+                {
+                    'ZONE_NAME': str(z['properties'][ini['INPUTS']['zone_field']]) \
+                        .replace(' ', '_'),
+                    'ZONE_FID': z['id']
+                }
+            ))
         zone_coll = ee.FeatureCollection(zone_ftr_list)
         # print(zone_coll.getInfo())
         # input('ENTER')
@@ -817,7 +855,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
             # Standard output
             zs_dict = {
                 'ZONE_NAME': ee.String(ftr.get('ZONE_NAME')),
-                # 'ZONE_FID': zone['fid'],
+                'ZONE_FID': ee.Number(ftr.get('ZONE_FID')),
                 'SCENE_ID': scene_id.slice(0, 20),
                 # 'PLATFORM': scene_id.slice(0, 4),
                 # 'PATH': ee.Number(scene_id.slice(5, 8)),
@@ -829,7 +867,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
                 # 'MONTH': date.get('month'),
                 # 'DAY': date.get('day'),
                 # 'DOY': doy,
-                # 'AREA': zone['area'],
+                # 'AREA': input_count.get('pixel_count') * (landsat.cellsize ** 2)
                 # 'PIXEL_SIZE': landsat.cellsize,
                 'PIXEL_COUNT': input_count.get('pixel_sum'),
                 'PIXEL_TOTAL': input_count.get('pixel_count'),
@@ -870,6 +908,7 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
         # Add a dummy entry to the stats collection
         format_dict = {
             'ZONE_NAME': 'DEADBEEF',
+            'ZONE_FID': -9999,
             'SCENE_ID': 'DEADBEEF',
             'ROW': -9999,
             'PIXEL_COUNT': -9999,
@@ -890,123 +929,47 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
         #     pp.pprint(ftr)
         # input('ENTER')
 
+        def export_update(data_df):
+            """Set/modify ancillary field values in the export CSV dataframe"""
+            # First remove any extra rows that were added for exporting
+            data_df.drop(
+                data_df[data_df['SCENE_ID']=='DEADBEEF'].index,
+                inplace=True)
 
-        # DEADBEEF - Only allowing getInfo calls for zonal stats by image
-        # export_path = os.path.join(
-        #     ini['EXPORT']['export_ws'], export_id + '.csv')
-        # logging.debug('    Export: {}'.format(export_id + '.csv'))
+            # Add additional fields to the export data frame
+            if not data_df.empty:
+                data_df['PLATFORM'] = data_df['SCENE_ID'].str.slice(0, 4)
+                data_df['PATH'] = data_df['SCENE_ID'].str.slice(5, 8).astype(int)
+                data_df['DATE'] = pd.to_datetime(
+                    data_df['SCENE_ID'].str.slice(12, 20), format='%Y%m%d')
+                data_df['YEAR'] = data_df['DATE'].dt.year
+                data_df['MONTH'] = data_df['DATE'].dt.month
+                data_df['DAY'] = data_df['DATE'].dt.day
+                data_df['DOY'] = data_df['DATE'].dt.dayofyear.astype(int)
+                data_df['PIXEL_SIZE'] = landsat.cellsize
+                data_df['AREA'] = data_df['PIXEL_COUNT'] * landsat.cellsize ** 2
+                fmask_mask = data_df['FMASK_TOTAL'] > 0
+                if fmask_mask.any():
+                    data_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
+                        data_df.loc[fmask_mask, 'FMASK_COUNT'] /
+                        data_df.loc[fmask_mask, 'FMASK_TOTAL'])
+                data_df['QA'] = 0
 
-        # # There is an EE bug that appends "ee_export" to the end of CSV
-        # #   file names when exporting to cloud storage
-        # # Also, use the sharelink path for reading the csv directly
-        # if ini['EXPORT']['export_dest'] == 'cloud':
-        #     export_cloud_name = export_id + 'ee_export.csv'
-        #     export_cloud_path = os.path.join(
-        #         ini['EXPORT']['export_ws'], export_cloud_name)
-        #     export_cloud_url = 'https://storage.googleapis.com/{}/{}'.format(
-        #         ini['EXPORT']['bucket_name'], export_cloud_name)
+            # Remove unused export fields
+            if 'system:index' in data_df.columns.values:
+                del data_df['system:index']
+            if '.geo' in data_df.columns.values:
+                del data_df['.geo']
 
-        # if export_id in tasks.keys():
-        #     logging.info('    Task already submitted, skipping')
-        #     continue
-        # elif (ini['EXPORT']['export_dest'] == 'gdrive' and
-        #         os.path.isfile(export_path)):
-        #     if ini['EXPORT']['export_only']:
-        #         logging.info('    Export CSV already exists, skipping')
-        #         continue
-        #
-        #     # Modify CSV while copying from Google Drive
-        #     logging.debug('    Reading export CSV')
-        #     try:
-        #         export_df = pd.read_csv(export_path)
-        #     # except pd.io.common.EmptyDataError:
-        #     except pd.errors.EmptyDataError:
-        #         export_df = pd.DataFrame()
-        #         logging.debug('    Empty export CSV, skipping')
-        #     except Exception as e:
-        #         logging.error('  Unhandled Exception\n  {}'.format(e))
-        #         input('ENTER')
-        #
-        #     # Save data to main dataframe
-        #     if not export_df.empty:
-        #         logging.info('    Processing exported CSV')
-        #         export_df = export_update(export_df)
-        #         if overwrite_flag:
-        #             # Update happens inplace automatically
-        #             output_df.update(export_df)
-        #             # output_df = output_df.append(export_df)
-        #         else:
-        #             # Combine_first() doesn't have an inplace parameter
-        #             output_df = output_df.combine_first(export_df)
-        #
-        #     # DEADBEEF
-        #     # logging.debug('    Removing export CSV')
-        #     # os.remove(export_path)
-        #     continue
-        # elif (ini['EXPORT']['export_dest'] == 'cloud' and
-        #         export_cloud_name in ini['EXPORT']['cloud_file_list']):
-        #     if ini['EXPORT']['export_only']:
-        #         logging.debug('    Export CSV already exists, skipping')
-        #         continue
-        #
-        #     logging.debug('    Reading {}'.format(export_cloud_url))
-        #     try:
-        #         export_request = requests.get(export_cloud_url).content
-        #         export_df = pd.read_csv(
-        #             StringIO(export_request.decode('utf-8')))
-        #     # except pd.io.common.EmptyDataError:
-        #     except pd.errors.EmptyDataError:
-        #         export_df = pd.DataFrame()
-        #         logging.debug('    Empty eport CSV, skipping')
-        #     except Exception as e:
-        #         logging.error('  Unhandled Exception\n  {}'.format(e))
-        #         input('ENTER')
-        #
-        #     # Save data to main dataframe
-        #     export_df = export_update(export_df)
-        #     if not export_df.empty:
-        #         logging.info('    Processing exported CSV')
-        #         if overwrite_flag:
-        #             # Update happens inplace automatically
-        #             output_df.update(export_df)
-        #             # output_df = output_df.append(export_df)
-        #         else:
-        #             # Combine first doesn't have an inplace parameter
-        #             output_df = output_df.combine_first(export_df)
-        #
-        #     logging.debug('    Removing {}'.format(export_cloud_path))
-        #     try:
-        #         check_output(['gsutil', 'rm', export_cloud_path])
-        #     except Exception as e:
-        #         logging.error('Unhandled Exception')
-        #         logging.error(str(e))
-        #     continue
+            data_df.set_index(['ZONE_NAME', 'SCENE_ID'], inplace=True, drop=True)
 
-        # if ini['EXPORT']['export_dest'] == 'gdrive':
-        #     logging.debug('    Building export task')
-        #     task = ee.batch.Export.table.toDrive(
-        #         collection=stats_coll,
-        #         description=export_id,
-        #         folder=ini['EXPORT']['export_folder'],
-        #         fileNamePrefix=export_id,
-        #         fileFormat='CSV')
-        #     logging.debug('    Starting export task')
-        #     utils.ee_request(task.start())
-        # elif ini['EXPORT']['export_dest'] == 'cloud':
-        #     logging.debug('    Building export task')
-        #     task = ee.batch.Export.table.toCloudStorage(
-        #         collection=stats_coll,
-        #         description=export_id,
-        #         bucket=ini['EXPORT']['bucket_name'],
-        #         fileNamePrefix='{}'.format(export_id.replace('-', '')),
-        #         # fileNamePrefix=export_id,
-        #         fileFormat='CSV')
-        #     logging.debug('    Starting export task')
-        #     utils.ee_request(task.start())
+            return data_df
+
         if ini['EXPORT']['export_dest'] == 'getinfo':
             logging.debug('    Requesting data')
-            export_info = utils.ee_getinfo(stats_coll)['features']
-            export_df = pd.DataFrame([ftr['properties'] for ftr in export_info])
+            export_df = pd.DataFrame([
+                ftr['properties']
+                for ftr in utils.ee_getinfo(stats_coll)['features']])
             export_df = export_update(export_df)
 
             # Save data to main dataframe
@@ -1022,16 +985,19 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 
     # Save updated CSV
     # if output_df is not None and not output_df.empty:
-    if output_df is not None:
+    if not output_df.empty:
+        logging.info('\n  Writing zone CSVs')
         output_df.reset_index(drop=False, inplace=True)
-        output_df.sort_values(by=['DATE', 'ROW'], inplace=True)
+        output_df.sort_values(by=['ZONE_NAME', 'SCENE_ID'], inplace=True)
+        export_df.set_index(
+            ['ZONE_NAME', 'SCENE_ID'], inplace=True, drop=True)
 
         # Eventually these will all be populated directly from the export
         # if 'PLATFORM' not in output_df.columns.values:
         output_df['PLATFORM'] = output_df['SCENE_ID'].str.slice(0, 4)
         if 'LANDSAT' in output_df.columns.values:
             del output_df['LANDSAT']
-        output_df['AREA'] = zone['area']
+        # output_df['AREA'] = zone['area']
         fmask_mask = output_df['FMASK_TOTAL'] > 0
         if fmask_mask.any():
             output_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
@@ -1043,19 +1009,31 @@ def landsat_func(export_fields, ini, zones, zone_wkt, tasks,
 
         # Set output types before saving
         if output_df['ZONE_NAME'].dtype == np.float64:
-            output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(int).astype(str)
+            output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(int).astype(
+                str)
         # DEADBEEF - I can't set these to int since they contain NaN
         # 'QA', 'PIXEL_TOTAL', 'PIXEL_COUNT', 'FMASK_TOTAL', 'FMASK_COUNT']:
         for field in ['ZONE_FID', 'PATH', 'YEAR', 'MONTH', 'DAY', 'DOY']:
             output_df[field] = output_df[field].astype(int)
-        output_df.to_csv(output_path, index=False, columns=output_fields)
+
+        for zone_name, zone_fid, zone_output_path in zone_list:
+            logging.debug(
+                '  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+            # logging.debug('    Output: {}'.format(zone_output_path))
+            # if zone_name not in missing_zones:
+            #     logging.debug('    No missing values, skipping zone')
+            #     continue
+
+            zone_df = output_df.iloc[
+                output_df.index.get_level_values('ZONE_NAME') == zone_name]
+            zone_df.to_csv(zone_output_path, index=False, columns=output_fields)
     else:
         logging.info(
             '  Empty output dataframe\n'
             '  The exported CSV files may not be ready')
 
 
-def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
+def gridmet_daily_func(export_fields, ini, zones, zone_wkt,
                        gridmet_end_dt, overwrite_flag=False):
     """
 
@@ -1064,16 +1042,15 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
         ini (dict): Input file parameters
         zones (dict): Zone specific parameters
         zone_wkt (str): Zones spatial reference Well Known Text
-        tasks ():
         gridmet_end_dt (datetime):
         overwrite_flag (bool): if True, overwrite existing files
     """
 
-    logging.info('  GRIDMET Daily ETo/PPT')
+    logging.info('\nGRIDMET Daily ETo/PPT')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
     ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
-    logging.debug('    Output Transform: {}'.format(
+    logging.debug('  Output Transform: {}'.format(
         ini['EXPORT']['transform']))
 
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
@@ -1090,46 +1067,50 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
             csv_df[field] = csv_df[field].astype(object)
             null_mask = csv_df[field].isnull()
             csv_df.loc[null_mask, field] = None
-            csv_df.loc[~null_mask, field] = csv_df.loc[~null_mask, field].map(
+            csv_df.loc[~null_mask, field] = csv_df.loc[
+                ~null_mask, field].map(
                 lambda x: '{0:10.6f}'.format(x).strip())
 
         # Set field types
-        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'DAY', 'DOY', 'WATER_YEAR']:
+        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'WATER_YEAR']:
             csv_df[field] = csv_df[field].astype(int)
         # if csv_df['ZONE_NAME'].dtype == np.float64:
         #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
 
         csv_df.reset_index(drop=False, inplace=True)
         csv_df.sort_values(by=['DATE'], inplace=True)
-        csv_df.to_csv(output_path, index=False, columns=output_fields)
+        csv_df.to_csv(output_path, index=False,
+                      columns=output_fields)
+
+    # List of all zone names to iterate over
+    zone_list = []
+    for z_ftr in zones['features']:
+        zone_name = str(
+            z_ftr['properties'][ini['INPUTS']['zone_field']]).replace(' ', '_')
+        zone_output_path = os.path.join(
+            ini['ZONAL_STATS']['output_ws'], zone_name,
+            '{}_gridmet_monthly.csv'.format(zone_name))
+        zone_list.append([zone_name, int(z_ftr['id']), zone_output_path])
 
     # Read in existing data if possible
+    logging.debug('\n  Reading existing CSV files')
     output_df_list = []
-    for zone_ftr in zones['features']:
-        zone = {}
-        zone['fid'] = zone_ftr['id']
-        zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
-            .replace(' ', '_')
-        logging.debug('  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
+    for zone_name, zone_fid, zone_output_path in zone_list:
+        logging.debug('  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        logging.debug('    Output: {}'.format(zone_output_path))
+        if not os.path.isdir(os.path.dirname(zone_output_path)):
+            os.makedirs(os.path.dirname(zone_output_path))
 
-        # Build output folder if necessary
-        zone['output_ws'] = os.path.join(
-            ini['ZONAL_STATS']['output_ws'], zone['name'])
-        if not os.path.isdir(zone['output_ws']):
-            os.makedirs(zone['output_ws'])
-
-        output_id = '{}_gridmet_daily'.format(zone['name'])
-        output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-        logging.debug('    Output: {}'.format(output_path))
+        # Read in existing data if possible
         try:
-            output_df = pd.read_csv(output_path, parse_dates=['DATE'])
-            # output_df = pd.read_csv(output_path, parse_dates=False)
-            # output_df.set_index('DATE', inplace=True, drop=True)
-            output_df_list.append(output_df)
+            zone_df = pd.read_csv(zone_output_path, parse_dates=['DATE'])
+            zone_df['DATE'] = zone_df['DATE'].dt.strftime('%Y-%m-%d')
+            output_df_list.append(zone_df)
         except IOError:
             logging.debug('    Output path doesn\'t exist, skipping')
         except Exception as e:
-            logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
+            logging.exception(
+                '    ERROR: Unhandled Exception\n    {}'.format(e))
             input('ENTER')
 
     # Combine separate zone dataframes
@@ -1140,57 +1121,144 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
             '    Output path(s) doesn\'t exist, building empty dataframe')
         output_df = pd.DataFrame(columns=export_fields)
     except Exception as e:
-        logging.exception(
-            '    ERROR: Unhandled Exception\n    {}'.format(e))
+        logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
     del output_df_list
-    # logging.debug(output_df.head())
-    # logging.debug(output_df.tail())
 
     # Use the date string as the index
-    output_df.set_index('DATE', inplace=True, drop=True)
+    output_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
 
     # Get list of possible dates based on INI
-    # Insert one additional year at the beginning for water year totals
     export_dates = set(
         date_str for date_str in utils.date_range(
             '{}-01-01'.format(ini['INPUTS']['start_year'] - 1),
             '{}-12-31'.format(ini['INPUTS']['end_year']))
         if datetime.datetime.strptime(date_str, '%Y-%m-%d') <= gridmet_end_dt)
-    # export_dates = set([
-    #     datetime.datetime(y, m, 1).strftime('%Y-%m-%d')
-    #     # (y, m)
-    #     for y in range(
-    #         ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
-    #     for m in range(1, 13)
-    #     if datetime.datetime(y, m, 1) <= gridmet_end_dt])
-    # export_dates = set(utils.date_range(start_date, end_date))
-    # logging.debug('    Export Dates: {}'.format(
+    # logging.debug('  Export Dates: {}'.format(
     #     ', '.join(sorted(export_dates))))
 
     # For overwrite, drop all expected entries from existing output DF
     if overwrite_flag:
-        output_df = output_df[~output_df.index.isin(list(export_dates))]
+        output_df = output_df[
+            ~output_df.index.get_level_values('DATE').isin(list(export_dates))]
 
-    # Check for any expected dates not in the output dateframe
-    # For now, if any dates are missing recompute all dates in INI range
-    if export_dates and not output_df.empty:
-        export_dates = export_dates - set(output_df.index.values)
-    if not export_dates and not overwrite_flag:
-        logging.info('    All dates present, skipping')
+    # Identify missing dates in any zone
+    # Iterate by zone in order to set zone name/fid
+    logging.debug('\n  Identifying dates/zones with missing data')
+    missing_dates = set()
+    for zone_name, zone_fid, zone_output_path in zone_list:
+        logging.debug('  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        zone_df = output_df.iloc[
+            output_df.index.get_level_values('ZONE_NAME') == zone_name]
+        zone_df.reset_index(inplace=True)
+        zone_df.set_index(['DATE'], inplace=True, drop=True)
+
+        # Get list of existing dates in the CSV
+        if not zone_df.empty:
+            zone_dates = set(zone_df.index.values)
+        else:
+            zone_dates = set()
+
+        missing_all_dates = export_dates - zone_dates
+        missing_dates.update(missing_all_dates)
+        logging.debug('    Dates missing all values: {}'.format(
+            ', '.join(sorted(missing_all_dates))))
+
+        # Add non-intersecting SCENE_IDs directly to the output dataframe
+        if missing_all_dates:
+            logging.debug('    Appending missing dates')
+            missing_df = pd.DataFrame(
+                index=missing_all_dates, columns=output_df.columns)
+            missing_index = pd.to_datetime(missing_df.index, format='%Y-%m-%d')
+            missing_df.index.name = 'DATE'
+            missing_df['ZONE_NAME'] = str(zone_name)
+            missing_df['ZONE_FID'] = zone_fid
+            missing_df['YEAR'] = missing_index.year
+            missing_df['MONTH'] = missing_index.month
+            missing_df['DAY'] = missing_index.day
+            missing_df['DOY'] = missing_index.dayofyear.astype(int)
+            # Build the datetime for the start of the month
+            # Move the datetime forward 3 months
+            # Get the year
+            missing_df['WATER_YEAR'] = (
+                pd.to_datetime(
+                    missing_index.strftime('%Y-%m-01'), format='%Y-%m-%d') +
+                pd.DateOffset(months=3)).year
+
+            # Remove the overlapping missing entries
+            # Then append the new missing entries to the zone CSV
+            # if zone_df.index.intersection(missing_df.index).any():
+            try:
+                zone_df.drop(
+                    zone_df.index.intersection(missing_df.index), inplace=True)
+            except ValueError:
+                pass
+            zone_df = zone_df.append(missing_df)
+            csv_writer(zone_df, zone_output_path, export_fields)
+
+            # Update the master dataframe
+            zone_df.reset_index(inplace=True)
+            zone_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
+            try:
+                output_df.drop(
+                    output_df.index.get_level_values('ZONE_NAME') == zone_name,
+                    inplace=True)
+            except (ValueError, KeyError):
+                # These seem to happen with the zone is not in the output_df
+                pass
+            output_df = output_df.append(zone_df)
+
+    # Identify SCENE_IDs that are missing any data
+    # Filter based on product and SCENE_ID lists
+    missing_date_mask = output_df.index.get_level_values('DATE') \
+        .isin(export_dates)
+    missing_df = output_df.loc[missing_date_mask, gridmet_fields].isnull()
+
+    # List of SCENE_IDs and products with some missing data
+    missing_any_dates = set(missing_df[
+        missing_df.any(axis=1)].index.get_level_values('DATE').values)
+    logging.debug('\n  Dates missing any values: {}'.format(
+        ', '.join(sorted(missing_any_dates))))
+
+    missing_dates.update(missing_any_dates)
+    logging.debug('\n  Dates missing values: {}'.format(
+        ', '.join(sorted(missing_dates))))
+
+    # Skip processing if all dates already exist in the CSV
+    if not missing_dates and not overwrite_flag:
+        logging.info('\n  All dates present, returning')
         return True
+    export_date_list = sorted(missing_dates)
+
+    # Update/limit GRIDMET products list if necessary
+    if not missing_df.empty:
+        gridmet_products = set(
+            f.lower()
+            for f in missing_df.columns[missing_df.any(axis=0)]
+            if f.lower() in gridmet_products)
+        logging.debug('\n  Products missing any values: {}'.format(
+            ', '.join(sorted(gridmet_products))))
+
+    # Identify zones with missing data
+    missing_zones = set(
+        missing_df[missing_df.any(axis=1)].index.get_level_values('ZONE_NAME'))
+    logging.debug('\n  Zones with missing data: {}'.format(
+        ', '.join(sorted(missing_zones))))
 
     # Build collection of all features to test for each SCENE_ID
     # I have to build a geometry in order to set a non-WGS84 projection
-    # print(zones)
+    # Limit zones collection to only zones with missing data
     zone_ftr_list = []
     for z in zones['features']:
+        zone_name = str(z['properties'][ini['INPUTS']['zone_field']]) \
+            .replace(' ', '_')
+        if zone_name not in missing_zones:
+            continue
         zone_ftr_list.append(ee.Feature(
             ee.Geometry(
                 geo_json=z['geometry'], opt_proj=zone_wkt, opt_geodesic=False),
             {
-                'ZONE_NAME': str(z['properties'][ini['INPUTS']['zone_field']]) \
-                    .replace(' ', '_'),
+                'ZONE_NAME': zone_name,
                 'ZONE_FID': int(z['id'])
             }))
     zone_coll = ee.FeatureCollection(zone_ftr_list)
@@ -1199,9 +1267,9 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
     # Group export dates by year
     export_dates_iter = [
         [year, list(dates)]
-        for year, dates in groupby(sorted(export_dates), lambda x: x[:4])]
+        for year, dates in groupby(sorted(missing_dates), lambda x: x[:4])]
     for export_year, export_dates in export_dates_iter:
-        logging.debug('  Iter year: {}'.format(export_year))
+        logging.debug('\n  Iter year: {}'.format(export_year))
         # logging.debug('  Iter dates: {}'.format(
         #     ', '.join(sorted(export_dates))))
 
@@ -1214,7 +1282,7 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
                 .select(['eto', 'pr'], ['eto', 'ppt'])
 
             # Calculate values and statistics
-            def zonal_stats_func(ftr):
+            def gridmet_daily_zs_func(ftr):
                 """"""
                 date = ee.Date(image.get('system:time_start'))
                 year = ee.Number(date.get('year'))
@@ -1250,7 +1318,7 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
                 })
                 return ee.Feature(None, zs_dict)
 
-            stats_coll = zone_coll.map(zonal_stats_func)
+            stats_coll = zone_coll.map(gridmet_daily_zs_func)
 
             # DEADBEEF - Only allowing getInfo calls for zonal stats by image
             if ini['EXPORT']['export_dest'] == 'getinfo':
@@ -1259,45 +1327,42 @@ def gridmet_daily_func(export_fields, ini, zones, zone_wkt, tasks,
                     ftr['properties']
                     for ftr in utils.ee_getinfo(stats_coll)['features']])
 
+                # Save data to main dataframe
                 if not export_df.empty:
                     # logging.debug('    Processing data')
-                    export_df.set_index('DATE', inplace=True, drop=True)
+                    export_df.set_index(
+                        ['DATE', 'ZONE_NAME'], inplace=True, drop=True)
                     if overwrite_flag:
                         # Update happens inplace automatically
-                        # output_df.update(export_df)
-                        output_df = output_df.append(export_df)
+                        output_df.update(export_df)
+                        # output_df = output_df.append(export_df)
                     else:
                         # Combine first doesn't have an inplace parameter
                         output_df = output_df.combine_first(export_df)
 
-        # Save updated CSVs
-        if output_df.empty:
-            logging.debug('    Empty output df, skipping')
-            continue
+                        # Save updated CSVs
+        if not output_df.empty:
+            logging.info('\n  Writing zone CSVs')
+            for zone_name, zone_fid, zone_output_path in zone_list:
+                logging.debug(
+                    '  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+                # logging.debug('    Output: {}'.format(zone_output_path))
+                if zone_name not in missing_zones:
+                    logging.debug('    No missing values, skipping zone')
+                    continue
 
-        logging.info('  Writing zone CSVs')
-        for zone_ftr in zones['features']:
-            zone = {}
-            zone['name'] = str(
-                zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
-                .replace(' ', '_')
-            zone['output_ws'] = os.path.join(
-                ini['ZONAL_STATS']['output_ws'], zone['name'])
-            logging.debug(
-                '  ZONE: {} (FID: {})'.format(zone['name'], zone_ftr['id']))
-
-            output_id = '{}_gridmet_daily'.format(zone['name'])
-            output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-            logging.debug('    Output: {}'.format(output_path))
-
-            zone_df = output_df[output_df['ZONE_NAME']==zone['name']]
-            if zone_df.empty:
-                logging.debug('    Empty zone df, skipping')
-                continue
-            csv_writer(zone_df, output_path, export_fields)
+                # zone_df = output_df[output_df['ZONE_NAME']==zone_name]
+                zone_df = output_df.iloc[
+                    output_df.index.get_level_values('ZONE_NAME') == zone_name]
+                zone_df.reset_index(inplace=True)
+                zone_df.set_index(['DATE'], inplace=True, drop=True)
+                if zone_df.empty:
+                    logging.debug('    Empty zone df, skipping')
+                    continue
+                csv_writer(zone_df, zone_output_path, export_fields)
 
 
-def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
+def gridmet_monthly_func(export_fields, ini, zones, zone_wkt,
                          gridmet_end_dt, overwrite_flag=False):
     """
 
@@ -1306,16 +1371,15 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
         ini (dict): Input file parameters
         zones (dict): Zone specific parameters
         zone_wkt (str): Zones spatial reference Well Known Text
-        tasks ():
         gridmet_end_dt (datetime):
         overwrite_flag (bool): if True, overwrite existing files
     """
 
-    logging.info('  GRIDMET Monthly ETo/PPT')
+    logging.info('\nGRIDMET Monthly ETo/PPT')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
     ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
-    logging.debug('    Output Transform: {}'.format(
+    logging.debug('  Output Transform: {}'.format(
         ini['EXPORT']['transform']))
 
     gridmet_products = ini['ZONAL_STATS']['gridmet_products'][:]
@@ -1347,35 +1411,35 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
         csv_df.to_csv(output_path, index=False,
                       columns=output_fields)
 
+    # List of all zone names to iterate over
+    zone_list = []
+    for z_ftr in zones['features']:
+        zone_name = str(
+            z_ftr['properties'][ini['INPUTS']['zone_field']]).replace(' ', '_')
+        zone_output_path = os.path.join(
+            ini['ZONAL_STATS']['output_ws'], zone_name,
+            '{}_gridmet_monthly.csv'.format(zone_name))
+        zone_list.append([zone_name, int(z_ftr['id']), zone_output_path])
+
     # Read in existing data if possible
+    logging.debug('\n  Reading existing CSV files')
     output_df_list = []
-    for zone_ftr in zones['features']:
-        zone = {}
-        zone['fid'] = zone_ftr['id']
-        zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
-            .replace(' ', '_')
-        logging.debug('  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
-
-        # Build output folder if necessary
-        zone['output_ws'] = os.path.join(
-            ini['ZONAL_STATS']['output_ws'], zone['name'])
-        if not os.path.isdir(zone['output_ws']):
-            os.makedirs(zone['output_ws'])
-
-        output_id = '{}_gridmet_monthly'.format(zone['name'])
-        output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-        logging.debug('    Output: {}'.format(output_path))
+    for zone_name, zone_fid, zone_output_path in zone_list:
+        logging.debug('  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        logging.debug('    Output: {}'.format(zone_output_path))
+        if not os.path.isdir(os.path.dirname(zone_output_path)):
+            os.makedirs(os.path.dirname(zone_output_path))
 
         # Read in existing data if possible
         try:
-            output_df = pd.read_csv(output_path, parse_dates=['DATE'])
-            # output_df = pd.read_csv(output_path, parse_dates=False)
-            # output_df.set_index('DATE', inplace=True, drop=True)
-            output_df_list.append(output_df)
+            zone_df = pd.read_csv(zone_output_path, parse_dates=['DATE'])
+            zone_df['DATE'] = zone_df['DATE'].dt.strftime('%Y-%m-%d')
+            output_df_list.append(zone_df)
         except IOError:
             logging.debug('    Output path doesn\'t exist, skipping')
         except Exception as e:
-            logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
+            logging.exception(
+                '    ERROR: Unhandled Exception\n    {}'.format(e))
             input('ENTER')
 
     # Combine separate zone dataframes
@@ -1386,62 +1450,150 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
             '    Output path(s) doesn\'t exist, building empty dataframe')
         output_df = pd.DataFrame(columns=export_fields)
     except Exception as e:
-        logging.exception(
-            '    ERROR: Unhandled Exception\n    {}'.format(e))
+        logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
     del output_df_list
 
     # Use the date string as the index
-    output_df.set_index('DATE', inplace=True, drop=True)
+    output_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
 
     # Get list of possible dates based on INI
     export_dates = set([
         datetime.datetime(y, m, 1).strftime('%Y-%m-%d')
-        # (y, m)
         for y in range(
             ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
-        for m in range(1, 13)
+    for m in range(1, 13)
         if datetime.datetime(y, m, 1) <= gridmet_end_dt])
     # logging.debug('  Export Dates: {}'.format(
     #     ', '.join(sorted(export_dates))))
 
     # For overwrite, drop all expected entries from existing output DF
     if overwrite_flag:
-        output_df = output_df[~output_df.index.isin(list(export_dates))]
+        output_df = output_df[
+            ~output_df.index.get_level_values('DATE').isin(list(export_dates))]
 
-    # Get list of existing dates in the CSV
-    if not output_df.empty:
-        output_dates = set(output_df.index.values)
-    else:
-        output_dates = set()
-        # logging.debug('  Output Dates: {}'.format(
-        #     ', '.join(sorted(export_dates))))
+    # Identify missing dates in any zone
+    # Iterate by zone in order to set zone name/fid
+    logging.debug('\n  Identifying dates/zones with missing data')
+    missing_dates = set()
+    for zone_name, zone_fid, zone_output_path in zone_list:
+        logging.debug('  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+        zone_df = output_df.iloc[
+            output_df.index.get_level_values('ZONE_NAME') == zone_name]
+        zone_df.reset_index(inplace=True)
+        zone_df.set_index(['DATE'], inplace=True, drop=True)
 
-    missing_dates = export_dates - output_dates
-    logging.debug('  Missing Dates: {}'.format(
+        # Get list of existing dates in the CSV
+        if not zone_df.empty:
+            zone_dates = set(zone_df.index.values)
+        else:
+            zone_dates = set()
+
+        missing_all_dates = export_dates - zone_dates
+        missing_dates.update(missing_all_dates)
+        logging.debug('    Dates missing all values: {}'.format(
+            ', '.join(sorted(missing_all_dates))))
+
+        # Add non-intersecting SCENE_IDs directly to the output dataframe
+        if missing_all_dates:
+            logging.debug('    Appending missing dates')
+            missing_df = pd.DataFrame(
+                index=missing_all_dates, columns=output_df.columns)
+            missing_index = pd.to_datetime(missing_df.index, format='%Y-%m-%d')
+            missing_df.index.name = 'DATE'
+            missing_df['ZONE_NAME'] = str(zone_name)
+            missing_df['ZONE_FID'] = zone_fid
+            missing_df['YEAR'] = missing_index.year
+            missing_df['MONTH'] = missing_index.month
+            # missing_df['DAY'] = missing_index.day
+            # missing_df['DOY'] = missing_index.dayofyear.astype(int)
+            # Build the datetime for the start of the month
+            # Move the datetime forward 3 months
+            # Get the year
+            missing_df['WATER_YEAR'] = (
+                pd.to_datetime(
+                    missing_index.strftime('%Y-%m-01'), format='%Y-%m-%d') +
+                pd.DateOffset(months=3)).year
+
+            # Remove the overlapping missing entries
+            # Then append the new missing entries to the zone CSV
+            # if zone_df.index.intersection(missing_df.index).any():
+            try:
+                zone_df.drop(
+                    zone_df.index.intersection(missing_df.index), inplace=True)
+            except ValueError:
+                pass
+            zone_df = zone_df.append(missing_df)
+            csv_writer(zone_df, zone_output_path, export_fields)
+
+            # Update the master dataframe
+            zone_df.reset_index(inplace=True)
+            zone_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
+            try:
+                output_df.drop(
+                    output_df.index.get_level_values('ZONE_NAME') == zone_name,
+                    inplace=True)
+            except (ValueError, KeyError):
+                # These seem to happen with the zone is not in the output_df
+                pass
+            output_df = output_df.append(zone_df)
+
+    # Identify SCENE_IDs that are missing any data
+    # Filter based on product and SCENE_ID lists
+    missing_date_mask = output_df.index.get_level_values('DATE')\
+        .isin(export_dates)
+    missing_df = output_df.loc[missing_date_mask, gridmet_fields].isnull()
+
+    # List of SCENE_IDs and products with some missing data
+    missing_any_dates = set(missing_df[
+        missing_df.any(axis=1)].index.get_level_values('DATE').values)
+    logging.debug('\n  Dates missing any values: {}'.format(
+        ', '.join(sorted(missing_any_dates))))
+
+    missing_dates.update(missing_any_dates)
+    logging.debug('\n  Dates missing values: {}'.format(
         ', '.join(sorted(missing_dates))))
 
     # Skip processing if all dates already exist in the CSV
     if not missing_dates and not overwrite_flag:
-        logging.info('    All dates present, skipping')
+        logging.info('\n  All dates present, returning')
         return True
     export_date_list = sorted(missing_dates)
 
+    # Update/limit GRIDMET products list if necessary
+    if not missing_df.empty:
+        gridmet_products = set(
+            f.lower()
+            for f in missing_df.columns[missing_df.any(axis=0)]
+            if f.lower() in gridmet_products)
+        logging.debug('\n  Products missing any values: {}'.format(
+            ', '.join(sorted(gridmet_products))))
+
+    # Identify zones with missing data
+    missing_zones = set(
+        missing_df[missing_df.any(axis=1)].index.get_level_values('ZONE_NAME'))
+    logging.debug('\n  Zones with missing data: {}'.format(
+        ', '.join(sorted(missing_zones))))
+
     # Build collection of all features to test for each SCENE_ID
     # I have to build a geometry in order to set a non-WGS84 projection
-    # print(zones)
+    # Limit zones collection to only zones with missing data
     zone_ftr_list = []
     for z in zones['features']:
+        zone_name = str(z['properties'][ini['INPUTS']['zone_field']])\
+            .replace(' ', '_')
+        if zone_name not in missing_zones:
+            continue
         zone_ftr_list.append(ee.Feature(
             ee.Geometry(
                 geo_json=z['geometry'], opt_proj=zone_wkt, opt_geodesic=False),
             {
-                'ZONE_NAME': str(z['properties'][ini['INPUTS']['zone_field']]) \
-                    .replace(' ', '_'),
+                'ZONE_NAME': zone_name,
                 'ZONE_FID': int(z['id'])
             }))
     zone_coll = ee.FeatureCollection(zone_ftr_list)
 
+    logging.debug('\n  Computing zonal stats')
     for export_date in export_date_list:
         logging.info('  {}'.format(export_date))
 
@@ -1492,7 +1644,7 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
 
         # Calculate values and statistics
         # Build function in loop to set water year ETo/PPT values
-        def gridmet_zonal_stats_func(ftr):
+        def gridmet_monthly_zs_func(ftr):
             """"""
             date = ee.Date(image.get('system:time_start'))
             year = ee.Number(date.get('year'))
@@ -1526,7 +1678,7 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
             })
             return ee.Feature(None, zs_dict)
 
-        stats_coll = zone_coll.map(gridmet_zonal_stats_func)
+        stats_coll = zone_coll.map(gridmet_monthly_zs_func)
 
         # DEADBEEF - Only allowing getInfo calls for zonal stats by image
         if ini['EXPORT']['export_dest'] == 'getinfo':
@@ -1538,37 +1690,35 @@ def gridmet_monthly_func(export_fields, ini, zones, zone_wkt, tasks,
             # Save data to main dataframe
             if not export_df.empty:
                 # logging.debug('    Processing data')
-                export_df.set_index('DATE', inplace=True, drop=True)
+                export_df.set_index(
+                    ['DATE', 'ZONE_NAME'], inplace=True, drop=True)
                 if overwrite_flag:
                     # Update happens inplace automatically
-                    # output_df.update(export_df)
-                    output_df = output_df.append(export_df)
+                    output_df.update(export_df)
+                    # output_df = output_df.append(export_df)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
 
     # Save updated CSVs
     if not output_df.empty:
-        logging.info('  Writing zone CSVs')
-        for zone_ftr in zones['features']:
-            zone = {}
-            zone['name'] = str(
-                zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
-                .replace(' ', '_')
-            zone['output_ws'] = os.path.join(
-                ini['ZONAL_STATS']['output_ws'], zone['name'])
-            logging.debug(
-                '  ZONE: {} (FID: {})'.format(zone['name'], zone_ftr['id']))
+        logging.info('\n  Writing zone CSVs')
+        for zone_name, zone_fid, zone_output_path in zone_list:
+            logging.debug('  ZONE: {} (FID: {})'.format(zone_name, zone_fid))
+            # logging.debug('    Output: {}'.format(zone_output_path))
+            if zone_name not in missing_zones:
+                logging.debug('    No missing values, skipping zone')
+                continue
 
-            output_id = '{}_gridmet_monthly'.format(zone['name'])
-            output_path = os.path.join(zone['output_ws'], output_id + '.csv')
-            logging.debug('    Output: {}'.format(output_path))
-
-            zone_df = output_df[output_df['ZONE_NAME']==zone['name']]
+            # zone_df = output_df[output_df['ZONE_NAME']==zone_name]
+            zone_df = output_df.iloc[
+                output_df.index.get_level_values('ZONE_NAME') == zone_name]
+            zone_df.reset_index(inplace=True)
+            zone_df.set_index(['DATE'], inplace=True, drop=True)
             if zone_df.empty:
                 logging.debug('    Empty zone df, skipping')
                 continue
-            csv_writer(zone_df, output_path, export_fields)
+            csv_writer(zone_df, zone_output_path, export_fields)
 
 
 # def pdsi_func(export_fields, ini, zones, tasks, overwrite_flag=False):

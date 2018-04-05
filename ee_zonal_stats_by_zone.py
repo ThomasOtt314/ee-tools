@@ -41,6 +41,7 @@ def main(ini_path=None, overwrite_flag=False):
 
     Returns:
         None
+
     """
     logging.info('\nEarth Engine zonal statistics by zone')
 
@@ -1354,14 +1355,6 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             '{}-01-01'.format(ini['INPUTS']['start_year'] - 1),
             '{}-12-31'.format(ini['INPUTS']['end_year']))
         if datetime.datetime.strptime(date_str, '%Y-%m-%d') <= gridmet_end_dt)
-    # export_dates = set([
-    #     datetime.datetime(y, m, 1).strftime('%Y-%m-%d')
-    #     # (y, m)
-    #     for y in range(
-    #         ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
-    #     for m in range(1, 13)
-    #     if datetime.datetime(y, m, 1) <= gridmet_end_dt])
-    # export_dates = set(utils.date_range(start_date, end_date))
     # logging.debug('    Export Dates: {}'.format(
     #     ', '.join(sorted(export_dates))))
 
@@ -1632,7 +1625,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             return True
 
         # Calculate values and statistics
-        def zonal_stats_func(image):
+        def gridmet_daily_zs_func(image):
             """"""
             date = ee.Date(image.get('system:time_start'))
             year = ee.Number(date.get('year'))
@@ -1667,7 +1660,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             })
             return ee.Feature(None, zs_dict)
 
-        stats_coll = gridmet_coll.map(zonal_stats_func)
+        stats_coll = gridmet_coll.map(gridmet_daily_zs_func)
 
         if ini['EXPORT']['export_dest'] == 'gdrive':
             logging.debug('    Building export task')
@@ -1781,8 +1774,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         logging.debug(
             '    Output path doesn\'t exist, building empty dataframe')
         output_df = pd.DataFrame(columns=export_fields)
-        # output_df.set_index('DATE', inplace=True, drop=True)
-        # output_df.index.name = 'DATE'
     except Exception as e:
         logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
@@ -1794,7 +1785,6 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     # Insert one additional year at the beginning for water year totals
     export_dates = set([
         datetime.datetime(y, m, 1).strftime('%Y-%m-%d')
-        # (y, m)
         for y in range(
             ini['INPUTS']['start_year'] - 1, ini['INPUTS']['end_year'] + 1)
         for m in range(1, 13)
@@ -1829,8 +1819,8 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         missing_df['ZONE_FID'] = zone['fid']
         missing_df['YEAR'] = missing_index.year
         missing_df['MONTH'] = missing_index.month
-        missing_df['DAY'] = missing_index.day
-        missing_df['DOY'] = missing_index.dayofyear.astype(int)
+        # missing_df['DAY'] = missing_index.day
+        # missing_df['DOY'] = missing_index.dayofyear.astype(int)
         # Build the datetime for the start of the month
         # Move the datetime forward 3 months
         # Get the year
@@ -1865,7 +1855,8 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
     # Update/limit GRIDMET products list if necessary
     if not missing_df.empty:
         gridmet_products = set(
-            f.lower() for f in missing_df.columns[missing_df.any(axis=0)])
+            f.lower() for f in missing_df.columns[missing_df.any(axis=0)]
+            if f.lower() in gridmet_products)
         logging.debug('    Products missing any values: {}'.format(
             ', '.join(sorted(gridmet_products))))
 
@@ -1993,7 +1984,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         return True
 
     # Calculate values and statistics
-    def zonal_stats_func(image):
+    def gridmet_monthly_zs_func(image):
         """"""
         date = ee.Date(image.get('system:time_start'))
         year = ee.Number(date.get('year'))
@@ -2026,7 +2017,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         })
         return ee.Feature(None, zs_dict)
 
-    stats_coll = ee.FeatureCollection(gridmet_coll.map(zonal_stats_func))
+    stats_coll = ee.FeatureCollection(gridmet_coll.map(gridmet_monthly_zs_func))
 
     if ini['EXPORT']['export_dest'] == 'gdrive':
         logging.debug('    Building export task')
