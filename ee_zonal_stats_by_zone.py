@@ -656,7 +656,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # List of SCENE_IDs that are entirely missing
     # This may include scenes that don't intersect the zone
     missing_all_ids = export_ids - set(output_df.index.values)
-    # logging.info('  Missing All: {}'.format(
+    # logging.info('  Dates missing all values: {}'.format(
     #     ', '.join(sorted(missing_all_ids))))
 
     # If there are any fully missing scenes, identify whether they
@@ -697,6 +697,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 landsat.get_collection().aggregate_histogram('SCENE_ID'))))
             logging.debug('      {} {}'.format(
                 landsat_str, len(missing_zone_ids)))
+        landsat._landsat_list = landsat_type_list
 
         # # Get the SCENE_IDs that intersect the zone
         # logging.debug('    Getting intersecting SCENE_IDs')
