@@ -416,6 +416,9 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     """
     logging.info('  Landsat')
 
+    landsat_products = ini['ZONAL_STATS']['landsat_products'][:]
+    landsat_fields = [f.upper() for f in landsat_products]
+
     # Pre-filter by tile
     # First get the list of possible tiles for each zone
     try:
@@ -466,9 +469,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         csv_df = output_df.copy()
 
         # Convert float fields to objects, set NaN to None
-        float_fields = (
-            [f.upper() for f in ini['ZONAL_STATS']['landsat_products']] +
-            ['CLOUD_SCORE', 'FMASK_PCT'])
+        float_fields = landsat_fields + ['CLOUD_SCORE', 'FMASK_PCT']
         for field in csv_df.columns.values:
             if field.upper() not in float_fields:
                 continue
@@ -769,8 +770,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     # Identify SCENE_IDs that are missing any data
     # Filter based on product and SCENE_ID lists
     # Check for missing data as long as PIXEL_COUNT > 0
-    missing_fields = [
-        f.upper() for f in ini['ZONAL_STATS']['landsat_products']]
+    missing_fields = landsat_fields[:]
     missing_id_mask = (
         (output_df['PIXEL_COUNT'] > 0) &
         output_df.index.isin(export_ids))
@@ -839,7 +839,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     elif missing_scene_ids or missing_all_products:
         logging.info('    Exporting all products for specific SCENE_IDs')
         landsat.scene_id_keep_list = sorted(list(missing_scene_ids))
-        landsat.products = ini['ZONAL_STATS']['landsat_products']
+        landsat.products = landsat_products[:]
     elif missing_scene_ids and missing_products:
         logging.info('    Exporting specific missing products/SCENE_IDs')
         landsat.scene_id_keep_list = sorted(list(missing_scene_ids))
@@ -877,14 +877,14 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
         data_df.drop(
             data_df[data_df.SCENE_ID == 'DEADBEEF'].index, inplace=True)
 
-        # With old Fmask data, PIXEL_COUNT can be > 0 even if all data is NaN
-        if ('NDVI_TOA' in data_df.columns.values and
-                'TS' in data_df.columns.values):
-            drop_mask = (
-                data_df['NDVI_TOA'].isnull() & data_df['TS'].isnull() &
-                (data_df['PIXEL_COUNT'] > 0))
-            if not data_df.empty and drop_mask.any():
-                data_df.loc[drop_mask, ['PIXEL_COUNT']] = 0
+        # # With old Fmask data, PIXEL_COUNT can be > 0 even if all data is NaN
+        # if ('NDVI_TOA' in data_df.columns.values and
+        #         'TS' in data_df.columns.values):
+        #     drop_mask = (
+        #         data_df['NDVI_TOA'].isnull() & data_df['TS'].isnull() &
+        #         (data_df['PIXEL_COUNT'] > 0))
+        #     if not data_df.empty and drop_mask.any():
+        #         data_df.loc[drop_mask, ['PIXEL_COUNT']] = 0
 
         # Add additional fields to the export data frame
         data_df.set_index('SCENE_ID', inplace=True, drop=True)
@@ -901,6 +901,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             data_df['DOY'] = data_df['DATE'].dt.dayofyear.astype(int)
             data_df['AREA'] = zone['area']
             data_df['PIXEL_SIZE'] = landsat.cellsize
+
             fmask_mask = data_df['FMASK_TOTAL'] > 0
             if fmask_mask.any():
                 data_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
@@ -917,6 +918,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             del data_df['system:index']
         if '.geo' in data_df.columns.values:
             del data_df['.geo']
+
         return data_df
 
     # Adjust start and end year to even multiples of year_step
@@ -1066,7 +1068,6 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 logging.error('Unhandled Exception')
                 logging.error(str(e))
             continue
-
 
         # Filter by iteration date in addition to input date parameters
         landsat.start_date = start_date
@@ -1254,8 +1255,8 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
             # input('ENTER')
 
     # Save updated CSV
-    # if output_df is not None and not output_df.empty:
-    if output_df is not None:
+    if output_df is not None and not output_df.empty:
+        logging.info('    Writing CSV')
         csv_writer(output_df, output_path, output_fields)
     else:
         logging.info(
@@ -1702,7 +1703,8 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                     output_df = output_df.combine_first(export_df)
 
     # Save updated CSV
-    if output_df is not None:
+    if output_df is not None and not output_df.empty:
+        logging.info('    Writing CSV')
         csv_writer(output_df, output_path, export_fields)
 
 
@@ -2060,7 +2062,8 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 output_df = output_df.combine_first(export_df)
 
     # Save updated CSV
-    if output_df is not None:
+    if output_df is not None and not output_df.empty:
+        logging.info('    Writing CSV')
         csv_writer(output_df, output_path, export_fields)
 
 
