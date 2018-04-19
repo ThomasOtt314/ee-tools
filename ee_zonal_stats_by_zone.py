@@ -35,12 +35,11 @@ pp = pprint.PrettyPrinter(indent=4)
 def main(ini_path=None, overwrite_flag=False):
     """Earth Engine Zonal Stats Export
 
-    Args:
-        ini_path (str):
-        overwrite_flag (bool): if True, overwrite existing files
-
-    Returns:
-        None
+    Parameters
+    ----------
+    ini_path : str
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
 
     """
     logging.info('\nEarth Engine zonal statistics by zone')
@@ -406,13 +405,15 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     Function will attempt to generate export tasks only for missing SCENE_IDs
     Also try to limit the products to only those with missing data
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zone (dict): Zone specific parameters
-        tasks ():
-        overwrite_flag (bool): if True, overwrite existing values.
-            Don't remove/replace the CSV file directly.
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zone (dict): Zone specific parameters
+    tasks ():
+    overwrite_flag (bool): if True, overwrite existing values.
+        Don't remove/replace the CSV file directly.
+
     """
     logging.info('  Landsat')
 
@@ -1268,13 +1269,15 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                        overwrite_flag=False):
     """
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zone (dict): Zone specific parameters
-        tasks ():
-        gridmet_end_dt (datetime):
-        overwrite_flag (bool): if True, overwrite existing files
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zone (dict): Zone specific parameters
+    tasks ():
+    gridmet_end_dt (datetime):
+    overwrite_flag (bool): if True, overwrite existing files
+
     """
 
     logging.info('  GRIDMET Daily ETo/PPT')
@@ -1726,13 +1729,15 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                          overwrite_flag=False):
     """
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zone (dict): Zone specific parameters
-        tasks ():
-        gridmet_end_dt (datetime):
-        overwrite_flag (bool): if True, overwrite existing files
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zone (dict): Zone specific parameters
+    tasks ():
+    gridmet_end_dt (datetime):
+    overwrite_flag (bool): if True, overwrite existing files
+
     """
 
     logging.info('  GRIDMET Monthly ETo/PPT')
@@ -2090,12 +2095,14 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
 def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
     """
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zone (dict): Zone specific parameters
-        tasks ():
-        overwrite_flag (bool): if True, overwrite existing files
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zone (dict): Zone specific parameters
+    tasks ():
+    overwrite_flag (bool): if True, overwrite existing files
+
     """
 
     logging.info('  GRIDMET PDSI')

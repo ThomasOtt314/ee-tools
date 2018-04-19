@@ -33,12 +33,11 @@ pp = pprint.PrettyPrinter(indent=4)
 def main(ini_path=None, overwrite_flag=False):
     """Earth Engine Zonal Stats Export
 
-    Args:
-        ini_path (str):
-        overwrite_flag (bool): if True, overwrite existing files
-
-    Returns:
-        None
+    Parameters
+    ----------
+    ini_path : str
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
 
     """
     logging.info('\nEarth Engine zonal statistics by image')
@@ -54,11 +53,11 @@ def main(ini_path=None, overwrite_flag=False):
         logging.critical('\nERROR: Only GetInfo exports are currently supported\n')
         sys.exit()
 
-    # Zonal stats init file paths
-    zone_geojson_path = os.path.join(
-        ini['ZONAL_STATS']['output_ws'],
-        os.path.basename(ini['INPUTS']['zone_shp_path']).replace(
-            '.shp', '.geojson'))
+    # # Zonal stats init file paths
+    # zone_geojson_path = os.path.join(
+    #     ini['ZONAL_STATS']['output_ws'],
+    #     os.path.basename(ini['INPUTS']['zone_shp_path']).replace(
+    #         '.shp', '.geojson'))
 
     # These may eventually be set in the INI file
     landsat_daily_fields = [
@@ -95,14 +94,14 @@ def main(ini_path=None, overwrite_flag=False):
         [p.upper() for p in ini['ZONAL_STATS']['landsat_products']])
 
     # Convert the shapefile to geojson
-    if not os.path.isfile(zone_geojson_path) or overwrite_flag:
+    if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']) or overwrite_flag:
         logging.info('\nConverting zone shapefile to GeoJSON')
-        logging.debug('  {}'.format(zone_geojson_path))
+        logging.debug('  {}'.format(ini['ZONAL_STATS']['zone_geojson']))
         check_output([
             'ogr2ogr', '-f', 'GeoJSON', '-preserve_fid',
             '-select', '{}'.format(ini['INPUTS']['zone_field']),
             # '-lco', 'COORDINATE_PRECISION=2'
-            zone_geojson_path, ini['INPUTS']['zone_shp_path']])
+            ini['ZONAL_STATS']['zone_geojson'], ini['INPUTS']['zone_shp_path']])
 
     # # Get ee features from shapefile
     # zone_geom_list = gdc.shapefile_2_geom_list_func(
@@ -114,12 +113,12 @@ def main(ini_path=None, overwrite_flag=False):
     # Read in the zone geojson
     logging.debug('\nReading zone GeoJSON')
     try:
-        with open(zone_geojson_path, 'r') as f:
+        with open(ini['ZONAL_STATS']['zone_geojson'], 'r') as f:
             zones_geojson = json.load(f)
     except Exception as e:
         logging.error('  Error reading zone geojson file, removing')
         logging.debug('  Exception: {}'.format(e))
-        os.remove(zone_geojson_path)
+        os.remove(ini['ZONAL_STATS']['zone_geojson'])
 
     # Check if the zone_names are unique
     # Eventually support merging common zone_names
@@ -312,13 +311,14 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
     Function will attempt to generate export tasks only for missing SCENE_IDs
     Also try to limit the products to only those with missing data
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zones_geojson (dict): Zones GeoJSON
-        zones_wkt (str): Zones spatial reference Well Known Text
-        overwrite_flag (bool): if True, overwrite existing values.
-            Don't remove/replace the CSV file directly.
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zones_geojson (dict): Zones GeoJSON
+    zones_wkt (str): Zones spatial reference Well Known Text
+    overwrite_flag (bool): if True, overwrite existing values.
+        Don't remove/replace the CSV file directly.
 
     """
     logging.info('\nLandsat')
@@ -1031,13 +1031,15 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                        gridmet_end_dt, overwrite_flag=False):
     """
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zones_geojson (dict): Zone specific parameters
-        zones_wkt (str): Zones spatial reference Well Known Text
-        gridmet_end_dt (datetime):
-        overwrite_flag (bool): if True, overwrite existing files
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zones_geojson (dict): Zone specific parameters
+    zones_wkt (str): Zones spatial reference Well Known Text
+    gridmet_end_dt (datetime):
+    overwrite_flag (bool): if True, overwrite existing files
+
     """
 
     logging.info('\nGRIDMET Daily ETo/PPT')
@@ -1363,13 +1365,14 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
                          gridmet_end_dt, overwrite_flag=False):
     """
 
-    Args:
-        export_fields ():
-        ini (dict): Input file parameters
-        zones_geojson (dict): Zone specific parameters
-        zones_wkt (str): Zones spatial reference Well Known Text
-        gridmet_end_dt (datetime):
-        overwrite_flag (bool): if True, overwrite existing files
+    Parameters
+    ----------
+    export_fields ():
+    ini (dict): Input file parameters
+    zones_geojson (dict): Zone specific parameters
+    zones_wkt (str): Zones spatial reference Well Known Text
+    gridmet_end_dt (datetime):
+    overwrite_flag (bool): if True, overwrite existing files
     """
 
     logging.info('\nGRIDMET Monthly ETo/PPT')
@@ -1726,12 +1729,14 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
 # def pdsi_func(export_fields, ini, zones, tasks, overwrite_flag=False):
 #     """
 #
-#     Args:
-#         export_fields ():
-#         ini (dict): Input file parameters
-#         zone (dict): Zone specific parameters
-#         tasks ():
-#         overwrite_flag (bool): if True, overwrite existing files
+#     Parameters
+#     ----------
+#     export_fields ():
+#     ini (dict): Input file parameters
+#     zone (dict): Zone specific parameters
+#     tasks ():
+#     overwrite_flag (bool): if True, overwrite existing files
+#
 #     """
 #
 #     logging.info('  GRIDMET PDSI')
