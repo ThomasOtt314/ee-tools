@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_landsat_image_download.py
 # Purpose:      Earth Engine Landsat Image Download
-# Created       2017-11-14
 # Python:       3.6
 #--------------------------------
 

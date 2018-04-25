@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_gridmet_image_download.py
 # Purpose:      Earth Engine GRIDMET Image Download
-# Created       2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -17,7 +16,7 @@ from dateutil.relativedelta import relativedelta
 import ee
 from osgeo import ogr
 
-# import ee_tools.ee_common as ee_common
+import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
 import ee_tools.utils as utils
@@ -273,9 +272,17 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         continue
 
                 # GRIDMET collection is available in EarthEngine
-                gridmet_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET')\
-                    .filterDate(start_dt, end_dt) \
-                    .select([b_key])
+                if b_key not in ['eto', 'etr']:
+                    gridmet_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET')\
+                        .filterDate(start_dt, end_dt) \
+                        .select([b_key])
+                else:
+                    # DEADBEEF - Compute ETo/ETr from components instead of using band
+                    gridmet_coll = ee.ImageCollection(
+                        ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
+                            .filterDate(start_dt, end_dt)\
+                            .map(ee_common.gridmet_eto_func))
+
                 gridmet_image = ee.Image(gridmet_coll.sum())
 
                 logging.debug('  Starting download task')

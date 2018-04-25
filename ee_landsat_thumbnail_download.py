@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_summary_thumbnails.py
 # Purpose:      Generate summary tables
-# Created       2017-11-20
 # Python:       3.6
 #--------------------------------
 

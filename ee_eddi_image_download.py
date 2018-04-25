@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         ee_eddi_image_download.py
 # Purpose:      Earth Engine EDDI Image Download
-# Created       2017-11-14
 # Python:       3.6
 #--------------------------------
 
@@ -284,7 +283,7 @@ def ee_eddi_image(tgt_date, agg_days=30, variable='eddi',
 
     # Derive band names from variable
     if variable == 'eddi':
-        band = 'pet'
+        band = 'eto'
     elif variable == 'spi':
         band = 'pr'
     # elif variable == 'spei':
@@ -299,11 +298,11 @@ def ee_eddi_image(tgt_date, agg_days=30, variable='eddi',
     return output_image
 
 
-def ee_normprob_func(tgt_dt, agg_days=30, band='pet',
+def ee_normprob_func(tgt_dt, agg_days=30, band='eto',
                      year_start=1979, year_end=datetime.datetime.today().year):
     """Compute normalized probability image for a single date using EE
 
-    pet (Potential ET) -> EDDI
+    eto (grass reference ET) -> EDDI
     pr (precipitation) -> SPI
 
     Args:

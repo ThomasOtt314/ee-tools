@@ -1483,24 +1483,33 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             continue
 
         # Compute monthly sums of GRIDMET
-        def gridmet_daily(gridmet):
+        def gridmet_daily(image):
             output_images = []
             if 'ppt' in gridmet_products:
                 output_images.append(ee.Image(
-                    gridmet.select(['pr'], ['ppt']).max(0)))
+                    image.select(['pr'], ['ppt']).max(0)))
             if 'eto' in gridmet_products:
-                output_images.append(ee.Image(
-                    gridmet.select(['eto'], ['eto']).max(0)))
+                # Compute ETo from components instead of using ETo band
+                output_images.append(ee_common.gridmet_eto_func(image))
+                # output_images.append(ee.Image(
+                #     gridmet.select(['eto'], ['eto']).max(0)))
+            if 'etr' in gridmet_products:
+                # DEADBEEF - Compute ETo from components instead of using ETo band
+                output_images.append(ee_common.gridmet_etr_func(image))
+                # output_images.append(ee.Image(
+                #     gridmet.select(['etr'], ['etr']).max(0)))
             if 'tmin' in gridmet_products:
-                output_images.append(ee.Image(gridmet.select(['tmmn'], ['tmin'])))
+                output_images.append(ee.Image(image.select(['tmmn'], ['tmin'])))
             if 'tmax' in gridmet_products:
-                output_images.append(ee.Image(gridmet.select(['tmmx'], ['tmax'])))
+                output_images.append(ee.Image(image.select(['tmmx'], ['tmax'])))
             if 'tmean' in gridmet_products:
                 output_images.append(ee.Image(
-                    gridmet.select(['tmmn', 'tmmx']) \
+                    image.select(['tmmn', 'tmmx']) \
                         .reduce(ee.Reducer.mean()).rename(['tmean'])))
+
             return ee.Image(output_images) \
-                .copyProperties(gridmet, ['system:time_start'])
+                .copyProperties(image, ['system:time_start'])
+
         gridmet_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
             .filter(ee.Filter.calendarRange(start_year, end_year, 'year')) \
             .filter(ee.Filter.inList('system:index', export_index_list)) \
@@ -1521,8 +1530,12 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         #         output_images.append(ee.Image(
         #             gridmet.select(['pr'], ['ppt']).sum()))
         #     if 'eto' in gridmet_products:
-        #         output_images.append(ee.Image(
-        #             gridmet.select(['eto'], ['eto']).sum()))
+        #         # DEADBEEF - Compute ETo from components instead of using ETo band
+        #         output_images.append(ee.ImageCollection(
+        #             gridmet_coll.map(ee_common.gridmet_eto_func)).sum())
+        #         # output_images.append(ee.Image(
+        #         #     gridmet.select(['eto'], ['eto']).sum()))
+
         #     # Average other units
         #     if 'tmin' in gridmet_products:
         #         output_images.append(ee.Image(
@@ -1535,6 +1548,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         #             .map(image_mean).mean()).rename(['tmean']))
         #     return ee.Image(output_images) \
         #         .set('system:time_start', ee.Date(start_dt).millis())
+
         # gridmet_coll = ee.ImageCollection.fromImages(
         #     export_dt_list.map(gridmet_monthly))
 
@@ -1885,8 +1899,12 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             output_images.append(ee.Image(
                 gridmet.select(['pr'], ['ppt']).sum()))
         if 'eto' in gridmet_products:
-            output_images.append(ee.Image(
-                gridmet.select(['eto'], ['eto']).sum()))
+            # DEADBEEF - Compute ETo from components instead of using ETo band
+            output_images.append(ee.ImageCollection(
+                gridmet.map(ee_common.gridmet_eto_func)).sum())
+            # output_images.append(ee.Image(
+            #     gridmet_coll.select(['eto'], ['eto']).max(0)))
+
         # Average other units
         if 'tmin' in gridmet_products:
             output_images.append(ee.Image(
@@ -1897,8 +1915,10 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         if 'tmean' in gridmet_products:
             output_images.append(ee.Image(gridmet.select(['tmmn', 'tmmx']) \
                 .map(image_mean).mean()).rename(['tmean']))
+
         return ee.Image(output_images) \
             .set('system:time_start', ee.Date(start_dt).millis())
+
     gridmet_coll = ee.ImageCollection.fromImages(
         export_dt_list.map(gridmet_monthly))
 

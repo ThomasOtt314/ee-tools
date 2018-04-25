@@ -1272,8 +1272,12 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
             logging.info('  {}'.format(export_date))
 
             # Map over features for one image
-            image = ee.Image('IDAHO_EPSCOR/GRIDMET/{}'.format(export_dt.strftime('%Y%m%d'))) \
-                .select(['eto', 'pr'], ['eto', 'ppt'])
+            gridmet_image = ee.Image('IDAHO_EPSCOR/GRIDMET/{}'.format(
+                export_dt.strftime('%Y%m%d')))
+            # DEADBEEF - Compute ETo from components instead of using ETo band
+            image = gridmet_image.select(['pr'], ['ppt']).addBands(
+                ee_common.gridmet_eto_func(gridmet_image))
+            # image = gridmet_image.select(['eto', 'pr'], ['eto', 'ppt'])
 
             # Calculate values and statistics
             def gridmet_daily_zs_func(ftr):
@@ -1617,8 +1621,12 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
                 output_images.append(ee.Image(
                     gridmet.select(['pr'], ['ppt']).sum()))
             if 'eto' in gridmet_products:
-                output_images.append(ee.Image(
-                    gridmet.select(['eto'], ['eto']).sum()))
+                # DEADBEEF - Compute ETo from components instead of using ETo band
+                output_images.append(ee.ImageCollection(
+                    gridmet.map(ee_common.gridmet_eto_func)).sum())
+                # output_images.append(ee.Image(
+                #     gridmet.select(['eto'], ['eto']).sum()))
+
             # Average other units
             if 'tmin' in gridmet_products:
                 output_images.append(ee.Image(
@@ -1629,6 +1637,7 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
             if 'tmean' in gridmet_products:
                 output_images.append(ee.Image(gridmet.select(['tmmn', 'tmmx']) \
                     .map(image_mean).mean()).rename(['tmean']))
+
             return ee.Image(output_images) \
                 .set('system:time_start', ee.Date(start_dt).millis())
 
