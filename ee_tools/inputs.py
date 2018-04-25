@@ -349,11 +349,12 @@ def parse_spatial_reference(ini, section='SPATIAL'):
     try:
         ini[section]['osr'] = gdc.epsg_osr(
             int(ini[section]['crs'].split(':')[1]))
-    except:
+    except Exception as e:
         logging.error(
             '\nERROR: The output projection could not be converted to a '
             'spatial reference object\n  {}'.format(
                 ini[section]['crs']))
+        logging.exception('  {}'.format(e))
         sys.exit()
 
     logging.debug('  Snap: {} {}'.format(
