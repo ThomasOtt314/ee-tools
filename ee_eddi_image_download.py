@@ -24,12 +24,12 @@ import ee_tools.utils as utils
 def ee_image_download(ini_path=None, overwrite_flag=False):
     """Earth Engine Annual Mean Image Download
 
-    Args:
-        ini_path (str):
-        overwrite_flag (bool): if True, overwrite existing files
+    Parameters
+    ----------
+    ini_path : str
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
 
-    Returns:
-        None
     """
     logging.info('\nEarth Engine EDDI Image Download')
 

@@ -313,11 +313,15 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zones_geojson (dict): Zones GeoJSON
-    zones_wkt (str): Zones spatial reference Well Known Text
-    overwrite_flag (bool): if True, overwrite existing values.
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zones_geojson : dict
+        Zones GeoJSON.
+    zones_wkt : str
+        Zones spatial reference Well Known Text.
+    overwrite_flag : bool, optional
+        If True, overwrite existing values (the default is False).
         Don't remove/replace the CSV file directly.
 
     """
@@ -1033,12 +1037,16 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zones_geojson (dict): Zone specific parameters
-    zones_wkt (str): Zones spatial reference Well Known Text
-    gridmet_end_dt (datetime):
-    overwrite_flag (bool): if True, overwrite existing files
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zones_geojson : dict
+        Zone specific parameters.
+    zones_wkt : str
+        Zones spatial reference Well Known Text.
+    gridmet_end_dt : datetime
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
 
     """
 
@@ -1367,12 +1375,17 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zones_geojson (dict): Zone specific parameters
-    zones_wkt (str): Zones spatial reference Well Known Text
-    gridmet_end_dt (datetime):
-    overwrite_flag (bool): if True, overwrite existing files
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zones_geojson : dict
+        Zone specific parameters.
+    zones_wkt : str
+        Zones spatial reference Well Known Text.
+    gridmet_end_dt : datetime
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
+
     """
 
     logging.info('\nGRIDMET Monthly ETo/PPT')
@@ -1731,11 +1744,14 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
 #
 #     Parameters
 #     ----------
-#     export_fields ():
-#     ini (dict): Input file parameters
-#     zone (dict): Zone specific parameters
-#     tasks ():
-#     overwrite_flag (bool): if True, overwrite existing files
+#     export_fields : list
+#     ini : dict
+#         Input file parameters.
+#     zone : dict
+#         Zone specific parameters.
+#     tasks :
+#     overwrite_flag : bool, optional
+#         If True, overwrite existing files (the default is False).
 #
 #     """
 #

@@ -6,5 +6,4 @@ gdal>=2.2.0
 numpy
 pandas
 pytest
-# pyopenpyxl
 requests

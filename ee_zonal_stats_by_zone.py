@@ -122,7 +122,7 @@ def main(ini_path=None, overwrite_flag=False):
     logging.debug('\nReading zone GeoJSON')
     try:
         with open(ini['ZONAL_STATS']['zone_geojson'], 'r') as f:
-            zones = json.load(f)
+            zones_geojson = json.load(f)
     except Exception as e:
         logging.error('  Error reading zone geojson file, removing')
         logging.debug('  Exception: {}'.format(e))
@@ -133,8 +133,8 @@ def main(ini_path=None, overwrite_flag=False):
     zone_names = [
         str(z['properties'][ini['INPUTS']['zone_field']]) \
             .replace(' ', '_').lower()
-        for z in zones['features']]
-    if len(set(zone_names)) != len(zones['features']):
+        for z in zones_geojson['features']]
+    if len(set(zone_names)) != len(zones_geojson['features']):
         logging.error(
             '\nERROR: There appear to be duplicate zone ID/name values.'
             '\n  Currently, the values in "{}" must be unique.'
@@ -202,11 +202,11 @@ def main(ini_path=None, overwrite_flag=False):
     else:
         logging.info('\nBuilding zone tile lists')
         step = 1000
-        zone_n = len(zones['features'])
-        for zone_i in range(0, len(zones['features']), step):
+        zone_n = len(zones_geojson['features'])
+        for zone_i in range(0, len(zones_geojson['features']), step):
             logging.debug('  Zones: {}-{}'.format(
                 zone_i, min(zone_i + step, zone_n) - 1))
-            zone_ftr_sub = zones['features'][zone_i: min(zone_i + step, zone_n)]
+            zone_ftr_sub = zones_geojson['features'][zone_i: min(zone_i + step, zone_n)]
 
             # Build the zones feature collection in a list comprehension
             #   in order to set the correct spatial reference
@@ -254,35 +254,35 @@ def main(ini_path=None, overwrite_flag=False):
     # Filter features by FID
     # Don't filter until after tile lists are built
     if ini['INPUTS']['fid_keep_list']:
-        zones['features'] = [
-            ftr for ftr in zones['features']
+        zones_geojson['features'] = [
+            ftr for ftr in zones_geojson['features']
             if ftr['id'] in ini['INPUTS']['fid_keep_list']]
     if ini['INPUTS']['fid_skip_list']:
-        zones['features'] = [
-            ftr for ftr in zones['features']
+        zones_geojson['features'] = [
+            ftr for ftr in zones_geojson['features']
             if ftr['id'] not in ini['INPUTS']['fid_skip_list']]
 
     # Merge geometries (after filtering by FID above)
     if ini['INPUTS']['merge_geom_flag']:
         logging.debug('\nMerging geometries')
         merge_geom = ogr.Geometry(ogr.wkbMultiPolygon)
-        for zone_ftr in zones['features']:
+        for zone_ftr in zones_geojson['features']:
             zone_multipolygon = ogr.ForceToMultiPolygon(
                 ogr.CreateGeometryFromJson(json.dumps(zone_ftr['geometry'])))
             for zone_polygon in zone_multipolygon:
                 merge_geom.AddGeometry(zone_polygon)
-        zones['features'] = [{
+                zones_geojson['features'] = [{
             'type': 'Feature',
             'id': 0,
-            'properties': {ini['INPUTS']['zone_field']: zones['name']},
+            'properties': {ini['INPUTS']['zone_field']: zones_geojson['name']},
             'geometry': json.loads(merge_geom.ExportToJson())}]
 
         # Collapse WRS2 tile lists for merged geometry
-        ini['ZONAL_STATS']['zone_tile_json'][zones['name']] = sorted(list(set([
+        ini['ZONAL_STATS']['zone_tile_json'][zones_geojson['name']] = sorted(list(set([
             pr for pr_list in ini['ZONAL_STATS']['zone_tile_json'].values()
             for pr in pr_list])))
         logging.debug('  WRS2 Tiles: {}'.format(
-            ini['ZONAL_STATS']['zone_tile_json'][zones['name']]))
+            ini['ZONAL_STATS']['zone_tile_json'][zones_geojson['name']]))
 
 
     # Get list of existing images/files
@@ -321,7 +321,7 @@ def main(ini_path=None, overwrite_flag=False):
     #     zone['fid'] = zone_fid
     #     zone['name'] = zone_name.replace(' ', '_')
     #     zone['json'] = zone_json
-    for zone_ftr in zones['features']:
+    for zone_ftr in zones_geojson['features']:
         zone = {}
         zone['fid'] = zone_ftr['id']
         zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
@@ -407,11 +407,14 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zone (dict): Zone specific parameters
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zone : dict
+        Zone specific parameters.
     tasks ():
-    overwrite_flag (bool): if True, overwrite existing values.
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
         Don't remove/replace the CSV file directly.
 
     """
@@ -1271,12 +1274,15 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zone (dict): Zone specific parameters
-    tasks ():
-    gridmet_end_dt (datetime):
-    overwrite_flag (bool): if True, overwrite existing files
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zone : dict
+        Zone specific parameters.
+    tasks :
+    gridmet_end_dt : datetime
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
 
     """
 
@@ -1731,12 +1737,15 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zone (dict): Zone specific parameters
-    tasks ():
-    gridmet_end_dt (datetime):
-    overwrite_flag (bool): if True, overwrite existing files
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zone : dict
+        Zone specific parameters.
+    tasks :
+    gridmet_end_dt : datetime
+    overwrite_flag : bool, optional
+        If True, overwrite existing values (the default is False).
 
     """
 
@@ -2097,11 +2106,14 @@ def pdsi_func(export_fields, ini, zone, tasks, overwrite_flag=False):
 
     Parameters
     ----------
-    export_fields ():
-    ini (dict): Input file parameters
-    zone (dict): Zone specific parameters
-    tasks ():
-    overwrite_flag (bool): if True, overwrite existing files
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zone : dict
+        Zone specific parameters.
+    tasks :
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
 
     """
 

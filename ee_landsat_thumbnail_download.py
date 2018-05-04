@@ -32,9 +32,12 @@ import ee_tools.utils as utils
 def main(ini_path=None, overwrite_flag=False):
     """Generate summary thumbnails
 
-    Args:
-        ini_path (str):
-        overwrite_flag (bool): if True, overwrite existing tables
+    Parameters
+    ----------
+    ini_path : str
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
+
     """
     logging.info('\nGenerate summary thumbnails')
 
