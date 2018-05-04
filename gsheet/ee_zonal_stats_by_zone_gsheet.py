@@ -420,8 +420,8 @@ def landsat_func(gsheet_cred, export_fields, ini, zone, tasks,
     # Assuming Google Sheet exists and has the target columns
     # Assuming worksheet is called "Landsat_Daily"
     logging.info('    Reading Landsat GSHEET')
-    gsheet = gsheet_cred.open_by_key(ini['EXPORT']['gsheet_id'])\
-        .worksheet('Landsat_Daily')
+    gsheet = gsheet_cred.open_by_key(ini['GSHEET']['gsheet_id'])\
+        .worksheet(ini['GSHEET']['landsat_daily'])
     output_fields = gsheet.row_values(1)
 
     # # DEADBEEF - Changing the field structure should probably be done manually

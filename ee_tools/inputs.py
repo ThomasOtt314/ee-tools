@@ -63,6 +63,8 @@ def parse_section(ini, section):
     #     parse_tables(ini)
     elif section == 'BEAMER':
         parse_beamer(ini)
+    elif section == 'GSHEET':
+        parse_gsheet(ini)
 
 
 def get_param(ini, section, input_name, output_name, get_type,
@@ -383,7 +385,7 @@ def parse_export(ini, section='EXPORT'):
         get_param(ini, section, input_name, output_name, get_type, default)
 
     # DEADBEEF - CLOUD export options are still experimental
-    export_dest_options = ['gdrive', 'cloud', 'getinfo', 'gsheet']
+    export_dest_options = ['gdrive', 'cloud', 'getinfo']
     ini[section]['export_dest'] = ini[section]['export_dest'].lower()
     if ini[section]['export_dest'] not in export_dest_options:
         logging.error(
@@ -463,9 +465,6 @@ def parse_export(ini, section='EXPORT'):
             #     'gs://{}-{}'.format(
             #         ini[section]['project_name'],
             #         ini[section]['bucket_name'])])
-    elif ini[section]['export_dest'] == 'gsheet':
-        logging.info('  Google Sheet')
-        get_param(ini, section, 'gsheet_id', 'gsheet_id', str)
 
     # OPTIONAL PARAMETERS
     # section, input_name, output_name, description, get_type, default
@@ -834,6 +833,27 @@ def parse_beamer(ini, section='BEAMER'):
     standardize_depth_units(ini, section, 'data_ppt_units', 'PPT')
     standardize_depth_units(ini, section, 'eto_units', 'ETo')
     standardize_depth_units(ini, section, 'ppt_units', 'PPT')
+
+
+def parse_gsheet(ini, section='GSHEET'):
+    """"""
+    # MANDATORY PARAMETERS
+    # param_section, input_name, output_name, get_type
+    param_list = [
+        ['gsheet_id', 'gsheet_id', str]
+    ]
+    for input_name, output_name, get_type in param_list:
+        get_param(ini, section, input_name, output_name, get_type)
+
+    # OPTIONAL PARAMETERS
+    # param_section, input_name, output_name, get_type, default
+    param_list = [
+        ['landsat_daily', 'landsat_daily', str, 'Landsat_Daily'],
+        ['gridmet_daily', 'gridmet_daily', str, 'GRIDMET_Daily'],
+        ['gridmet_monthly', 'gridmet_monthly', str, 'GRIDMET_Monthly']
+    ]
+    for input_name, output_name, get_type, default in param_list:
+        get_param(ini, section, input_name, output_name, get_type, default)
 
 
 def standardize_depth_units(ini, section, param, name):

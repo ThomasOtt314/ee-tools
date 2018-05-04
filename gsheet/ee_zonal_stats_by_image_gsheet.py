@@ -299,16 +299,15 @@ def main(ini_path=None, overwrite_flag=False):
             overwrite_flag)
 
 
-def reAuthSheet(ini):
+def reAuthSheet(sheet_id, sheet_name):
     # Authenticate each time?
     credentials = service_account.ServiceAccountCredentials.from_json_keyfile_name(
         CLIENT_SECRET_FILE, SCOPES)
     gc = gspread.authorize(credentials)
-    return gc.open_by_key(ini['EXPORT']['sheet_id'])\
-        .worksheet(ini['EXPORT']['sheet_name'])
+    return gc.open_by_key(sheet_id).worksheet(sheet_name)
 
 
-def gsheet_writer(output_df, fields, ini, n=20):
+def gsheet_writer(output_df, fields, sheet_id, sheet_name, n=20):
     """Write (append) dataframe to Google Sheet
 
     If function is not defined here, gsheet and fields will need to be
@@ -321,7 +320,7 @@ def gsheet_writer(output_df, fields, ini, n=20):
     # temp_df.sort_values(['DATE', 'ZONE_NAME'], inplace=True)
 
     # Authenticate each time?
-    gsheet = reAuthSheet(ini)
+    gsheet = reAuthSheet(sheet_id, sheet_name)
 
     try:
         sheet_rows = gsheet.row_count
@@ -444,7 +443,8 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
     # Assuming Google Sheet exists and has the target columns
     # Assuming worksheet is called "Landsat_Daily"
     logging.info('\nReading Landsat GSHEET')
-    gsheet = reAuthSheet(ini)
+    gsheet = reAuthSheet(
+        ini['GSHEET']['gsheet_id'], ini['GSHEET']['landsat_daily'])
     try:
         output_fields = gsheet.row_values(1)
         logging.debug('  Sheet fields: {}'.format(', '.join(output_fields)))
@@ -1095,7 +1095,9 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
             # Save data Google Sheet
             if not export_df.empty:
                 logging.debug('    Saving data')
-                gsheet_writer(scene_df, output_fields, ini)
+                gsheet_writer(
+                    scene_df, output_fields, ini['GSHEET']['gsheet_id'],
+                    ini['GSHEET']['landsat_daily'])
 
             # # Save data to main dataframe
             # if not export_df.empty:
