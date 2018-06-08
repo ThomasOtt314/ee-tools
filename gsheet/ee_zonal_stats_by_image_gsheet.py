@@ -431,7 +431,8 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
     # logging.info('\nLandsat')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
-    ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
+    ini['EXPORT']['transform'] = '[{}]'.format(','.join(
+        map(str, 30.0, 0.0, 15.0, 0.0, -30.0, 15.0)))
     # logging.debug('  Output Transform: {}'.format(
     #     ini['EXPORT']['transform']))
 
@@ -470,9 +471,10 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
     data_rows = len(input_data)
     logging.debug('  Sheet rows: {}'.format(gsheet_rows))
     logging.debug('  Data rows:  {}'.format(data_rows))
-    for row_i in range(gsheet.row_count, data_rows, -1):
-        # logging.debug('  Deleting row: {}'.format(row_i))
-        gsheet.delete_row(row_i)
+    gsheet.resize(rows=data_rows)
+    # for row_i in range(gsheet.row_count, data_rows, -1):
+    #     # logging.debug('  Deleting row: {}'.format(row_i))
+    #     gsheet.delete_row(row_i)
 
     # Remove empty rows in data (gsheet row indexing is 1 based)
     for row_i in range(len(input_data), 1, -1):

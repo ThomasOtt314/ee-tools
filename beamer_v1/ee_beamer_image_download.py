@@ -233,6 +233,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             ini['SPATIAL']['cellsize'])
         zone['geo'] = zone['extent'].geo(ini['SPATIAL']['cellsize'])
         zone['transform'] = gdc.geo_2_ee_transform(zone['geo'])
+        zone['transform'] = '[' + ','.join(map(str, zone['transform'])) + ']'
         zone['shape'] = zone['extent'].shape(ini['SPATIAL']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone['shape']))
         logging.debug('  Zone Transform: {}'.format(zone['transform']))
@@ -248,7 +249,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         # output_crs = zone['proj']
         logging.debug('  Image Projection: {}'.format(ini['SPATIAL']['crs']))
 
-        output_transform = '[' + ','.join(map(str, zone['transform'])) + ']'
+        output_transform = zone['transform'][:]
+        # output_transform = '[' + ','.join(map(str, zone['transform'])) + ']'
         output_shape = '{1}x{0}'.format(*zone['shape'])
         logging.debug('  Image Transform: {}'.format(output_transform))
         logging.debug('  Image Shape: {}'.format(output_shape))

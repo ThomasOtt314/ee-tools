@@ -196,13 +196,15 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             ini['SPATIAL']['cellsize'])
         zone_geo = zone_extent.geo(ini['SPATIAL']['cellsize'])
         zone_transform = gdc.geo_2_ee_transform(zone_geo)
+        zone_transform = '[' + ','.join(map(str, zone_transform)) + ']'
         zone_shape = zone_extent.shape(ini['SPATIAL']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone_shape))
         logging.debug('  Zone Transform: {}'.format(zone_transform))
         logging.debug('  Zone Extent: {}'.format(zone_extent))
         # logging.debug('  Zone Geom: {}'.format(zone_geom.getInfo()))
 
-        output_transform = '[' + ','.join(map(str, zone_transform)) + ']'
+        output_transform = zone['transform'][:]
+        # output_transform = '[' + ','.join(map(str, zone['transform'])) + ']'
         output_shape = '{1}x{0}'.format(*zone_shape)
         # logging.debug('  Image Transform: {}'.format(output_transform))
         # logging.debug('  Image Shape: {}'.format(output_shape))

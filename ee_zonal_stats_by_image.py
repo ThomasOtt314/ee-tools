@@ -328,7 +328,8 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
     logging.info('\nLandsat')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
-    ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
+    ini['EXPORT']['transform'] = '[{}]'.format(','.join(
+        map(str, (30.0, 0.0, 15.0, 0.0, -30.0, 15.0))))
     logging.debug('  Output Transform: {}'.format(
         ini['EXPORT']['transform']))
 
@@ -1053,7 +1054,8 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
     logging.info('\nGRIDMET Daily ETo/PPT')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
-    ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
+    ini['EXPORT']['transform'] = '[{}]'.format(','.join(
+        map(str, 30.0, 0.0, 15.0, 0.0, -30.0, 15.0)))
     logging.debug('  Output Transform: {}'.format(
         ini['EXPORT']['transform']))
 
@@ -1388,7 +1390,8 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
     logging.info('\nGRIDMET Monthly ETo/PPT')
 
     # DEADBEEF - For now, hardcode transform to a standard Landsat image
-    ini['EXPORT']['transform'] = (30.0, 0.0, 15.0, 0.0, -30.0, 15.0)
+    ini['EXPORT']['transform'] = '[{}]'.format(','.join(
+        map(str, 30.0, 0.0, 15.0, 0.0, -30.0, 15.0)))
     logging.debug('  Output Transform: {}'.format(
         ini['EXPORT']['transform']))
 
