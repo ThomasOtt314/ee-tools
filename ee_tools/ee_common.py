@@ -12,7 +12,6 @@ import pprint
 import sys
 
 import ee
-import geerefet
 
 
 ee.Initialize()
@@ -1510,33 +1509,43 @@ def landsat_fmask_cloud_mask_func(img):
         .copyProperties(img, system_properties)
 
 
-def prism_ppt_func(prism_image):
-    """PRISM water year precipitation
-
-    Depends on maps engine assets
-    """
-    return prism_image.select([0], ['PPT']) \
-        .copyProperties(prism_image, system_properties)
+def pair_func(elev_image):
+    """Elevation based air pressure"""
+    return elev_image.expression(
+        '101.3 * pow((293 - 0.0065 * b()) / 293, 5.26)')
 
 
-def gridmet_ppt_func(gridmet_image):
-    """GRIDMET daily precipitation"""
-    return gridmet_image.select(['pr'], ['PPT']).max(0) \
-        .copyProperties(gridmet_image, system_properties)
+# def prism_ppt_func(prism_image):
+#     """PRISM water year precipitation
+#
+#     Depends on maps engine assets
+#     """
+#     return prism_image.select([0], ['ppt']) \
+#         .copyProperties(prism_image, system_properties)
 
 
-def gridmet_eto_func(gridmet_image):
-    """GRIDMET Daily ETo"""
-    return ee.Image(geerefet.Daily.gridmet(gridmet_image).eto()).max(0)\
-        .copyProperties(gridmet_image, system_properties)
+# DEADBEEF - Using GRIDMET precipitation band directly
+# def gridmet_ppt_func(gridmet_image):
+#     """GRIDMET daily precipitation"""
+#     return gridmet_image.select(['pr'], ['ppt']).max(0) \
+#         .copyProperties(gridmet_image, system_properties)
 
 
-def gridmet_etr_func(gridmet_image):
-    """GRIDMET Daily ETr"""
-    return ee.Image(geerefet.Daily.gridmet(gridmet_image).etr()).max(0)\
-        .copyProperties(gridmet_image, system_properties)
+# DEADBEEF - Using GRIDMET ETo/ETr bands directly
+# DEADBEEF - Not using geerefet for ETo/ETr calculation
+# def gridmet_eto_func(gridmet_image):
+#     """GRIDMET Daily ETo"""
+#     return ee.Image(geerefet.Daily.gridmet(gridmet_image).eto()).max(0)\
+#         .copyProperties(gridmet_image, system_properties)
+#
+# def gridmet_etr_func(gridmet_image):
+#     """GRIDMET Daily ETr"""
+#     return ee.Image(geerefet.Daily.gridmet(gridmet_image).etr()).max(0)\
+#         .copyProperties(gridmet_image, system_properties)
 
 
+# DEADBEEF - Using GRIDMET ETo/ETr bands directly
+# DEADBEEF - Not computing ETo/ETr from component bands
 # def gridmet_etr_func(gridmet_image):
 #     """GRIDMET Daily ETr"""
 #     scene_date = ee.Algorithms.Date(gridmet_image.get('system:time_start'))
@@ -1563,8 +1572,7 @@ def gridmet_etr_func(gridmet_image):
 #     return daily_pet_func(
 #         doy, tmin, tmax, ea, rs, uz, zw, 1600, 0.38).copyProperties(
 #             gridmet_image, system_properties)
-
-
+#
 # def gridmet_eto_func(gridmet_image):
 #     """GRIDMET Daily ETo"""
 #     scene_date = ee.Algorithms.Date(gridmet_image.get('system:time_start'))
@@ -1691,14 +1699,8 @@ def gridmet_etr_func(gridmet_image):
 #         '(slope + psy * (cd * u2 + 1))',
 #         {'slope': es_slope, 'rn': rn, 'g': 0, 'psy': psy, 'cn': cn,
 #          't': tmean, 'u2': u2, 'es': es, 'ea': ea, 'cd': cd})
-#
-#
-# def pair_func(elev_image):
-#     """Elevation based air pressure"""
-#     return elev_image.expression(
-#         '101.3 * pow((293 - 0.0065 * b()) / 293, 5.26)')
-#
-#
+
+
 # def vapor_pressure_func(temperature_image):
 #     """Vapor Pressure
 #

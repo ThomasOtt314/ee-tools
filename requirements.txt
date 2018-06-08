@@ -1,8 +1,7 @@
 configparser=3.5.0
-earthengine-api>=0.1.125
-geerefet
+earthengine-api>=0.1.140
 future
-gdal>=2.2.0
+gdal>=2.2.3
 numpy
 pandas
 pytest

@@ -1495,18 +1495,11 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         def gridmet_daily(image):
             output_images = []
             if 'ppt' in gridmet_products:
-                output_images.append(ee.Image(
-                    image.select(['pr'], ['ppt']).max(0)))
+                output_images.append(ee.Image(image.select(['pr'], ['ppt'])))
             if 'eto' in gridmet_products:
-                # Compute ETo from components instead of using ETo band
-                output_images.append(ee_common.gridmet_eto_func(image))
-                # output_images.append(ee.Image(
-                #     gridmet.select(['eto'], ['eto']).max(0)))
+                output_images.append(ee.Image(image.select(['eto'], ['eto'])))
             if 'etr' in gridmet_products:
-                # DEADBEEF - Compute ETo from components instead of using ETo band
-                output_images.append(ee_common.gridmet_etr_func(image))
-                # output_images.append(ee.Image(
-                #     gridmet.select(['etr'], ['etr']).max(0)))
+                output_images.append(ee.Image(image.select(['etr'], ['etr'])))
             if 'tmin' in gridmet_products:
                 output_images.append(ee.Image(image.select(['tmmn'], ['tmin'])))
             if 'tmax' in gridmet_products:
@@ -1539,11 +1532,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
         #         output_images.append(ee.Image(
         #             gridmet.select(['pr'], ['ppt']).sum()))
         #     if 'eto' in gridmet_products:
-        #         # DEADBEEF - Compute ETo from components instead of using ETo band
-        #         output_images.append(ee.ImageCollection(
-        #             gridmet_coll.map(ee_common.gridmet_eto_func)).sum())
-        #         # output_images.append(ee.Image(
-        #         #     gridmet.select(['eto'], ['eto']).sum()))
+        #         output_images.append(ee.Image(gridmet.select(['eto']).sum()))
 
         #     # Average other units
         #     if 'tmin' in gridmet_products:
@@ -1913,11 +1902,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             output_images.append(ee.Image(
                 gridmet.select(['pr'], ['ppt']).sum()))
         if 'eto' in gridmet_products:
-            # DEADBEEF - Compute ETo from components instead of using ETo band
-            output_images.append(ee.ImageCollection(
-                gridmet.map(ee_common.gridmet_eto_func)).sum())
-            # output_images.append(ee.Image(
-            #     gridmet_coll.select(['eto'], ['eto']).max(0)))
+            output_images.append(ee.Image(gridmet.select(['eto']).sum()))
 
         # Average other units
         if 'tmin' in gridmet_products:

@@ -307,7 +307,7 @@ def main(ini_path, overwrite_flag=True):
             #         wy = ee.String(
             #             input_image.get('system:index')).split('_').get(3)
             #         date_start = ee.Date(ee.String(wy).cat('-10-01'))
-            #         return input_image.select([0], ['PPT']).setMulti({
+            #         return input_image.select([0], ['ppt']).setMulti({
             #             'system:time_start': date_start.advance(-1, 'year').millis()
             #         })
             #     prism_coll = ee.ImageCollection('users/cgmorton/prism_800m_ppt_wy')
@@ -329,17 +329,17 @@ def main(ini_path, overwrite_flag=True):
                     wy_ppt_input *= (25.4 * 12)
             elif ini['BEAMER']['ppt_source'] == 'gridmet':
                 wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
-                    gridmet_coll.map(ee_common.gridmet_ppt_func).sum()).getRegion(
+                    gridmet_coll.select(['pr'], ['ppt']).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # Calculate GRIDMET zonal mean of geometry
                 # wy_ppt_input = float(ee.ImageCollection(
-                #     gridmet_coll.map(gridmet_ppt_func)).reduceRegion(
+                #     gridmet_coll.select(['pr'], ['ppt'])).reduceRegion(
                 #         reducer=ee.Reducer.sum(),
                 #         geometry=zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],
                 #         crsTransform=zone['transform'],
                 #         bestEffort=False,
-                #         tileScale=1).getInfo()['PPT']
+                #         tileScale=1).getInfo()['ppt']
             # elif ini['BEAMER']['ppt_source'] == 'prism':
             #     # Calculate PRISM zonal mean of geometry
             #     wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
@@ -349,7 +349,7 @@ def main(ini_path, overwrite_flag=True):
             #             crs=ini['SPATIAL']['crs'],
             #             crsTransform=zone['transform'],
             #             bestEffort=False,
-            #             tileScale=1))['PPT'])
+            #             tileScale=1))['ppt'])
 
             # Get water year ETo for centroid of zone or read from file
             # Convert all input data to mm for Beamer Method
@@ -364,10 +364,10 @@ def main(ini_path, overwrite_flag=True):
             # This assumes GRIMET data is in millimeters
             elif ini['BEAMER']['eto_source'] == 'gridmet':
                 wy_eto_input = float(utils.ee_getinfo(ee.ImageCollection(
-                    gridmet_coll.map(ee_common.gridmet_eto_func).sum()).getRegion(
+                    gridmet_coll.select(['eto']).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
                 # wy_eto_input = float(ee.ImageCollection(
-                #     gridmet_coll.map(gridmet_eto_func)).reduceRegion(
+                #     gridmet_coll.select(['eto'])).reduceRegion(
                 #         reducer=ee.Reducer.sum(),
                 #         geometry=zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],
@@ -676,9 +676,9 @@ def landsat_etg_func(img):
     ppt = ee.Image.constant(ee.Number(img.get('wy_ppt')))
     eto = ee.Image.constant(ee.Number(img.get('wy_eto')))
     # ppt = ee.ImageCollection.fromImages(
-    #     refl_toa.get('gridmet_match')).map(gridmet_ppt_func).sum();
+    #     refl_toa.get('gridmet_match')).select(['pr'], ['ppt']).sum();
     # eto = ee.ImageCollection.fromImages(
-    #     refl_toa.get('gridmet_match')).map(gridmet_eto_func).sum();
+    #     refl_toa.get('gridmet_match')).select(['eto']).sum();
 
     # ETg
     etg_mean = etg_func(etstar_mean, eto, ppt).rename(['etg_mean'])

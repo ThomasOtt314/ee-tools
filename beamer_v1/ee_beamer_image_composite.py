@@ -290,7 +290,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     wy_end_dt = ee.Date.fromYMD(ee.Number(year), 10, 1)
                     wy_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
                         .filterDate(wy_start_dt, wy_end_dt) \
-                        .map(ee_common.gridmet_ppt_func)
+                        .select(['pr'], ['ppt'])
                     wy_image = ee.Image([
                         ee.Image(ee.ImageCollection(wy_coll).sum()),
                         ee.Image.constant(ee.Number(year)).float()])
@@ -305,7 +305,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                         zone['geom'].centroid(1), 500))[1:]}
                 # # Calculate GRIDMET zonal mean of geometry
                 # wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
-                #     gridmet_coll.map(gridmet_ppt_func)).reduceRegion(
+                #     gridmet_coll.select(['pr'], ['ppt'])).reduceRegion(
                 #         reducer=ee.Reducer.sum(),
                 #         geometry=zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],
@@ -315,7 +315,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             # elif ini['BEAMER']['ppt_source'] == 'prism':
             #     # Calculate PRISM zonal mean of geometry
             #     wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
-            #         prism_coll.map(ee_common.prism_ppt_func)).sum().reduceRegion(
+            #         prism_coll.select(['ppt'], ['ppt'])).sum().reduceRegion(
             #             reducer=ee.Reducer.mean(),
             #             geometry=zone['geom'],
             #             crs=ini['SPATIAL']['crs'],
@@ -344,7 +344,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     wy_end_dt = ee.Date.fromYMD(ee.Number(year), 10, 1)
                     wy_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
                         .filterDate(wy_start_dt, wy_end_dt) \
-                        .map(ee_common.gridmet_eto_func)
+                        .select(['eto'])
                     wy_image = ee.Image([
                         ee.Image(ee.ImageCollection(wy_coll).sum()),
                         ee.Image.constant(ee.Number(year)).float()])
@@ -358,7 +358,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
                     for x in utils.ee_getinfo(wy_eto_coll.getRegion(
                         zone['geom'].centroid(1), 500))[1:]}
                 # wy_eto_input = float(utils.ee_getinfo(ee.ImageCollection(
-                #     gridmet_coll.map(gridmet_eto_func)).reduceRegion(
+                #     gridmet_coll.select(['eto'])).reduceRegion(
                 #         ee.Reducer.sum(),
                 #         zone['geom'],
                 #         crs=ini['SPATIAL']['crs'],

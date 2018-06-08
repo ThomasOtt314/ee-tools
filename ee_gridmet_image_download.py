@@ -39,8 +39,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
     # end_year = 2016
 
     gridmet_download_bands = {
-        'pet': 'ETo',
-        'pr': 'PPT'}
+        'eto': 'ETo',
+        'pr': 'PPT',
+    }
 
     # If false, script will export annual and water year total images
     gridmet_monthly_flag = False
@@ -50,7 +51,8 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
 
     pdsi_date_list = [
         '0120', '0220', '0320', '0420', '0520', '0620',
-        '0720', '0820', '0920', '1020', '1120', '1220']
+        '0720', '0820', '0920', '1020', '1120', '1220',
+    ]
     # pdsi_date_list = ['0920', '1220']
     # pdsi_date_list = []
 
@@ -272,16 +274,9 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
                         continue
 
                 # GRIDMET collection is available in EarthEngine
-                if b_key not in ['eto', 'etr']:
-                    gridmet_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET')\
-                        .filterDate(start_dt, end_dt) \
-                        .select([b_key])
-                else:
-                    # DEADBEEF - Compute ETo/ETr from components instead of using band
-                    gridmet_coll = ee.ImageCollection(
-                        ee.ImageCollection('IDAHO_EPSCOR/GRIDMET') \
-                            .filterDate(start_dt, end_dt)\
-                            .map(ee_common.gridmet_eto_func))
+                gridmet_coll = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET')\
+                    .filterDate(start_dt, end_dt) \
+                    .select([b_key])
 
                 gridmet_image = ee.Image(gridmet_coll.sum())
 
