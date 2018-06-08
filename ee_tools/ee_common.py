@@ -189,15 +189,21 @@ class Landsat():
 
         Mosaic images from different rows from the same date (same path)
 
-        Args:
-            landsat (str):
-            year (int): year
-            doy (int): day of year
-            path (int): Landsat path number
-            row (int): Landsat row number
+        Parameters
+        ----------
+        landsat : str
+        year : int
+        doy : int
+            Day of year.
+        path : int
+            Landsat path number.
+        row : int
+            Landsat row number.
 
-        Returns:
-            ee.Image
+        Returns
+        -------
+        ee.Image
+
         """
         image_start_dt = datetime.datetime.strptime(
             '{:04d}_{:03d}'.format(int(year), int(doy)), '%Y_%j')
@@ -225,11 +231,15 @@ class Landsat():
     def get_collection(self):
         """Build and filter a full Landsat collection
 
-        Args:
-            args (dict): keyword arguments for get_landst_collection
+        Parameters
+        ----------
+        args : dict
+            Keyword arguments for get_landsat_collection.
 
-        Returns:
-            ee.ImageCollection
+        Returns
+        -------
+        ee.ImageCollection
+
         """
 
         # Process each Landsat type and append to the output collection
@@ -374,13 +384,13 @@ class Landsat():
             # Compute Tasumi SR (if necessary) after filtering collections
             # DEADBEEF - This may need to be moved before band functions
             if self.refl_sur_method == 'tasumi':
-                sur_coll = sur_coll.map(self.refl_sur_tasumi_func)
-                # if landsat in ['LT04', 'LT05']:
-                #     sur_coll = sur_coll.map(self.landsat5_tasumi_func)
-                # elif landsat == 'LE07':
-                #     sur_coll = sur_coll.map(self.landsat7_tasumi_func)
-                # elif landsat == 'LC08':
-                #     sur_coll = sur_coll.map(self.landsat8_tasumi_func)
+                sur_coll = sur_coll.map(self.tasumi_sr_func)
+
+            # Apply OLI 2 ETM or ETM 2 OLI adjustments
+            if self.refl_sur_method == 'tasumi':
+                sur_coll = sur_coll.map(self.tasumi_sr_adjust_func)
+            elif self.refl_sur_method == 'usgs_sr':
+                sur_coll = sur_coll.map(self.usgs_sr_adjust_func)
 
             # Join the TOA and SR collections
             scene_id_filter = ee.Filter.equals(
@@ -440,16 +450,15 @@ class Landsat():
         Send Landsat ROW number back as an image for determining "dominant"
             row in zones that overlap multiple images.
 
-        Args:
-            input_image (ee.Image): Landsat merged TOA/SR image
+        Parameters
+        ----------
+        input_image : ee.Image
+            Landsat merged TOA/SR image.
 
-        Self Properties
-            adjust_method (str): Adjust Landsat red and NIR bands.
-                Choices are 'etm_2_oli' or 'oli_2_etm'.
-                This could probably be simplified to a flag
+        Returns
+        -------
+        ee.Image
 
-        Returns:
-            ee.Image()
         """
 
         # Eventually use Fmask band to set common area instead
@@ -680,16 +689,18 @@ class Landsat():
             .copyProperties(input_image, system_properties) \
             .set('SCENE_ID', input_image.get('system:index'))
 
-    def refl_sur_tasumi_func(self, refl_toa):
+    def tasumi_sr_func(self, refl_toa):
         """Tasumi at-surface reflectance
 
-        adjust_method class property is used.
+        Parameters
+        ----------
+        refl_toa : ee.Image
+            Landsat top-of-atmosphere reflectance image.
 
-        Args:
-            refl_toa (ee.Image): Landsat top-of-atmosphere reflectance image
+        Returns
+        -------
+        ee.Image: at-surface reflectance
 
-        Returns:
-            ee.Image: at-surface reflectance
         """
         landsat = ee.String(refl_toa.get('system:index')).slice(0, 2)
 
@@ -767,38 +778,105 @@ class Landsat():
                 {'cb': cb, 'tau_in': tau_in, 'tau_out': tau_out}) \
             .rename(refl_sur_bands)
 
-        if self.adjust_method:
-            # http://www.sciencedirect.com/science/article/pii/S0034425716302619
-            # Coefficients for scaling OLI to ETM+
-            # Invert the calculation for ETM+ to OLI
-            if self.adjust_method.lower() == 'etm_2_oli':
-                m_dict = ee.Dictionary({
-                    'LT': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
-                    'LE': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
-                    'LC': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]})
-                b_dict = ee.Dictionary({
-                    'LT': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
-                    'LE': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
-                    'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
-                m = ee.Image.constant(ee.List(m_dict.get(landsat)))
-                b = ee.Image.constant(ee.List(b_dict.get(landsat)))
-                refl_sur = ee.Image(refl_sur).subtract(b).divide(m)
-            elif self.adjust_method.lower() == 'oli_2_etm':
-                m_dict = ee.Dictionary({
-                    'LT': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                    'LE': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                    'LC': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0]})
-                b_dict = ee.Dictionary({
-                    'LT': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    'LE': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
-                m = ee.Image.constant(ee.List(m_dict.get(landsat)))
-                b = ee.Image.constant(ee.List(b_dict.get(landsat)))
-                refl_sur = ee.Image(refl_sur).multiply(m).add(b)
-
         return refl_sur \
             .clamp(0.0001, 1) \
             .copyProperties(refl_toa, system_properties)
+
+    def tasumi_sr_adjust_func(self, refl_sur):
+        """Apply cross sensor calibration adjustments to Tasumi SR images
+
+        Parameters
+        ----------
+        refl_sur : ee.Image
+            Landsat at-surface reflectance image.
+
+        Returns
+        -------
+        ee.Image
+
+        Notes
+        -----
+        http://www.sciencedirect.com/science/article/pii/S0034425716302619
+        Coefficients are for scaling OLI to ETM+
+        Invert the calculation for ETM+ to OLI
+
+        """
+        landsat = ee.String(refl_sur.get('system:index')).slice(0, 2)
+
+        if not self.adjust_method:
+            return refl_sur
+        elif self.adjust_method.lower() == 'etm_2_oli':
+            m_dict = ee.Dictionary({
+                'LT': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
+                'LE': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0],
+                'LC': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]})
+            b_dict = ee.Dictionary({
+                'LT': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
+                'LE': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0],
+                'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
+            m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+            b = ee.Image.constant(ee.List(b_dict.get(landsat)))
+            return ee.Image(refl_sur).subtract(b).divide(m)
+        elif self.adjust_method.lower() == 'oli_2_etm':
+            m_dict = ee.Dictionary({
+                'LT': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                'LE': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                'LC': [1.0, 1.0, 1.0047, 1.0036, 1.0, 1.0]})
+            b_dict = ee.Dictionary({
+                'LT': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                'LE': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                'LC': [0.0, 0.0, 0.0024, -0.0003, 0.0, 0.0]})
+            m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+            b = ee.Image.constant(ee.List(b_dict.get(landsat)))
+            return ee.Image(refl_sur).multiply(m).add(b)
+
+    def usgs_sr_adjust_func(self, refl_sur):
+        """Apply cross sensor calibration adjustments to USGS SR images
+
+        Parameters
+        ----------
+        refl_sur : ee.Image
+            Landsat at-surface reflectance image.
+
+        Returns
+        -------
+        ee.Image
+
+        Notes
+        -----
+        http://www.sciencedirect.com/science/article/pii/S0034425716302619
+        Coefficients are for scaling OLI to ETM+
+        Invert the calculation for ETM+ to OLI
+
+        """
+        landsat = ee.String(refl_sur.get('system:index')).slice(0, 2)
+
+        if not self.adjust_method:
+            return refl_sur
+        elif self.adjust_method.lower() == 'etm_2_oli':
+            m_dict = ee.Dictionary({
+                'LT': [1.0, 1.0, 0.9911, 0.9892, 1.0, 1.0],
+                'LE': [1.0, 1.0, 0.9911, 0.9892, 1.0, 1.0],
+                'LC': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]})
+            b_dict = ee.Dictionary({
+                'LT': [0.0, 0.0, 0.0099, 0.007, 0.0, 0.0],
+                'LE': [0.0, 0.0, 0.0099, 0.007, 0.0, 0.0],
+                'LC': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
+            m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+            b = ee.Image.constant(ee.List(b_dict.get(landsat)))
+            return ee.Image(refl_sur).subtract(b).divide(m)
+        elif self.adjust_method.lower() == 'oli_2_etm':
+            m_dict = ee.Dictionary({
+                'LT': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                'LE': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                'LC': [1.0, 1.0, 0.9911, 0.9892, 1.0, 1.0]})
+            b_dict = ee.Dictionary({
+                'LT': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                'LE': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                'LC': [0.0, 0.0, 0.0099, 0.007, 0.0, 0.0]})
+            m = ee.Image.constant(ee.List(m_dict.get(landsat)))
+            b = ee.Image.constant(ee.List(b_dict.get(landsat)))
+            return ee.Image(refl_sur).multiply(m).add(b)
 
 
 # def scene_id_func(img):
@@ -1176,11 +1254,14 @@ def ts_func(ts_brightness, em_nb, k1=607.76, k2=1260.56):
 def nldas_interp_func(img):
     """Interpolate NLDAS image at Landsat scene time
 
-    Args:
-        img (ee.Image):
+    Parameters
+    ----------
+    img : ee.Image
 
     Returns
-        ee.Image(): NLDAS values interpolated at the image time
+    -------
+    ee.Image : NLDAS values interpolated at the image time
+
     """
     scene_time = ee.Number(img.get('system:time_start'))
     scene_datetime = ee.Date(scene_time)
