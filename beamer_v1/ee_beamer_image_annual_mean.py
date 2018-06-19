@@ -223,7 +223,7 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
             ini['SPATIAL']['cellsize'])
         zone['geo'] = zone['extent'].geo(ini['SPATIAL']['cellsize'])
         zone['transform'] = gdc.geo_2_ee_transform(zone['geo'])
-        zone['transform'] = '[' + ','.join(map(str, zone['transform'])) + ']'
+        # zone['transform'] = '[' + ','.join(map(str, zone['transform'])) + ']'
         zone['shape'] = zone['extent'].shape(ini['SPATIAL']['cellsize'])
         logging.debug('  Zone Shape: {}'.format(zone['shape']))
         logging.debug('  Zone Transform: {}'.format(zone['transform']))
