@@ -724,7 +724,7 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
                 inplace=True)
         except ValueError:
             pass
-        zone_df = zone_df.append(missing_df)
+        zone_df = zone_df.append(missing_df, sort=False)
         logging.debug('    Writing to CSV')
         csv_writer(zone_df, zone['csv'], export_fields)
 
@@ -740,7 +740,7 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
             # These seem to happen with the zone is not in the output_df
             logging.debug('    Exception: {}'.format(e))
             pass
-        output_df = output_df.append(zone_df)
+        output_df = output_df.append(zone_df, sort=False)
 
     # Putting the warning back to the default balue
     pd.options.mode.chained_assignment = 'warn'
@@ -1013,7 +1013,7 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
                     if overwrite_flag:
                         # Update happens inplace automatically
                         output_df.update(export_df)
-                        # output_df = output_df.append(export_df)
+                        # output_df = output_df.append(export_df, sort=False)
                     else:
                         # Combine first doesn't have an inplace parameter
                         output_df = output_df.combine_first(export_df)
@@ -1201,7 +1201,7 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                     zone_df.index.intersection(missing_df.index), inplace=True)
             except ValueError:
                 pass
-            zone_df = zone_df.append(missing_df)
+            zone_df = zone_df.append(missing_df, sort=False)
             csv_writer(zone_df, zone_output_path, export_fields)
 
             # Update the master dataframe
@@ -1214,7 +1214,7 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
             except (ValueError, KeyError):
                 # These seem to happen with the zone is not in the output_df
                 pass
-            output_df = output_df.append(zone_df)
+            output_df = output_df.append(zone_df, sort=False)
 
     # Identify SCENE_IDs that are missing any data
     # Filter based on product and SCENE_ID lists
@@ -1344,7 +1344,7 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                     if overwrite_flag:
                         # Update happens inplace automatically
                         output_df.update(export_df)
-                        # output_df = output_df.append(export_df)
+                        # output_df = output_df.append(export_df, sort=False)
                     else:
                         # Combine first doesn't have an inplace parameter
                         output_df = output_df.combine_first(export_df)
@@ -1539,7 +1539,7 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
                     zone_df.index.intersection(missing_df.index), inplace=True)
             except ValueError:
                 pass
-            zone_df = zone_df.append(missing_df)
+            zone_df = zone_df.append(missing_df, sort=False)
             csv_writer(zone_df, zone_output_path, export_fields)
 
             # Update the master dataframe
@@ -1552,7 +1552,7 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
             except (ValueError, KeyError):
                 # These seem to happen with the zone is not in the output_df
                 pass
-            output_df = output_df.append(zone_df)
+            output_df = output_df.append(zone_df, sort=False)
 
     # Identify SCENE_IDs that are missing any data
     # Filter based on product and SCENE_ID lists
@@ -1712,7 +1712,7 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
-                    # output_df = output_df.append(export_df)
+                    # output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)

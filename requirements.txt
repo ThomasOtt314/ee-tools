@@ -3,6 +3,6 @@ earthengine-api>=0.1.141
 future
 gdal>=2.2.3
 numpy
-pandas
+pandas>=0.23.0
 pytest
 requests

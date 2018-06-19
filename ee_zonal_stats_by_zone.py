@@ -769,7 +769,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 output_df.drop(
                     output_df.index.intersection(missing_df.index),
                     inplace=True)
-            output_df = output_df.append(missing_df)
+            output_df = output_df.append(missing_df, sort=False)
             csv_writer(output_df, output_path, output_fields)
 
     # Identify SCENE_IDs that are missing any data
@@ -1027,7 +1027,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
-                    # output_df = output_df.append(export_df)
+                    # output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine_first() doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1061,7 +1061,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
-                    # output_df = output_df.append(export_df)
+                    # output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1251,7 +1251,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                 if overwrite_flag:
                     # Update happens inplace automatically
                     # output_df.update(export_df)
-                    output_df = output_df.append(export_df)
+                    output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1412,7 +1412,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             output_df.drop(
                 output_df.index.intersection(missing_df.index),
                 inplace=True)
-        output_df = output_df.append(missing_df)
+        output_df = output_df.append(missing_df, sort=False)
         csv_writer(output_df, output_path, export_fields)
 
     # Identify SCENE_IDs that are missing any data
@@ -1591,7 +1591,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
-                    # output_df = output_df.append(export_df)
+                    # output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1622,7 +1622,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
-                    # output_df = output_df.append(export_df)
+                    # output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1710,7 +1710,7 @@ def gridmet_daily_func(export_fields, ini, zone, tasks, gridmet_end_dt,
                 if overwrite_flag:
                     # Update happens inplace automatically
                     output_df.update(export_df)
-                    # output_df = output_df.append(export_df)
+                    # output_df = output_df.append(export_df, sort=False)
                 else:
                     # Combine first doesn't have an inplace parameter
                     output_df = output_df.combine_first(export_df)
@@ -1856,7 +1856,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             output_df.drop(
                 output_df.index.intersection(missing_df.index),
                 inplace=True)
-        output_df = output_df.append(missing_df)
+        output_df = output_df.append(missing_df, sort=False)
         csv_writer(output_df, output_path, export_fields)
 
     # Identify SCENE_IDs that are missing any data
@@ -1962,7 +1962,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             if overwrite_flag:
                 # Update happens inplace automatically
                 output_df.update(export_df)
-                # output_df = output_df.append(export_df)
+                # output_df = output_df.append(export_df, sort=False)
             else:
                 # Combine first doesn't have an inplace parameter
                 output_df = output_df.combine_first(export_df)
@@ -1993,7 +1993,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             if overwrite_flag:
                 # Update happens inplace automatically
                 output_df.update(export_df)
-                # output_df = output_df.append(export_df)
+                # output_df = output_df.append(export_df, sort=False)
             else:
                 # Combine first doesn't have an inplace parameter
                 output_df = output_df.combine_first(export_df)
@@ -2076,7 +2076,7 @@ def gridmet_monthly_func(export_fields, ini, zone, tasks, gridmet_end_dt,
             if overwrite_flag:
                 # Update happens inplace automatically
                 output_df.update(export_df)
-                # output_df = output_df.append(export_df)
+                # output_df = output_df.append(export_df, sort=False)
             else:
                 # Combine first doesn't have an inplace parameter
                 output_df = output_df.combine_first(export_df)
