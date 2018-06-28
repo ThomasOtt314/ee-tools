@@ -10,6 +10,7 @@ __pycache__/
 *.log
 *.lock
 schema.ini
+.DS_Store
 
 example/stats
 example/stats*
@@ -23,3 +24,5 @@ beamer_v*/stats*
 
 example_tasumi*
 example_usgs_sr*
+
+projects
