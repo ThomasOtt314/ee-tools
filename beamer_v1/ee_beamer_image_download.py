@@ -249,8 +249,8 @@ def ee_beamer_et(ini_path=None, overwrite_flag=False):
         # output_crs = zone['proj']
         logging.debug('  Image Projection: {}'.format(ini['SPATIAL']['crs']))
 
-        output_transform = zone['transform'][:]
-        # output_transform = '[' + ','.join(map(str, zone['transform'])) + ']'
+        # output_transform = zone['transform'][:]
+        output_transform = '[' + ','.join(map(str, zone['transform'])) + ']'
         output_shape = '{1}x{0}'.format(*zone['shape'])
         logging.debug('  Image Transform: {}'.format(output_transform))
         logging.debug('  Image Shape: {}'.format(output_shape))
