@@ -17,9 +17,9 @@ import ee
 import numpy as np
 from osgeo import ogr
 
-import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
+import ee_tools.landsat
 import ee_tools.utils as utils
 
 
@@ -219,7 +219,7 @@ def ee_image_download(ini_path=None, overwrite_flag=False):
             return ee.Feature(None, {'id': image.get('SCENE_ID')})
 
         # Get list of available Landsat images
-        landsat_obj = ee_common.Landsat(landsat_args)
+        landsat_obj = ee_tools.landsat.Landsat(landsat_args)
         scene_id_list = [
             f['properties']['id']
             for f in landsat_obj.get_collection().map(

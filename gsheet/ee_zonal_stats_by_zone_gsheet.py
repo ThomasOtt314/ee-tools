@@ -32,11 +32,13 @@ import pandas as pd
 #   PYTHONPATH env. variable
 ee_tools_path = os.path.dirname(os.path.dirname(
     os.path.abspath(os.path.realpath(__file__))))
-sys.path.insert(0, os.path.join(ee_tools_path, 'ee_tools'))
-sys.path.insert(0, ee_tools_path)
-import ee_tools.ee_common as ee_common
+# if os.path.join(ee_tools_path, 'ee_tools') not in sys.path:
+#     sys.path.insert(0, os.path.join(ee_tools_path, 'ee_tools'))
+if ee_tools_path not in sys.path:
+    sys.path.insert(0, ee_tools_path)
 import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
+import ee_tools.landsat
 import ee_tools.utils as utils
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -503,7 +505,7 @@ def landsat_func(gsheet_cred, export_fields, ini, zone, tasks,
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
             'refl_sur_method', 'adjust_method', 'mosaic_method']}
-    landsat = ee_common.Landsat(landsat_args)
+    landsat = ee_tools.landsat.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']
 

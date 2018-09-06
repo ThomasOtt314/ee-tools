@@ -22,9 +22,11 @@ from pandas import ExcelWriter
 #   PYTHONPATH env. variable
 ee_tools_path = os.path.dirname(os.path.dirname(
     os.path.abspath(os.path.realpath(__file__))))
-sys.path.insert(0, os.path.join(ee_tools_path, 'ee_tools'))
-sys.path.insert(0, ee_tools_path)
-import ee_tools.gdal_common as gdc
+# if os.path.join(ee_tools_path, 'ee_tools') not in sys.path:
+#     sys.path.insert(0, os.path.join(ee_tools_path, 'ee_tools'))
+if ee_tools_path not in sys.path:
+    sys.path.insert(0, ee_tools_path)
+# import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
 import ee_tools.utils as utils
 

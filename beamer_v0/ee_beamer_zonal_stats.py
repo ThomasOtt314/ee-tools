@@ -28,11 +28,13 @@ import pandas as pd
 #   PYTHONPATH env. variable
 ee_tools_path = os.path.dirname(os.path.dirname(
     os.path.abspath(os.path.realpath(__file__))))
-sys.path.insert(0, os.path.join(ee_tools_path, 'ee_tools'))
-sys.path.insert(0, ee_tools_path)
-import ee_tools.ee_common as ee_common
+# if os.path.join(ee_tools_path, 'ee_tools') not in sys.path:
+#     sys.path.insert(0, os.path.join(ee_tools_path, 'ee_tools'))
+if ee_tools_path not in sys.path:
+    sys.path.insert(0, ee_tools_path)
 import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
+import ee_tools.landsat
 import ee_tools.utils as utils
 # import ee_tools.wrs2 as wrs2
 
@@ -216,7 +218,7 @@ def main(ini_path, overwrite_flag=True):
             'path_keep_list', 'row_keep_list', 'tile_geom',
             'adjust_method', 'mosaic_method', 'refl_sur_method']}
     landsat_args['products'] = ini['EXPORT']['landsat_products']
-    landsat = ee_common.Landsat(landsat_args)
+    landsat = ee_tools.landsat.Landsat(landsat_args)
 
     # Calculate zonal stats for each feature separately
     for zone_fid, zone_name, zone_json in zone_geom_list:
