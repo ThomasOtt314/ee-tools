@@ -147,6 +147,7 @@ def parse_inputs(ini, section='INPUTS'):
         ['landsat5_flag', 'landsat5_flag', bool, False],
         ['landsat7_flag', 'landsat7_flag', bool, False],
         ['landsat8_flag', 'landsat8_flag', bool, False],
+
         # Date filtering
         ['start_date', 'start_date', int, None],
         ['end_date', 'end_date', int, None],
@@ -169,6 +170,7 @@ def parse_inputs(ini, section='INPUTS'):
         # Cloud masking
         ['acca_flag', 'acca_flag', bool, False],
         ['fmask_flag', 'fmask_flag', bool, False],
+        ['cloud_flag', 'cloud_flag', bool, False],  # MODIS cloud mask flag
         # Default to Tasumi at-surface reflectance (for beamer calculation)
         ['refl_sur_method', 'refl_sur_method', str, 'tasumi'],
         ['mosaic_method', 'mosaic_method', str, 'mean'],
@@ -335,22 +337,24 @@ def parse_spatial_reference(ini, section='SPATIAL'):
         # Output spatial reference
         ['output_snap', 'snap', str],
         ['output_cs', 'cellsize', float],
-        ['output_proj', 'crs', str]
+        ['output_proj', 'crs', str],
     ]
     for input_name, output_name, get_type in param_list:
         get_param(ini, section, input_name, output_name, get_type)
 
     # Convert snap points to list
     ini[section]['snap'] = [
-        float(i) for i in ini[section]['snap'].split(',')
-        if i.strip().isdigit()][:2]
+        float(i) for i in ini[section]['snap'].split(',')]
     # Compute snap points separately
-    ini[section]['snap_x'], ini[section]['snap_y'] = ini[section]['snap']
+    ini[section]['snap_x'], ini[section]['snap_y'] = ini[section]['snap'][:2]
 
     # Compute OSR from EGSG code
     try:
-        ini[section]['osr'] = gdc.epsg_osr(
-            int(ini[section]['crs'].split(':')[1]))
+        if 'EPSG' in ini[section]['crs'].upper():
+            ini[section]['osr'] = gdc.epsg_osr(
+                int(ini[section]['crs'].split(':')[1]))
+        elif '+proj' in ini[section]['crs'].lower():
+            ini[section]['osr'] = gdc.proj4_osr(ini[section]['crs'])
     except Exception as e:
         logging.error(
             '\nERROR: The output projection could not be converted to a '
@@ -519,6 +523,8 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
         ini, section, 'landsat_products', 'landsat_products', list,
         'albedo_sur, evi_sur, ndvi_sur, ndvi_toa, ts')
     get_param(
+        ini, section, 'modis_products', 'modis_products', list, '')
+    get_param(
         ini, section, 'gridmet_products', 'gridmet_products', list,
         'eto, ppt')
 
@@ -530,6 +536,13 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
         for x in ini[section]['landsat_products'].split(',') if x.strip()])
     logging.debug('  Landsat Products:')
     for band in ini[section]['landsat_products']:
+        logging.debug('    {}'.format(band))
+
+    ini[section]['modis_products'] = utils.unique_keep_order([
+        x.lower().strip()
+        for x in ini[section]['modis_products'].split(',') if x.strip()])
+    logging.debug('  MODIS Products:')
+    for band in ini[section]['modis_products']:
         logging.debug('    {}'.format(band))
 
     ini[section]['gridmet_products'] = utils.unique_keep_order([
@@ -544,6 +557,9 @@ def parse_zonal_stats(ini, section='ZONAL_STATS'):
     param_list = [
         ['output_workspace', 'output_ws', str, os.getcwd()],
         ['landsat_flag', 'landsat_flag', bool, True],
+        ['modis_daily_flag', 'modis_daily_flag', bool, False],
+        ['modis_8day_flag', 'modis_8day_flag', bool, False],
+        ['modis_16day_flag', 'modis_16day_flag', bool, False],
         ['gridmet_daily_flag', 'gridmet_daily_flag', bool, False],
         ['gridmet_monthly_flag', 'gridmet_monthly_flag', bool, False],
         ['pdsi_flag', 'pdsi_flag', bool, False],

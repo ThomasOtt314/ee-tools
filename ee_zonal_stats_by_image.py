@@ -22,9 +22,9 @@ import numpy as np
 from osgeo import ogr
 import pandas as pd
 
-import ee_tools.ee_common as ee_common
 import ee_tools.gdal_common as gdc
 import ee_tools.inputs as inputs
+import ee_tools.landsat
 import ee_tools.utils as utils
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -507,7 +507,7 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
             'scene_id_keep_list', 'scene_id_skip_list',
             'path_keep_list', 'row_keep_list',
             'refl_sur_method', 'adjust_method', 'mosaic_method']}
-    landsat = ee_common.Landsat(landsat_args)
+    landsat = ee_tools.landsat.Landsat(landsat_args)
     if ini['INPUTS']['tile_geom']:
         landsat.tile_geom = ini['INPUTS']['tile_geom']
     landsat.zone_geom = None
@@ -1172,7 +1172,7 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         # logging.debug('    Dates missing all values: {}'.format(
         #     ', '.join(sorted(missing_all_dates))))
 
-        # Add non-intersecting SCENE_IDs directly to the output dataframe
+        # Add entries for missing DATES directly to the output dataframe
         if missing_all_dates:
             logging.debug('    Appending missing dates')
             missing_df = pd.DataFrame(
