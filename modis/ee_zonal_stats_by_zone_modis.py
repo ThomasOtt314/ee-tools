@@ -71,7 +71,7 @@ def main(ini_path=None, overwrite_flag=False):
     modis_daily_fields.extend(
         p.upper()
         for p in ini['ZONAL_STATS']['modis_products']
-        if p.split('_')[-1].upper() in ee_tools.modis.daily_collections)
+        if p.split('_')[-1].upper() in ee_tools.modis.collections_daily)
 
     # Convert the shapefile to geojson
     # if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']):
@@ -214,10 +214,11 @@ def main(ini_path=None, overwrite_flag=False):
                 point_count += zone_geom.GetGeometryRef(i).GetPointCount()
             zone['area'] = ini['SPATIAL']['cellsize'] * point_count
         else:
+            zone['area'] = zone_geom.GetArea()
             # Adjusting area up to nearest multiple of cellsize to account for
             #   polygons that were modified to avoid interior holes
-            zone['area'] = ini['SPATIAL']['cellsize'] * math.ceil(
-                zone_geom.GetArea() / ini['SPATIAL']['cellsize'])
+            # zone['area'] = ini['SPATIAL']['cellsize'] * math.ceil(
+            #     zone_geom.GetArea() / ini['SPATIAL']['cellsize'])
 
         # zone['area'] = zone_geom.GetArea()
         zone['extent'] = gdc.Extent(zone_geom.GetEnvelope())
@@ -280,15 +281,13 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
     # DEADBEEF - For now, hardcode transform to a standard MODIS image
     # ini['EXPORT']['transform'] = [
     #     231.656358264, 0.0, -20015109.354, 0.0, -231.656358264, 10007554.677]
-    # ini['EXPORT']['transform'] = '[{}]'.format(','.join(
-    #     map(str, (500.0, 0.0, 0.0, 0.0, -500.0, 0.0))))
     # logging.debug('    Output Transform: {}'.format(
     #     ini['EXPORT']['transform']))
 
     # Only keep daily MODIS products
     modis_products = [
         p for p in ini['ZONAL_STATS']['modis_products'][:]
-        if p.split('_')[-1].upper() in ee_tools.modis.daily_collections]
+        if p.split('_')[-1].upper() in ee_tools.modis.collections_daily]
     modis_fields = [p.upper() for p in modis_products]
 
     # Initialize the MODIS object
@@ -302,10 +301,6 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             'start_doy', 'end_doy',
         ]}
     modis = ee_tools.modis.MODIS(args)
-
-    # pprint.pprint(ee.Image(modis.get_daily_collection().first()).getInfo())
-    # print(modis.get_daily_collection().aggregate_histogram('DATE').getInfo())
-    # input('ENTER')
 
     def csv_writer(output_df, output_path, output_fields):
         """Write the dataframe to CSV with custom formatting"""
@@ -334,6 +329,25 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
         csv_df.sort_values(by=['DATE'], inplace=True)
         csv_df.to_csv(output_path, index=False, columns=output_fields)
 
+    def clean_export_df(data_df):
+        """Set/modify ancillary field values in the export CSV dataframe"""
+        # Remove any extra rows that were added for exporting
+        # The DEADBEEF entry is added because the export structure is based on
+        #   the first feature in the collection, so fields with nodata will
+        #   be excluded
+        data_df.drop(data_df[data_df['DATE'] == 'DEADBEEF'].index,
+                     inplace=True)
+
+        # Remove unused export fields
+        if 'system:index' in data_df.columns.values:
+            del data_df['system:index']
+        if '.geo' in data_df.columns.values:
+            del data_df['.geo']
+
+        # data_df.set_index('DATE', inplace=True, drop=True)
+
+        return data_df
+
     # Make copy of export field list in order to retain existing columns
     output_fields = export_fields[:]
 
@@ -356,78 +370,80 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
     except IOError:
         logging.debug(
             '    Output path doesn\'t exist, building empty dataframe')
-        output_df = pd.DataFrame(columns=output_fields)
+        output_df = pd.DataFrame(columns=export_fields)
     except Exception as e:
         logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
 
-    # # Use the DATE as the index
-    # output_df.set_index('DATE', inplace=True, drop=True)
-    # output_df.index.name = 'DATE'
-    # output_df['YEAR'] = pd.to_datetime(output_df.index).year
-    # output_df['MONTH'] = pd.to_datetime(output_df.index).month
-    # output_df['DAY'] = pd.to_datetime(output_df.index).day
-    # output_df['DOY'] = pd.to_datetime(output_df.index).dayofyear.astype(int)
+    # # # Use the DATE as the index
+    # # output_df.set_index('DATE', inplace=True, drop=True)
+    # # output_df.index.name = 'DATE'
+    # # output_df['YEAR'] = pd.to_datetime(output_df.index).year
+    # # output_df['MONTH'] = pd.to_datetime(output_df.index).month
+    # # output_df['DAY'] = pd.to_datetime(output_df.index).day
+    # # output_df['DOY'] = pd.to_datetime(output_df.index).dayofyear.astype(int)
+    #
+    # # Don't use DATE as the index
+    # output_df['DATE'] = pd.to_datetime(output_df['DATE'], format='%Y-%m-%d')
+    # output_df['YEAR'] = output_df['DATE'].dt.year
+    # output_df['MONTH'] = output_df['DATE'].dt.month
+    # output_df['DAY'] = output_df['DATE'].dt.day
+    # output_df['DOY'] = output_df['DATE'].dt.dayofyear.astype(int)
+    # output_df['DATE'] = output_df['DATE'].dt.strftime('%Y-%m-%d')
 
-    # Don't use DATE as the index
-    output_df['DATE'] = pd.to_datetime(output_df['DATE'], format='%Y-%m-%d')
-    output_df['YEAR'] = output_df['DATE'].dt.year
-    output_df['MONTH'] = output_df['DATE'].dt.month
-    output_df['DAY'] = output_df['DATE'].dt.day
-    output_df['DOY'] = output_df['DATE'].dt.dayofyear.astype(int)
-    output_df['DATE'] = output_df['DATE'].dt.strftime('%Y-%m-%d')
-
-    # Get list of possible dates based on INI
-    export_dates = set(
-        date_str for date_str in utils.date_range(
+    # Since MODIS daily data should generally have global data for each day,
+    # build date list from INI parameters instead of from collection dates
+    # Querying the collection is probably be better for 8 and 16 day products
+    export_dates = [
+        date_dt for date_dt in utils.date_range(
             '{}-01-01'.format(ini['INPUTS']['start_year']),
             '{}-12-31'.format(ini['INPUTS']['end_year']))
-        if date_str < datetime.datetime.today().strftime('%Y-%m-%d'))
-    # logging.debug('  Export Dates: {}'.format(
-    #     ', '.join(sorted(export_dates))))
+        if date_dt < datetime.datetime.today()]
+    if ini['INPUTS']['start_month'] and ini['INPUTS']['start_month'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month >= ini['INPUTS']['start_month']]
+    if ini['INPUTS']['end_month'] and ini['INPUTS']['end_month'] < 12:
+        export_dates = [d for d in export_dates
+                        if d.month <= ini['INPUTS']['end_month']]
+    if ini['INPUTS']['start_doy'] and ini['INPUTS']['start_doy'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month >= ini['INPUTS']['start_doy']]
+    if ini['INPUTS']['end_doy'] and ini['INPUTS']['end_doy'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month <= ini['INPUTS']['end_doy']]
+    export_dates = set(d.strftime('%Y-%m-%d') for d in export_dates)
+    logging.debug('  Export Dates: {}'.format(
+        ', '.join(sorted(export_dates))))
 
     # For overwrite, drop all expected entries from existing output DF
     if overwrite_flag:
-        # output_df = output_df[~output_df.index.isin(list(export_dates))]
         output_df = output_df[~output_df['DATE'].isin(list(export_dates))]
 
-    # # # # DEADBEEF - Reset zone area
-    # # if not output_df.empty:
-    # #     logging.info('    Updating zone area')
-    # #     output_df.loc[
-    # #         output_df.index.isin(list(export_dates)),
-    # #         ['AREA']] = zone['area']
-    # #     csv_writer(output_df, output_path, output_fields)
-
     # List of DATES that are entirely missing
-    # This may include scenes that don't intersect the zone
     missing_all_dates = export_dates - set(output_df['DATE'].values)
-    logging.info('  DATES missing all values: {}'.format(
+    logging.debug('  DATES missing all values: {}'.format(
         ', '.join(sorted(missing_all_dates))))
 
-    # if not missing_all_dates:
-    #     logging.info('  No missing DATES')
-    #     return True
-
     if missing_all_dates:
-        logging.debug('    Appending empty DATES')
+        logging.debug('  Appending empty DATES')
+
         # # Use DATE as index
-        # missing_df = pd.DataFrame(index=missing_all_dates,
+        # missing_df = pd.DataFrame(index=sorted(missing_all_dates),
         #                           columns=output_df.columns)
         # missing_df['ZONE_NAME'] = zone['name']
         # missing_df.index.name = 'DATE'
-        # missing_df.sort_index(inplace=True)
         # missing_df['YEAR'] = pd.to_datetime(missing_df.index).year
         # missing_df['MONTH'] = pd.to_datetime(missing_df.index).month
         # missing_df['DAY'] = pd.to_datetime(missing_df.index).day
         # missing_df['DOY'] = pd.to_datetime(missing_df.index).dayofyear.astype(int)
 
-        # Don't set DATE as index
+        # Don't use DATE as index
         missing_df = pd.DataFrame(index=range(len(missing_all_dates)),
                                   columns=output_df.columns)
         missing_df['DATE'] = sorted(missing_all_dates)
         missing_df['ZONE_NAME'] = zone['name']
-        missing_df['DATE'] = pd.to_datetime(missing_df['DATE'], format='%Y-%m-%d')
+        missing_df['DATE'] = pd.to_datetime(missing_df['DATE'],
+                                            format='%Y-%m-%d')
         missing_df['YEAR'] = missing_df['DATE'].dt.year
         missing_df['MONTH'] = missing_df['DATE'].dt.month
         missing_df['DAY'] = missing_df['DATE'].dt.day
@@ -447,177 +463,82 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
 
         # Remove the overlapping missing entries
         # Then append the new missing entries
-        # Drop the indices to the intersection can be computed
-        print(output_df.head())
-        print(missing_df.head())
-        if (not output_df.empty and
-                output_df['DATE'].intersection(missing_df['DATE']).any()):
-            output_df.drop(
-                output_df['DATE'].intersection(missing_df['DATE']),
-                inplace=True)
-        output_df = output_df.append(missing_df, sort=False)
+        # if (not output_df.empty and not missing_df.empty and
+        #         output_df['DATE'].intersection(missing_df['DATE']).any()):
+        try:
+            output_df.drop(output_df['DATE'].intersection(missing_df['DATE']),
+                           inplace=True)
+        except Exception as e:
+            pass
 
-        logging.debug('    Writing to CSV')
-        print(output_df.head())
-        csv_writer(output_df, output_path, output_fields)
-
+        if not missing_df.empty:
+            logging.debug('    Writing to CSV')
+            output_df = output_df.append(missing_df, sort=False)
+            csv_writer(output_df, output_path, output_fields)
         del missing_df
 
-    # # Identify DATES that are missing any data
-    # # Filter based on product and DATES lists
-    # # Check for missing data as long as PIXEL_COUNT > 0
-    # missing_fields = modis_fields[:]
-    # missing_date_mask = (
-    #     (output_df['PIXEL_COUNT'] > 0) &
-    #     output_df.index.isin(export_dates))
-    # missing_df = output_df.loc[missing_date_mask, missing_fields].isnull()
-    #
-    # # List of DATES and products with some missing data
-    # missing_any_dates = set(missing_df[missing_df.any(axis=1)].index.values)
-    #
-    # # logging.debug('  DATES missing all values: {}'.format(
-    # #     ', '.join(sorted(missing_all_dates))))
-    # # logging.debug('  DATES missing any values: {}'.format(
-    # #     ', '.join(sorted(missing_any_dates))))
-    #
-    # # Check for fields that are entirely empty or not present
-    # #   These may have been added but not filled
-    # # Additional logic is to handle condition where
-    # #   calling all on an empty dataframe returns True
-    # if not missing_df.empty:
-    #     missing_all_products = set(
-    #         f.lower()
-    #         for f in missing_df.columns[missing_df.all(axis=0)])
-    #     missing_any_products = set(
-    #         f.lower()
-    #         for f in missing_df.columns[missing_df.any(axis=0)])
-    # else:
-    #     missing_all_products = set()
-    #     missing_any_products = set()
-    # if missing_all_products:
-    #     logging.debug('    Products missing all values: {}'.format(
-    #         ', '.join(sorted(missing_all_products))))
-    # if missing_any_products:
-    #     logging.debug('    Products missing any values: {}'.format(
-    #         ', '.join(sorted(missing_any_products))))
-    #
-    # missing_dates = missing_all_dates | missing_any_dates
-    # missing_products = missing_all_products | missing_any_products
-    #
-    # # If mosaic flag is set, switch DATES back to non-mosaiced
-    # missing_scene_dates = set(missing_dates)
-    # # logging.debug('  DATES missing: {}'.format(
-    # #     ', '.join(sorted(missing_scene_dates))))
-    # logging.info('    Missing DATE count: {}'.format(
-    #     len(missing_scene_dates)))
-    #
-    # # Evaluate whether a subset of SCENE_IDs or products can be exported
-    # # The SCENE_ID skip and keep lists cannot be mosaiced SCENE_IDs
-    # if not missing_scene_ids and not missing_products:
-    #     logging.info('    No missing data or products, skipping zone')
-    #     return True
-    # elif missing_scene_dates or missing_all_products:
-    #     logging.info('    Exporting all products for specific DATES')
-    #     modis.products = modis_products[:]
-    # elif missing_scene_dates and missing_products:
-    #     logging.info('    Exporting specific missing products/DATES')
-    #     modis.products = list(missing_products)
-    # elif not missing_scene_ids and missing_products:
-    #     # This conditional will happen when images are missing Ts only
-    #     # The DATES are skipped but the missing products is not being
-    #     #   updated also.
-    #     logging.info(
-    #         '    Missing products but no missing DATES, skipping zone')
-    #     return True
-    # else:
-    #     logging.error('    Unhandled conditional')
-    #     input('ENTER')
+    for product in modis_products:
+        product = product.upper()
+        logging.info('  Product: {}'.format(product))
 
-    def clean_export_df(data_df):
-        """Set/modify ancillary field values in the export CSV dataframe"""
-        # First remove any extra rows that were added for exporting
-        data_df.drop(data_df[data_df['DATE'] == 'DEADBEEF'].index,
-                     inplace=True)
+        # # The export dates could be computed separately for each product
+        # # by getting the DATE list for the product collection.
+        # modis_coll = modis.get_daily_collection(product)
+        # export_dates = utils.ee_getinfo(modis_coll.aggregate_histogram('DATE'))
 
-        # Add additional fields to the export data frame
-        # data_df.set_index('DATE', inplace=True, drop=True)
-        if not data_df.empty:
-            # Otherwise if DATE is not the index:
-            data_df['DATE'] = pd.to_datetime(data_df['DATE'], format='%Y-%m-%d')
-            data_df['YEAR'] = data_df['DATE'].dt.year
-            data_df['MONTH'] = data_df['DATE'].dt.month
-            data_df['DAY'] = data_df['DATE'].dt.day
-            data_df['DOY'] = data_df['DATE'].dt.dayofyear.astype(int)
-            data_df['DATE'] = data_df['DATE'].dt.strftime('%Y-%m-%d')
+        # Identify DATES that are missing some data for the product
+        missing_df = output_df.loc[
+            output_df['DATE'].isin(export_dates), ['DATE', product]]
+        missing_mask = missing_df[product].isnull()
+        if not any(missing_mask):
+            continue
+        missing_dates = set(missing_df.loc[missing_mask, 'DATE'].values)
+        logging.debug('    DATES missing product values: {}'.format(
+            ', '.join(sorted(missing_dates))))
 
-            # data_df['ZONE_NAME'] = data_df['ZONE_NAME'].astype(str)
-            # data_df['AREA'] = zone['area']
-            # data_df['PIXEL_SIZE'] = modis.cellsize
+        # Don't use the date_keep_list if all the values are missing
+        # Build the date list in the MODIS system:index format
+        if not all(missing_mask):
+            modis.date_keep_list = sorted([
+                datetime.datetime.strptime(d, '%Y-%m-%d').strftime('%Y_%m_%d')
+                for d in missing_dates])
 
-            # DEADBEEF
-            # fmask_mask = data_df['CLOUD_TOTAL'] > 0
-            # if fmask_mask.any():
-            #     data_df.loc[fmask_mask, 'CLOUD_PCT'] = 100.0 * (
-            #         data_df.loc[fmask_mask, 'CLOUD_COUNT'] /
-            #         data_df.loc[fmask_mask, 'CLOUD_TOTAL'])
-            # data_df['QA'] = 0
-            # data_fields = [
-            #     p.upper()
-            #     for p in modis.products + ['CLOUD_PCT']]
-            # data_df[data_fields] = data_df[data_fields].round(10)
+        # Adjust start and end year to even multiples of year_step
+        iter_start_year = ini['INPUTS']['start_year']
+        iter_end_year = ini['INPUTS']['end_year'] + 1
+        iter_years = ini['ZONAL_STATS']['year_step']
+        if iter_years > 1:
+            iter_start_year = int(math.floor(
+                float(iter_start_year) / iter_years) * iter_years)
+            iter_end_year = int(math.ceil(
+                float(iter_end_year) / iter_years) * iter_years)
 
-        # Remove unused export fields
-        if 'system:index' in data_df.columns.values:
-            del data_df['system:index']
-        if '.geo' in data_df.columns.values:
-            del data_df['.geo']
+        # Process date range by year
+        for year in range(iter_start_year, iter_end_year, iter_years):
+            start_dt = datetime.datetime(year, 1, 1)
+            end_dt = (
+                datetime.datetime(year + iter_years, 1, 1) -
+                datetime.timedelta(0, 1))
+            start_date = start_dt.date().isoformat()
+            end_date = end_dt.date().isoformat()
+            start_year = max(start_dt.date().year, ini['INPUTS']['start_year'])
+            end_year = min(end_dt.date().year, ini['INPUTS']['end_year'])
 
-        # data_df.set_index('DATE', inplace=True, drop=True)
+            # Filter by iteration date in addition to input date parameters
+            modis.start_date = start_date
+            modis.end_date = end_date
+            # modis.start_year = start_year
+            # modis.end_year = end_year
 
-        return data_df
-
-    # Adjust start and end year to even multiples of year_step
-    iter_start_year = ini['INPUTS']['start_year']
-    iter_end_year = ini['INPUTS']['end_year'] + 1
-    iter_years = ini['ZONAL_STATS']['year_step']
-    if iter_years > 1:
-        iter_start_year = int(math.floor(
-            float(iter_start_year) / iter_years) * iter_years)
-        iter_end_year = int(math.ceil(
-            float(iter_end_year) / iter_years) * iter_years)
-
-    # Process date range by year
-    for year in range(iter_start_year, iter_end_year, iter_years):
-        start_dt = datetime.datetime(year, 1, 1)
-        end_dt = (
-            datetime.datetime(year + iter_years, 1, 1) -
-            datetime.timedelta(0, 1))
-        start_date = start_dt.date().isoformat()
-        end_date = end_dt.date().isoformat()
-        # start_year = max(start_dt.date().year, ini['INPUTS']['start_year'])
-        # end_year = min(end_dt.date().year, ini['INPUTS']['end_year'])
-
-        # Filter by iteration date in addition to input date parameters
-        modis.start_date = start_date
-        modis.end_date = end_date
-        # modis.start_year = start_year
-        # modis.end_year = end_year
-
-        for product in modis_products:
-            logging.info('    Product: {}'.format(product.upper()))
-            modis_coll = modis.get_daily_collection(product.upper())
-
-            # DEBUG - Test that the MODIS collection is getting built
-            # print(modis_coll.aggregate_histogram('DATE').getInfo())
-            # # input('ENTER')
-            # print('Bands: {}'.format(
-            #     [x['id'] for x in ee.Image(modis_coll.first()).getInfo()['bands']]))
-            # print('Date: {}'.format(
-            #     ee.Image(modis_coll.first()).getInfo()['properties']['DATE']))
-            # input('ENTER')
-            # if ee.Image(modis_coll.first()).getInfo() is None:
-            #     logging.info('    No images, skipping')
-            #     continue
+            # Skip year range if DATE keep list is set and doesn't match
+            if (modis.date_keep_list and not any(
+                    set(int(x[0:4]) for x in modis.date_keep_list) &
+                    set(range(start_year, end_year + 1)))):
+                logging.debug('    {}  {}'.format(start_date, end_date))
+                logging.debug('      No matching DATES for year range')
+                continue
+            else:
+                logging.info('    {}  {}'.format(start_date, end_date))
 
             # Calculate values and statistics
             # Build function in loop to set water year ETo/PPT values
@@ -629,51 +550,24 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
                 # Using zone['geom'] as the geometry should make it
                 #   unnecessary to clip also
                 input_mean = ee.Image(image) \
-                    .select([product.upper()]) \
+                    .select([product]) \
                     .reduceRegion(
                         reducer=ee.Reducer.mean(),
                         geometry=zone['geom'],
                         crs=ini['SPATIAL']['crs'],
                         crsTransform=ini['EXPORT']['transform'],
                         bestEffort=False,
-                        tileScale=1,
-                        maxPixels=zone['max_pixels'] * bands)
+                        tileScale=1)
 
-                # # Count unmasked Fmask pixels to get pixel count
-                # # Count Fmask > 1 to get Fmask count (0 is clear and 1 is water)
-                # cloud_img = ee.Image(image).select(['cloud'])
-                # input_count = ee.Image([
-                #         cloud_img.gte(0).unmask().rename(['pixel']),
-                #         cloud_img.gt(1).rename(['fmask'])]) \
-                #     .reduceRegion(
-                #         reducer=ee.Reducer.sum().combine(
-                #             ee.Reducer.count(), '', True),
-                #         geometry=zone['geom'],
-                #         crs=ini['SPATIAL']['crs'],
-                #         crsTransform=ini['EXPORT']['transform'],
-                #         bestEffort=False,
-                #         tileScale=1,
-                #         maxPixels=zone['max_pixels'] * 3)
-
-                # Standard output
                 zs_dict = {
                     'ZONE_NAME': str(zone['name']),
                     'DATE': date.format('YYYY-MM-dd'),
-                    # 'AREA': zone['area'],
-                    # 'PIXEL_SIZE': modis.cellsize,
-                    # 'PIXEL_COUNT': input_count.get('pixel_sum'),
-                    # 'PIXEL_TOTAL': input_count.get('pixel_count'),
-                    # 'CLOUD_COUNT': input_count.get('cloud_sum'),
-                    # 'CLOUD_TOTAL': input_count.get('cloud_count'),
-                    # 'CLOUD_PCT': ee.Number(input_count.get('cloud_sum')) \
-                    #     .divide(ee.Number(input_count.get('cloud_count'))) \
-                    #     .multiply(100),
-                    # 'QA': ee.Number(0),
-                    product.upper(): input_mean.get(product.upper()),
+                    product: input_mean.get(product),
                 }
 
                 return ee.Feature(None, zs_dict)
 
+            modis_coll = modis.get_daily_collection(product)
             stats_coll = modis_coll.map(zonal_stats_func, False)
 
             # # DEBUG - Test the function for a single image
@@ -681,7 +575,7 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             #     ee.Image(modis_coll.first())).getInfo()
             # pp.pprint(stats_info['properties'])
             # input('ENTER')
-
+            #
             # # DEBUG - Print the stats info to the screen
             # stats_info = stats_coll.getInfo()
             # for ftr in stats_info['features']:
@@ -693,7 +587,7 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             format_dict = {
                 'ZONE_NAME': 'DEADBEEF',
                 'DATE': 'DEADBEEF',
-                product.upper(): 'DEADBEEF',
+                product: -9999,
             }
             stats_coll = ee.FeatureCollection(ee.Feature(None, format_dict)) \
                 .merge(stats_coll)
@@ -715,21 +609,18 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
                 logging.debug('    Processing data')
                 export_df.set_index(['DATE'], inplace=True, drop=True)
                 output_df.set_index(['DATE'], inplace=True, drop=True)
-                output_df = output_df.combine_first(export_df)
-                # output_df = output_df.update(export_df)
+                if overwrite_flag:
+                    # Update happens inplace automatically
+                    output_df.update(export_df)
+                else:
+                    # Combine first doesn't have an inplace parameter
+                    output_df = output_df.combine_first(export_df)
                 output_df.reset_index(inplace=True, drop=False)
 
-                # if overwrite_flag:
-                #     # Update happens inplace automatically
-                #     # output_df.update(export_df)
-                #     output_df = output_df.append(export_df, sort=False)
-                # else:
-                #     # Combine first doesn't have an inplace parameter
-                #     output_df = output_df.combine_first(export_df)
 
     # Save updated CSV
     if output_df is not None and not output_df.empty:
-        logging.info('    Writing CSV')
+        logging.info('  Writing CSV')
         csv_writer(output_df, output_path, output_fields)
     else:
         logging.info(

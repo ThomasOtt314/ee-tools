@@ -4,11 +4,9 @@
 # Python:       3.6
 #--------------------------------
 
-from builtins import input
 import datetime
 import logging
 import math
-import pprint
 import sys
 
 import ee
@@ -212,8 +210,7 @@ class Landsat():
 
         Parameters
         ----------
-        args : dict
-            Keyword arguments for get_landsat_collection.
+
 
         Returns
         -------

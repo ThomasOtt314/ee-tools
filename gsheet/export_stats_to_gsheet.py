@@ -867,7 +867,8 @@ def gridmet_daily_func(gsheet_cred, export_fields, ini, zones_geojson,
 
     # # Get list of possible dates based on INI
     # export_dates = set(
-    #     date_str for date_str in utils.date_range(
+    #     date_dt.strftime('%Y-%m-%d')
+    #     for date_dt in utils.date_range(
     #         '{}-01-01'.format(ini['INPUTS']['start_year'] - 1),
     #         '{}-12-31'.format(ini['INPUTS']['end_year']))
     #     if datetime.datetime.strptime(date_str, '%Y-%m-%d') <= gridmet_end_dt)

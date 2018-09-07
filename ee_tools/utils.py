@@ -58,7 +58,7 @@ def date_range(start_date, end_date):
     start_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
     end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d')
     for n in range(int((end_dt + datetime.timedelta(1) - start_dt).days)):
-        yield (start_dt + datetime.timedelta(n)).strftime('%Y-%m-%d')
+        yield (start_dt + datetime.timedelta(n))
 
 
 # def date_range(start_dt, end_dt, days=1, skip_leap_days=True):
