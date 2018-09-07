@@ -770,6 +770,7 @@ def landsat_func(export_fields, ini, zone, tasks, overwrite_flag=False):
                     output_df.index.intersection(missing_df.index),
                     inplace=True)
             output_df = output_df.append(missing_df, sort=False)
+            logging.debug('    Writing to CSV')
             csv_writer(output_df, output_path, output_fields)
 
     # Identify SCENE_IDs that are missing any data

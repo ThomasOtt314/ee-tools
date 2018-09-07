@@ -6,21 +6,21 @@
 
 import argparse
 from builtins import input
-from collections import defaultdict
+# from collections import defaultdict
 import datetime
-from io import StringIO
+# from io import StringIO
 import json
 import logging
 import math
 import os
 import pprint
-import re
-import requests
+# import re
+# import requests
 from subprocess import check_output
 import sys
 
 import ee
-import numpy as np
+# import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -63,10 +63,15 @@ def main(ini_path=None, overwrite_flag=False):
     inputs.parse_section(ini, section='ZONAL_STATS')
 
     # These may eventually be set in the INI file
-    modis_fields = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
+    modis_daily_fields = [
+        'ZONE_NAME', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
     #     'AREA', 'PIXEL_SIZE', 'PIXEL_COUNT', 'PIXEL_TOTAL',
     #     'CLOUD_COUNT', 'CLOUD_TOTAL', 'CLOUD_PCT', 'QA']
+
+    modis_daily_fields.extend(
+        p.upper()
+        for p in ini['ZONAL_STATS']['modis_products']
+        if p.split('_')[-1].upper() in ee_tools.modis.daily_collections)
 
     # Convert the shapefile to geojson
     # if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']):
@@ -150,7 +155,6 @@ def main(ini_path=None, overwrite_flag=False):
         logging.debug('  Output Cellsize: {}'.format(
             ini['SPATIAL']['cellsize']))
 
-
     # Initialize Earth Engine API key
     logging.info('\nInitializing Earth Engine')
     ee.Initialize()
@@ -185,10 +189,6 @@ def main(ini_path=None, overwrite_flag=False):
 
     # Calculate zonal stats for each feature separately
     logging.info('')
-    # for zone_fid, zone_name, zone_json in zone_geom_list:
-    #     zone['fid'] = zone_fid
-    #     zone['name'] = zone_name.replace(' ', '_')
-    #     zone['json'] = zone_json
     for zone_ftr in zones_geojson['features']:
         zone = {}
         zone['fid'] = zone_ftr['id']
@@ -254,7 +254,7 @@ def main(ini_path=None, overwrite_flag=False):
             os.makedirs(zone['output_ws'])
 
         if ini['ZONAL_STATS']['modis_daily_flag']:
-            modis_daily_func(modis_fields, ini, zone, overwrite_flag)
+            modis_daily_func(modis_daily_fields, ini, zone, overwrite_flag)
 
 
 def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
@@ -289,7 +289,7 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
     modis_products = [
         p for p in ini['ZONAL_STATS']['modis_products'][:]
         if p.split('_')[-1].upper() in ee_tools.modis.daily_collections]
-    modis_fields = [f.upper() for f in modis_products]
+    modis_fields = [p.upper() for p in modis_products]
 
     # Initialize the MODIS object
     args = {
@@ -313,7 +313,6 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
 
         # Convert float fields to objects, set NaN to None
         float_fields = modis_fields[:]
-        # float_fields = modis_fields + ['CLOUD_PCT']
         for field in csv_df.columns.values:
             if field.upper() not in float_fields:
                 continue
@@ -326,28 +325,17 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             #     lambda x: '{0:10.6f}'.format(x[0]).strip(), axis=1)
 
         # Set field types
-        # Don't set the following since they may contain NaN/None?
-        # 'QA', 'PIXEL_TOTAL', 'PIXEL_COUNT', 'CLOUD_TOTAL', 'CLOUD_COUNT']
-        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'DAY', 'DOY']:
+        for field in ['YEAR', 'MONTH', 'DAY', 'DOY']:
             csv_df[field] = csv_df[field].astype(int)
         # if csv_df['ZONE_NAME'].dtype == np.float64:
         #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
 
-        # DEADBEEF
-        # if csv_df['QA'].isnull().any():
-        #     csv_df.loc[csv_df['QA'].isnull(), 'QA'] = 0
-        # cloud_mask = csv_df['CLOUD_TOTAL'] > 0
-        # if cloud_mask.any():
-        #     csv_df.loc[cloud_mask, 'CLOUD_PCT'] = 100.0 * (
-        #         csv_df.loc[cloud_mask, 'CLOUD_COUNT'] /
-        #         csv_df.loc[cloud_mask, 'CLOUD_TOTAL'])
-
-        csv_df.reset_index(drop=False, inplace=True)
-        csv_df.sort_values(by=['DATE', 'SENSOR'], inplace=True)
+        # csv_df.reset_index(drop=False, inplace=True)
+        csv_df.sort_values(by=['DATE'], inplace=True)
         csv_df.to_csv(output_path, index=False, columns=output_fields)
-    #
-    # # Make copy of export field list in order to retain existing columns
-    # output_fields = export_fields[:]
+
+    # Make copy of export field list in order to retain existing columns
+    output_fields = export_fields[:]
 
     # Read existing output table if possible
     # Otherwise build an empty dataframe
@@ -357,13 +345,14 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
     logging.debug('    {}'.format(output_path))
     try:
         output_df = pd.read_csv(output_path, parse_dates=['DATE'])
-        # output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(str)
+        output_df['DATE'] = output_df['DATE'].dt.strftime('%Y-%m-%d')
+        output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(str)
 
         # Move any existing columns not in export_fields to end of CSV
         output_fields.extend([
             f for f in output_df.columns.values if f not in export_fields])
         output_df = output_df.reindex(columns=output_fields)
-        output_df.sort_values(by=['DATE', 'SCENE_ID'], inplace=True)
+        output_df.sort_values(by=['DATE'], inplace=True)
     except IOError:
         logging.debug(
             '    Output path doesn\'t exist, building empty dataframe')
@@ -372,132 +361,124 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
         logging.exception('    ERROR: Unhandled Exception\n    {}'.format(e))
         input('ENTER')
 
-    # Use the DATE as the index
-    output_df.set_index('DATE', inplace=True, drop=True)
+    # # Use the DATE as the index
+    # output_df.set_index('DATE', inplace=True, drop=True)
     # output_df.index.name = 'DATE'
+    # output_df['YEAR'] = pd.to_datetime(output_df.index).year
+    # output_df['MONTH'] = pd.to_datetime(output_df.index).month
+    # output_df['DAY'] = pd.to_datetime(output_df.index).day
+    # output_df['DOY'] = pd.to_datetime(output_df.index).dayofyear.astype(int)
 
-    # # For overwrite, drop all expected entries from existing output DF
-    # if overwrite_flag:
-    #     output_df = output_df[~output_df.index.isin(list(export_dates))]
+    # Don't use DATE as the index
+    output_df['DATE'] = pd.to_datetime(output_df['DATE'], format='%Y-%m-%d')
+    output_df['YEAR'] = output_df['DATE'].dt.year
+    output_df['MONTH'] = output_df['DATE'].dt.month
+    output_df['DAY'] = output_df['DATE'].dt.day
+    output_df['DOY'] = output_df['DATE'].dt.dayofyear.astype(int)
+    output_df['DATE'] = output_df['DATE'].dt.strftime('%Y-%m-%d')
+
+    # Get list of possible dates based on INI
+    export_dates = set(
+        date_str for date_str in utils.date_range(
+            '{}-01-01'.format(ini['INPUTS']['start_year']),
+            '{}-12-31'.format(ini['INPUTS']['end_year']))
+        if date_str < datetime.datetime.today().strftime('%Y-%m-%d'))
+    # logging.debug('  Export Dates: {}'.format(
+    #     ', '.join(sorted(export_dates))))
+
+    # For overwrite, drop all expected entries from existing output DF
+    if overwrite_flag:
+        # output_df = output_df[~output_df.index.isin(list(export_dates))]
+        output_df = output_df[~output_df['DATE'].isin(list(export_dates))]
 
     # # # # DEADBEEF - Reset zone area
     # # if not output_df.empty:
     # #     logging.info('    Updating zone area')
     # #     output_df.loc[
-    # #         output_df.index.isin(list(export_ids)),
+    # #         output_df.index.isin(list(export_dates)),
     # #         ['AREA']] = zone['area']
     # #     csv_writer(output_df, output_path, output_fields)
-    #
-    # # List of SCENE_IDs that are entirely missing
-    # # This may include scenes that don't intersect the zone
-    # missing_all_ids = export_ids - set(output_df.index.values)
-    # # logging.info('  Dates missing all values: {}'.format(
-    # #     ', '.join(sorted(missing_all_ids))))
-    #
-    # # If there are any fully missing scenes, identify whether they
-    # #   intersect the zone or not
-    # # Exclude non-intersecting SCENE_IDs from export_ids set
-    # # Add non-intersecting SCENE_IDs directly to the output dataframe
-    # if missing_all_ids:
-    #     # Get SCENE_ID list mimicking a full extract below
-    #     #   (but without products)
-    #     # Start with INI path/row keep list but update based on SCENE_ID later
-    #     modis.products = []
-    #     modis.zone_geom = zone['geom']
-    #
-    #     # Get the SCENE_IDs that intersect the zone
-    #     # Process each MODIS type independently
-    #     # Was having issues getting the full scene list at once
-    #     logging.debug('    Getting intersecting SCENE_IDs')
-    #     missing_zone_ids = set()
-    #     type_list = modis._modis_list[:]
-    #     for type_str in type_list:
-    #         modis._modis_list = [type_str]
-    #         missing_zone_ids.update(set(utils.ee_getinfo(
-    #             modis.get_collection().aggregate_histogram('SCENE_ID'))))
-    #         logging.debug('      {} {}'.format(
-    #             type_str, len(missing_zone_ids)))
-    #     modis._modis_list = type_list
-    #
-    #     # Difference of sets are SCENE_IDs that don't intersect
-    #     missing_skip_ids = missing_all_ids - missing_zone_ids
-    #
-    #     # Updating missing all SCENE_ID list to not include
-    #     #   non-intersecting scenes
-    #     missing_all_ids = set(missing_zone_ids)
-    #
-    #     # Remove skipped/empty SCENE_IDs from possible SCENE_ID list
-    #     export_ids = export_ids - missing_skip_ids
-    #     # logging.debug('  Missing Include: {}'.format(
-    #     #     ', '.join(sorted(missing_zone_ids))))
-    #     # logging.debug('  Missing Exclude: {}'.format(
-    #     #     ', '.join(sorted(missing_skip_ids))))
-    #     logging.info('    Include ID count: {}'.format(
-    #         len(missing_zone_ids)))
-    #     logging.info('    Exclude ID count: {}'.format(
-    #         len(missing_skip_ids)))
-    #
-    #     if missing_skip_ids:
-    #         logging.debug('    Appending empty non-intersecting SCENE_IDs')
-    #         missing_df = pd.DataFrame(
-    #             index=missing_skip_ids, columns=output_df.columns)
-    #         missing_df.index.name = 'SCENE_ID'
-    #         missing_df['ZONE_NAME'] = str(zone['name'])
-    #         missing_df['ZONE_FID'] = zone['fid']
-    #         missing_df['AREA'] = zone['area']
-    #         missing_df['PLATFORM'] = missing_df.index.str.slice(0, 4)
-    #         missing_df['DATE'] = pd.to_datetime(
-    #             missing_df.index.str.slice(12, 20), format='%Y%m%d')
-    #         missing_df['YEAR'] = missing_df['DATE'].dt.year
-    #         missing_df['MONTH'] = missing_df['DATE'].dt.month
-    #         missing_df['DAY'] = missing_df['DATE'].dt.day
-    #         missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
-    #         missing_df['QA'] = np.nan
-    #         # missing_df['QA'] = 0
-    #         missing_df['PIXEL_SIZE'] = modis.cellsize
-    #         missing_df['PIXEL_COUNT'] = 0
-    #         missing_df['PIXEL_TOTAL'] = 0
-    #         missing_df['CLOUD_COUNT'] = 0
-    #         missing_df['CLOUD_TOTAL'] = 0
-    #         missing_df['CLOUD_PCT'] = np.nan
-    #         # missing_df[f] = missing_df[f].astype(int)
-    #
-    #         # Remove the overlapping missing entries
-    #         # Then append the new missing entries
-    #         if output_df.index.intersection(missing_df.index).any():
-    #             output_df.drop(
-    #                 output_df.index.intersection(missing_df.index),
-    #                 inplace=True)
-    #         output_df = output_df.append(missing_df, sort=False)
-    #         csv_writer(output_df, output_path, output_fields)
-    #
-    # # Identify SCENE_IDs that are missing any data
-    # # Filter based on product and SCENE_ID lists
+
+    # List of DATES that are entirely missing
+    # This may include scenes that don't intersect the zone
+    missing_all_dates = export_dates - set(output_df['DATE'].values)
+    logging.info('  DATES missing all values: {}'.format(
+        ', '.join(sorted(missing_all_dates))))
+
+    # if not missing_all_dates:
+    #     logging.info('  No missing DATES')
+    #     return True
+
+    if missing_all_dates:
+        logging.debug('    Appending empty DATES')
+        # # Use DATE as index
+        # missing_df = pd.DataFrame(index=missing_all_dates,
+        #                           columns=output_df.columns)
+        # missing_df['ZONE_NAME'] = zone['name']
+        # missing_df.index.name = 'DATE'
+        # missing_df.sort_index(inplace=True)
+        # missing_df['YEAR'] = pd.to_datetime(missing_df.index).year
+        # missing_df['MONTH'] = pd.to_datetime(missing_df.index).month
+        # missing_df['DAY'] = pd.to_datetime(missing_df.index).day
+        # missing_df['DOY'] = pd.to_datetime(missing_df.index).dayofyear.astype(int)
+
+        # Don't set DATE as index
+        missing_df = pd.DataFrame(index=range(len(missing_all_dates)),
+                                  columns=output_df.columns)
+        missing_df['DATE'] = sorted(missing_all_dates)
+        missing_df['ZONE_NAME'] = zone['name']
+        missing_df['DATE'] = pd.to_datetime(missing_df['DATE'], format='%Y-%m-%d')
+        missing_df['YEAR'] = missing_df['DATE'].dt.year
+        missing_df['MONTH'] = missing_df['DATE'].dt.month
+        missing_df['DAY'] = missing_df['DATE'].dt.day
+        missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
+        missing_df['DATE'] = missing_df['DATE'].dt.strftime('%Y-%m-%d')
+
+        # missing_df['AREA'] = zone['area']
+        # missing_df['QA'] = np.nan
+        # missing_df['QA'] = 0
+        # missing_df['PIXEL_SIZE'] = modis.cellsize
+        # missing_df['PIXEL_COUNT'] = 0
+        # missing_df['PIXEL_TOTAL'] = 0
+        # missing_df['CLOUD_COUNT'] = 0
+        # missing_df['CLOUD_TOTAL'] = 0
+        # missing_df['CLOUD_PCT'] = np.nan
+        # missing_df[f] = missing_df[f].astype(int)
+
+        # Remove the overlapping missing entries
+        # Then append the new missing entries
+        # Drop the indices to the intersection can be computed
+        print(output_df.head())
+        print(missing_df.head())
+        if (not output_df.empty and
+                output_df['DATE'].intersection(missing_df['DATE']).any()):
+            output_df.drop(
+                output_df['DATE'].intersection(missing_df['DATE']),
+                inplace=True)
+        output_df = output_df.append(missing_df, sort=False)
+
+        logging.debug('    Writing to CSV')
+        print(output_df.head())
+        csv_writer(output_df, output_path, output_fields)
+
+        del missing_df
+
+    # # Identify DATES that are missing any data
+    # # Filter based on product and DATES lists
     # # Check for missing data as long as PIXEL_COUNT > 0
     # missing_fields = modis_fields[:]
-    # missing_id_mask = (
+    # missing_date_mask = (
     #     (output_df['PIXEL_COUNT'] > 0) &
-    #     output_df.index.isin(export_ids))
-    # missing_df = output_df.loc[missing_id_mask, missing_fields].isnull()
+    #     output_df.index.isin(export_dates))
+    # missing_df = output_df.loc[missing_date_mask, missing_fields].isnull()
     #
-    # # List of SCENE_IDs and products with some missing data
-    # missing_any_ids = set(missing_df[missing_df.any(axis=1)].index.values)
+    # # List of DATES and products with some missing data
+    # missing_any_dates = set(missing_df[missing_df.any(axis=1)].index.values)
     #
-    # # DEADBEEF - For now, skip SCENE_IDs that are only missing Ts
-    # if not missing_df.empty and 'TS' in missing_fields:
-    #     missing_ts_ids = set(missing_df[
-    #         missing_df[['TS']].any(axis=1) &
-    #         ~missing_df.drop('TS', axis=1).any(axis=1)].index.values)
-    #     if missing_ts_ids:
-    #         logging.info('  SCENE_IDs missing Ts only: {}'.format(
-    #             ', '.join(sorted(missing_ts_ids))))
-    #         missing_any_ids -= missing_ts_ids
-    #         # input('ENTER')
-    #
-    # # logging.debug('  SCENE_IDs missing all values: {}'.format(
-    # #     ', '.join(sorted(missing_all_ids))))
-    # # logging.debug('  SCENE_IDs missing any values: {}'.format(
-    # #     ', '.join(sorted(missing_any_ids))))
+    # # logging.debug('  DATES missing all values: {}'.format(
+    # #     ', '.join(sorted(missing_all_dates))))
+    # # logging.debug('  DATES missing any values: {}'.format(
+    # #     ', '.join(sorted(missing_any_dates))))
     #
     # # Check for fields that are entirely empty or not present
     # #   These may have been added but not filled
@@ -520,75 +501,60 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
     #     logging.debug('    Products missing any values: {}'.format(
     #         ', '.join(sorted(missing_any_products))))
     #
-    # missing_ids = missing_all_ids | missing_any_ids
+    # missing_dates = missing_all_dates | missing_any_dates
     # missing_products = missing_all_products | missing_any_products
     #
-    # # If mosaic flag is set, switch IDs back to non-mosaiced
-    # if ini['INPUTS']['mosaic_method'] in modis.mosaic_options:
-    #     missing_scene_ids = [
-    #         scene_id for mosaic_id in missing_ids
-    #         for scene_id in mosaic_id_dict[mosaic_id]]
-    # else:
-    #     missing_scene_ids = set(missing_ids)
-    # # logging.debug('  SCENE_IDs missing: {}'.format(
-    # #     ', '.join(sorted(missing_scene_ids))))
-    # logging.info('    Missing ID count: {}'.format(
-    #     len(missing_scene_ids)))
+    # # If mosaic flag is set, switch DATES back to non-mosaiced
+    # missing_scene_dates = set(missing_dates)
+    # # logging.debug('  DATES missing: {}'.format(
+    # #     ', '.join(sorted(missing_scene_dates))))
+    # logging.info('    Missing DATE count: {}'.format(
+    #     len(missing_scene_dates)))
     #
     # # Evaluate whether a subset of SCENE_IDs or products can be exported
     # # The SCENE_ID skip and keep lists cannot be mosaiced SCENE_IDs
     # if not missing_scene_ids and not missing_products:
     #     logging.info('    No missing data or products, skipping zone')
     #     return True
-    # elif missing_scene_ids or missing_all_products:
-    #     logging.info('    Exporting all products for specific SCENE_IDs')
-    #     modis.scene_id_keep_list = sorted(list(missing_scene_ids))
+    # elif missing_scene_dates or missing_all_products:
+    #     logging.info('    Exporting all products for specific DATES')
     #     modis.products = modis_products[:]
-    # elif missing_scene_ids and missing_products:
-    #     logging.info('    Exporting specific missing products/SCENE_IDs')
-    #     modis.scene_id_keep_list = sorted(list(missing_scene_ids))
+    # elif missing_scene_dates and missing_products:
+    #     logging.info('    Exporting specific missing products/DATES')
     #     modis.products = list(missing_products)
     # elif not missing_scene_ids and missing_products:
     #     # This conditional will happen when images are missing Ts only
-    #     # The SCENE_IDs are skipped but the missing products is not being
+    #     # The DATES are skipped but the missing products is not being
     #     #   updated also.
     #     logging.info(
-    #         '    Missing products but no missing SCENE_IDs, skipping zone')
+    #         '    Missing products but no missing DATES, skipping zone')
     #     return True
     # else:
     #     logging.error('    Unhandled conditional')
     #     input('ENTER')
 
-    def export_update(data_df):
+    def clean_export_df(data_df):
         """Set/modify ancillary field values in the export CSV dataframe"""
         # First remove any extra rows that were added for exporting
-        data_df.drop(
-            data_df[data_df['DATE'] == 'DEADBEEF'].index, inplace=True)
-
-        # # With old Fmask data, PIXEL_COUNT can be > 0 even if all data is NaN
-        # if ('NDVI_TOA' in data_df.columns.values and
-        #         'TS' in data_df.columns.values):
-        #     drop_mask = (
-        #         data_df['NDVI_TOA'].isnull() & data_df['TS'].isnull() &
-        #         (data_df['PIXEL_COUNT'] > 0))
-        #     if not data_df.empty and drop_mask.any():
-        #         data_df.loc[drop_mask, ['PIXEL_COUNT']] = 0
+        data_df.drop(data_df[data_df['DATE'] == 'DEADBEEF'].index,
+                     inplace=True)
 
         # Add additional fields to the export data frame
         # data_df.set_index('DATE', inplace=True, drop=True)
         if not data_df.empty:
-            # data_df['ZONE_NAME'] = data_df['ZONE_NAME'].astype(str)
-            data_df['ZONE_FID'] = zone['fid']
-            # data_df['DATE'] = pd.to_datetime(data_df.index.str, format='%Y%m%d')
-            data_df['DATE'] = pd.to_datetime(data_df['DATE'].str, format='%Y%m%d')
+            # Otherwise if DATE is not the index:
+            data_df['DATE'] = pd.to_datetime(data_df['DATE'], format='%Y-%m-%d')
             data_df['YEAR'] = data_df['DATE'].dt.year
             data_df['MONTH'] = data_df['DATE'].dt.month
             data_df['DAY'] = data_df['DATE'].dt.day
             data_df['DOY'] = data_df['DATE'].dt.dayofyear.astype(int)
             data_df['DATE'] = data_df['DATE'].dt.strftime('%Y-%m-%d')
+
+            # data_df['ZONE_NAME'] = data_df['ZONE_NAME'].astype(str)
             # data_df['AREA'] = zone['area']
             # data_df['PIXEL_SIZE'] = modis.cellsize
 
+            # DEADBEEF
             # fmask_mask = data_df['CLOUD_TOTAL'] > 0
             # if fmask_mask.any():
             #     data_df.loc[fmask_mask, 'CLOUD_PCT'] = 100.0 * (
@@ -605,6 +571,8 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             del data_df['system:index']
         if '.geo' in data_df.columns.values:
             del data_df['.geo']
+
+        # data_df.set_index('DATE', inplace=True, drop=True)
 
         return data_df
 
@@ -626,15 +594,17 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             datetime.timedelta(0, 1))
         start_date = start_dt.date().isoformat()
         end_date = end_dt.date().isoformat()
-        start_year = max(start_dt.date().year, ini['INPUTS']['start_year'])
-        end_year = min(end_dt.date().year, ini['INPUTS']['end_year'])
+        # start_year = max(start_dt.date().year, ini['INPUTS']['start_year'])
+        # end_year = min(end_dt.date().year, ini['INPUTS']['end_year'])
 
         # Filter by iteration date in addition to input date parameters
         modis.start_date = start_date
         modis.end_date = end_date
+        # modis.start_year = start_year
+        # modis.end_year = end_year
 
         for product in modis_products:
-            logging.info('  Product: {}'.format(product.upper()))
+            logging.info('    Product: {}'.format(product.upper()))
             modis_coll = modis.get_daily_collection(product.upper())
 
             # DEBUG - Test that the MODIS collection is getting built
@@ -688,7 +658,6 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
                 # Standard output
                 zs_dict = {
                     'ZONE_NAME': str(zone['name']),
-                    # 'ZONE_FID': zone['fid'],
                     'DATE': date.format('YYYY-MM-dd'),
                     # 'AREA': zone['area'],
                     # 'PIXEL_SIZE': modis.cellsize,
@@ -723,7 +692,6 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             # Add a dummy entry to the stats collection
             format_dict = {
                 'ZONE_NAME': 'DEADBEEF',
-                # 'ZONE_FID': -9999,
                 'DATE': 'DEADBEEF',
                 product.upper(): 'DEADBEEF',
             }
@@ -736,33 +704,37 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             #     pp.pprint(ftr)
             # input('ENTER')
 
-            if ini['EXPORT']['export_dest'] == 'getinfo':
-                logging.debug('    Requesting data')
-                export_info = utils.ee_getinfo(stats_coll)['features']
-                export_df = pd.DataFrame([f['properties'] for f in export_info])
-                print(export_df)
-                input('ENTER')
-                export_df = export_update(export_df)
+            logging.debug('    Requesting data')
+            export_info = utils.ee_getinfo(stats_coll)['features']
+            export_df = pd.DataFrame([f['properties'] for f in export_info])
+            export_df = clean_export_df(export_df)
 
-                # Save data to main dataframe
-                if not export_df.empty:
-                    logging.debug('    Processing data')
-                    if overwrite_flag:
-                        # Update happens inplace automatically
-                        # output_df.update(export_df)
-                        output_df = output_df.append(export_df, sort=False)
-                    else:
-                        # Combine first doesn't have an inplace parameter
-                        output_df = output_df.combine_first(export_df)
+            # Save data to main dataframe
+            # Combine first needs DATE as the index to work
+            if not export_df.empty:
+                logging.debug('    Processing data')
+                export_df.set_index(['DATE'], inplace=True, drop=True)
+                output_df.set_index(['DATE'], inplace=True, drop=True)
+                output_df = output_df.combine_first(export_df)
+                # output_df = output_df.update(export_df)
+                output_df.reset_index(inplace=True, drop=False)
 
-    # # Save updated CSV
-    # if output_df is not None and not output_df.empty:
-    #     logging.info('    Writing CSV')
-    #     csv_writer(output_df, output_path, output_fields)
-    # else:
-    #     logging.info(
-    #         '  Empty output dataframe\n'
-    #         '  The exported CSV files may not be ready')
+                # if overwrite_flag:
+                #     # Update happens inplace automatically
+                #     # output_df.update(export_df)
+                #     output_df = output_df.append(export_df, sort=False)
+                # else:
+                #     # Combine first doesn't have an inplace parameter
+                #     output_df = output_df.combine_first(export_df)
+
+    # Save updated CSV
+    if output_df is not None and not output_df.empty:
+        logging.info('    Writing CSV')
+        csv_writer(output_df, output_path, output_fields)
+    else:
+        logging.info(
+            '  Empty output dataframe\n'
+            '  The exported CSV files may not be ready')
 
 
 def arg_parse():

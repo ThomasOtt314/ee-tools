@@ -6,19 +6,19 @@
 
 import argparse
 from builtins import input
-from collections import defaultdict
+# from collections import defaultdict
 import datetime
 from itertools import groupby
 import json
 import logging
 import os
 import pprint
-import re
+# import re
 from subprocess import check_output
 import sys
 
 import ee
-import numpy as np
+# import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -71,10 +71,15 @@ def main(ini_path=None, overwrite_flag=False):
     #         '.shp', '.geojson'))
 
     # These may eventually be set in the INI file
-    modis_fields = [
-        'ZONE_NAME', 'ZONE_FID', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
+    modis_daily_fields = [
+        'ZONE_NAME', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
     #     'AREA', 'PIXEL_SIZE', 'PIXEL_COUNT', 'PIXEL_TOTAL',
     #     'CLOUD_COUNT', 'CLOUD_TOTAL', 'CLOUD_PCT', 'QA']
+
+    modis_daily_fields.extend(
+        p.upper()
+        for p in ini['ZONAL_STATS']['modis_products']
+        if p.split('_')[-1].upper() in ee_tools.modis.daily_collections)
 
     # Convert the shapefile to geojson
     if os.path.isfile(ini['ZONAL_STATS']['zone_geojson']) or overwrite_flag:
@@ -180,7 +185,7 @@ def main(ini_path=None, overwrite_flag=False):
     logging.debug('\nComputing zonal stats')
     if ini['ZONAL_STATS']['modis_daily_flag']:
         modis_daily_func(
-            modis_fields, ini, zones_geojson, zones_wkt, overwrite_flag)
+            modis_daily_fields, ini, zones_geojson, zones_wkt, overwrite_flag)
 
 
 def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
@@ -237,10 +242,13 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
     def csv_writer(output_df, output_path, output_fields):
         """Write the dataframe to CSV with custom formatting"""
         csv_df = output_df.copy()
+        # csv_df.index.name = 'DATE'
 
         # Convert float fields to objects, set NaN to None
+        float_fields = modis_fields[:]
+        # float_fields = modis_fields + ['CLOUD_PCT']
         for field in csv_df.columns.values:
-            if field.upper() not in modis_fields:
+            if field.upper() not in float_fields:
                 continue
             csv_df[field] = csv_df[field].astype(object)
             null_mask = csv_df[field].isnull()
@@ -249,15 +257,14 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                 lambda x: '{0:10.6f}'.format(x).strip())
 
         # Set field types
-        for field in ['ZONE_FID', 'YEAR', 'MONTH', 'DAY', 'DOY']:
+        for field in ['YEAR', 'MONTH', 'DAY', 'DOY']:
             csv_df[field] = csv_df[field].astype(int)
         # if csv_df['ZONE_NAME'].dtype == np.float64:
         #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
 
         csv_df.reset_index(drop=False, inplace=True)
         csv_df.sort_values(by=['DATE'], inplace=True)
-        csv_df.to_csv(output_path, index=False,
-                      columns=output_fields)
+        csv_df.to_csv(output_path, index=False, columns=output_fields)
 
     # Master list of zone dictionaries (name, fid, csv and ee.Geometry)
     zones = []
@@ -305,7 +312,7 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
 
         # Make copy of export field list in order to retain existing columns
         # DEADBEEF - This won't work correctly in the zone loop
-        output_fields = export_fields[:]
+        # output_fields = export_fields + modis_fields
 
         # Read existing output table if possible
         logging.debug('    Reading CSV')
@@ -313,6 +320,8 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         try:
             zone_df = pd.read_csv(zone['csv'], parse_dates=['DATE'])
             zone_df['DATE'] = zone_df['DATE'].dt.strftime('%Y-%m-%d')
+            zone_df['ZONE_NAME'] = zone_df['ZONE_NAME'].astype(str)
+
             # Move any existing columns not in export_fields to end of CSV
             # output_fields.extend([
             #     f for f in zone_df.columns.values if f not in export_fields])
@@ -341,8 +350,8 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         input('ENTER')
     del zone_df_list
 
-    output_df.ZONE_NAME = output_df.ZONE_NAME.astype(str)
-    output_df.set_index(['ZONE_NAME', 'DATE'], inplace=True, drop=True)
+    output_df['ZONE_NAME'] = output_df.ZONE_NAME.astype(str)
+    # output_df.set_index(['ZONE_NAME', 'DATE'], inplace=True, drop=True)
 
     # Get list of possible dates based on INI
     export_dates = set(
@@ -399,16 +408,27 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         # Set pixels counts for non-intersecting DATES to 0
         # Set pixel counts for intersecting DATES to NaN
         #   This will allow the zonal stats to set actual pixel count value
-        logging.debug('    Appending all empty DATES')
+        logging.debug('    Appending empty DATES')
         missing_df = pd.DataFrame(
             index=sorted(missing_all_dates), columns=output_df.columns)
-        missing_df.index.name = 'DATE'
+        missing_df.sort_values(by=['DATE'], inplace=True)
         missing_df['ZONE_NAME'] = zone['name']
-        missing_df['ZONE_FID'] = zone['fid']
-        missing_df['YEAR'] = pd.to_datetime(missing_df.index).year
-        missing_df['MONTH'] = pd.to_datetime(missing_df.index).month
-        missing_df['DAY'] = pd.to_datetime(missing_df.index).day
-        missing_df['DOY'] = pd.to_datetime(missing_df.index).dayofyear.astype(int)
+
+        # Don't set DATE as index
+        missing_df['DATE'] = pd.to_datetime(missing_df['DATE'], format='%Y-%m-%d')
+        missing_df['YEAR'] = missing_df['DATE'].dt.year
+        missing_df['MONTH'] = missing_df['DATE'].dt.month
+        missing_df['DAY'] = missing_df['DATE'].dt.day
+        missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
+        missing_df['DATE'] = missing_df['DATE'].dt.strftime('%Y-%m-%d')
+
+        # # Use DATE as index
+        # missing_df.index.name = 'DATE'
+        # missing_df['YEAR'] = pd.to_datetime(missing_df.index).year
+        # missing_df['MONTH'] = pd.to_datetime(missing_df.index).month
+        # missing_df['DAY'] = pd.to_datetime(missing_df.index).day
+        # missing_df['DOY'] = pd.to_datetime(missing_df.index).dayofyear.astype(int)
+
         # missing_df['AREA'] = zone['area']
         # missing_df['QA'] = np.nan
         # missing_df['PIXEL_SIZE'] = landsat.cellsize
@@ -471,27 +491,31 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         logging.debug('\n  Scenes missing values: {}'.format(
             ', '.join(sorted(missing_dates))))
 
-    def export_update(data_df):
+    def clean_export_df(data_df):
         """Set/modify ancillary field values in the export CSV dataframe"""
         # First, remove any extra rows that were added for exporting
         # The DEADBEEF entry is added because the export structure is based on
         #   the first feature in the collection, so fields with nodata will
         #   be excluded
-        data_df.drop(
-            data_df[data_df['DATE'] == 'DEADBEEF'].index,
-            inplace=True)
+        data_df.drop(data_df[data_df['DATE'] == 'DEADBEEF'].index,
+                     inplace=True)
 
         # Add additional fields to the export data frame
+        # data_df.set_index('DATE', inplace=True, drop=True)
         if not data_df.empty:
-            data_df['DATE'] = pd.to_datetime(data_df['DATE'].str, format='%Y%m%d')
+            # If DATE is not the index
+            data_df['DATE'] = pd.to_datetime(data_df['DATE'], format='%Y-%m-%d')
             data_df['YEAR'] = data_df['DATE'].dt.year
             data_df['MONTH'] = data_df['DATE'].dt.month
             data_df['DAY'] = data_df['DATE'].dt.day
             data_df['DOY'] = data_df['DATE'].dt.dayofyear.astype(int)
             data_df['DATE'] = data_df['DATE'].dt.strftime('%Y-%m-%d')
+
+            # data_df['ZONE_NAME'] = data_df['ZONE_NAME'].astype(str)
             # data_df['AREA'] = data_df['PIXEL_COUNT'] * modis.cellsize ** 2
             # data_df['PIXEL_SIZE'] = modis.cellsize
 
+            # DEADBEEF
             # fmask_mask = data_df['CLOUD_TOTAL'] > 0
             # if fmask_mask.any():
             #     data_df.loc[fmask_mask, 'CLOUD_PCT'] = 100.0 * (
@@ -505,8 +529,8 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         if '.geo' in data_df.columns.values:
             del data_df['.geo']
 
-        data_df.set_index(
-            ['ZONE_NAME', 'DATE'], inplace=True, drop=True)
+        data_df.set_index(['ZONE_NAME', 'DATE'], inplace=True, drop=True)
+
         return data_df
 
     # Write values to file after each year
@@ -551,9 +575,7 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
             #
             # Build collection of all features to test for each SCENE_ID
             zone_coll = ee.FeatureCollection([
-                ee.Feature(
-                    zone['ee_geom'],
-                    {'ZONE_NAME': zone['name'], 'ZONE_FID': zone['fid']})
+                ee.Feature(zone['ee_geom'], {'ZONE_NAME': zone['name']})
                 for zone in zones if zone['name'] in export_zones])
 
             # Collection should only have one image
@@ -616,7 +638,6 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                     # Standard output
                     zs_dict = {
                         'ZONE_NAME': ee.String(ftr.get('ZONE_NAME')),
-                        # 'ZONE_FID': ee.Number(ftr.get('ZONE_FID')),
                         'DATE': date.format('YYYY-MM-dd'),
                         # 'YEAR': date.get('year'),
                         # 'MONTH': date.get('month'),
@@ -651,7 +672,6 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                 #   entry in the collection, so fields with nodata will be excluded
                 format_dict = {
                     'ZONE_NAME': 'DEADBEEF',
-                    # 'ZONE_FID': -9999,
                     'DATE': 'DEADBEEF',
                     product.upper(): 'DEADBEEF',
                 }
@@ -664,39 +684,41 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                 #     pp.pprint(ftr)
                 # input('ENTER')
 
-                if ini['EXPORT']['export_dest'] == 'getinfo':
-                    logging.debug('    Requesting data')
-                    export_df = pd.DataFrame([
-                        ftr['properties']
-                        for ftr in utils.ee_getinfo(stats_coll)['features']])
-                    print(export_df)
-                    input('ENTER')
-                    export_df = export_update(export_df)
+                logging.debug('    Requesting data')
+                export_info = utils.ee_getinfo(stats_coll)['features']
+                export_df = pd.DataFrame([f['properties'] for f in export_info])
+                export_df = clean_export_df(export_df)
 
-                    # Save data to main dataframe
-                    if not export_df.empty:
-                        logging.debug('    Processing data')
-                        if overwrite_flag:
-                            # Update happens inplace automatically
-                            output_df.update(export_df)
-                            # output_df = output_df.append(export_df, sort=False)
-                        else:
-                            # Combine first doesn't have an inplace parameter
-                            output_df = output_df.combine_first(export_df)
+                # Save data to main dataframe
+                if not export_df.empty:
+                    logging.debug('    Processing data')
+                    export_df.set_index(['DATE'], inplace=True, drop=True)
+                    output_df.set_index(['DATE'], inplace=True, drop=True)
+                    output_df = output_df.combine_first(export_df)
+                    # output_df = output_df.update(export_df)
+                    output_df.reset_index(inplace=True, drop=False)
 
-        # # Save updated CSV
-        # # if output_df is not None and not output_df.empty:
-        # if not output_df.empty:
-        #     logging.info('\n  Writing zone CSVs')
-        #     for zone in zones:
-        #         logging.debug(
-        #             '  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
-        #         # logging.debug('    {}'.format(zone_output_path))
-        #         zone_df = output_df.iloc[
-        #             output_df.index.get_level_values('ZONE_NAME')==zone['name']]
-        #         csv_writer(zone_df, zone['csv'], export_fields)
-        # else:
-        #     logging.info('\n  Empty output dataframe')
+                    # if overwrite_flag:
+                    #     # Update happens inplace automatically
+                    #     output_df.update(export_df)
+                    #     # output_df = output_df.append(export_df, sort=False)
+                    # else:
+                    #     # Combine first doesn't have an inplace parameter
+                    #     output_df = output_df.combine_first(export_df)
+
+        # Save updated CSV
+        # if output_df is not None and not output_df.empty:
+        if not output_df.empty:
+            logging.info('\n  Writing zone CSVs')
+            for zone in zones:
+                logging.debug(
+                    '  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
+                # logging.debug('    {}'.format(zone_output_path))
+                zone_df = output_df.iloc[
+                    output_df.index.get_level_values('ZONE_NAME')==zone['name']]
+                csv_writer(zone_df, zone['csv'], export_fields)
+        else:
+            logging.info('\n  Empty output dataframe')
 
 
 def arg_parse():
