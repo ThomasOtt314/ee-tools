@@ -6,19 +6,17 @@
 
 import argparse
 from builtins import input
-# from collections import defaultdict
 import datetime
 from itertools import groupby
 import json
 import logging
 import os
 import pprint
-# import re
 from subprocess import check_output
 import sys
 
 import ee
-# import numpy as np
+import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -71,15 +69,25 @@ def main(ini_path=None, overwrite_flag=False):
     #         '.shp', '.geojson'))
 
     # These may eventually be set in the INI file
-    modis_daily_fields = [
-        'ZONE_NAME', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
-    #     'AREA', 'PIXEL_SIZE', 'PIXEL_COUNT', 'PIXEL_TOTAL',
-    #     'CLOUD_COUNT', 'CLOUD_TOTAL', 'CLOUD_PCT', 'QA']
+    modis_fields = ['ZONE_NAME', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
 
-    modis_daily_fields.extend(
-        p.upper()
-        for p in ini['ZONAL_STATS']['modis_products']
-        if p.split('_')[-1].upper() in ee_tools.modis.collections_daily)
+    # Add the products to the field lists
+    modis_daily_fields = list(modis_fields) + [
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_DAILY]
+    modis_8day_fields = list(modis_fields) + [
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_8DAY]
+    modis_16day_fields = list(modis_fields) + [
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_16DAY]
+
+    # Need a better way of ensuring zenith is always a product
+    # Maybe in the inputs.py?
+    if 'ZENITH_MOD09GA' not in modis_daily_fields:
+        modis_daily_fields.append('ZENITH_MOD09GA')
+    if 'ZENITH_MYD09GA' not in modis_daily_fields:
+        modis_daily_fields.append('ZENITH_MYD09GA')
 
     # Convert the shapefile to geojson
     if os.path.isfile(ini['ZONAL_STATS']['zone_geojson']) or overwrite_flag:
@@ -126,29 +134,11 @@ def main(ini_path=None, overwrite_flag=False):
     # Get projection from shapefile to build EE geometries
     # GeoJSON technically should always be EPSG:4326 so don't assume
     #  coordinates system property will be set
-    zones_osr = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
-    zones_wkt = gdc.osr_wkt(zones_osr)
-
-    # Check that shapefile has matching spatial reference
-    if not gdc.matching_spatref(zones_osr, ini['SPATIAL']['osr']):
-        logging.warning('  Zone OSR:\n{}\n'.format(zones_osr))
-        logging.warning('  Output OSR:\n{}\n'.format(
-            ini['SPATIAL']['osr'].ExportToWkt()))
-        logging.warning('  Zone Proj4:   {}'.format(
-            zones_osr.ExportToProj4()))
-        logging.warning('  Output Proj4: {}'.format(
-            ini['SPATIAL']['osr'].ExportToProj4()))
-        logging.warning(
-            '\nWARNING: \n'
-            'The output and zone spatial references do not appear to match\n'
-            'This will likely cause problems!')
-        input('Press ENTER to continue')
-    else:
-        logging.debug('  Zone Projection:\n{}\n'.format(zones_wkt))
-        logging.debug('  Output Projection:\n{}\n'.format(
-            ini['SPATIAL']['osr'].ExportToWkt()))
-        logging.debug('  Output Cellsize: {}'.format(
-            ini['SPATIAL']['cellsize']))
+    zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
+    zone_wkt = gdc.osr_wkt(zone_osr)
+    logging.debug('  Zone Projection:\n{}\n'.format(zone_wkt))
+    logging.debug('  Output Projection:\n{}\n'.format(
+        ini['SPATIAL']['osr'].ExportToWkt()))
 
     # Initialize Earth Engine API key
     logging.info('\nInitializing Earth Engine')
@@ -185,8 +175,13 @@ def main(ini_path=None, overwrite_flag=False):
     logging.debug('\nComputing zonal stats')
     if ini['ZONAL_STATS']['modis_daily_flag']:
         modis_daily_func(
-            modis_daily_fields, ini, zones_geojson, zones_wkt, overwrite_flag)
-
+            modis_daily_fields, ini, zones_geojson, zone_wkt, overwrite_flag)
+    if ini['ZONAL_STATS']['modis_8day_flag']:
+        modis_8day_func(
+            modis_8day_fields, ini, zones_geojson, zone_wkt, overwrite_flag)
+    if ini['ZONAL_STATS']['modis_16day_flag']:
+        modis_16day_func(
+            modis_16day_fields, ini, zones_geojson, zone_wkt, overwrite_flag)
 
 def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                      overwrite_flag=False):
@@ -207,23 +202,47 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
 
     """
 
-    logging.info('\nMODIS')
+    logging.info('\nMODIS Daily')
 
     # Build the transform from the INI values
-    ini['EXPORT']['transform'] = [
-        ini['SPATIAL']['cellsize'], 0.0, ini['SPATIAL']['snap_x'],
-        0.0, -ini['SPATIAL']['cellsize'], ini['SPATIAL']['snap_y']]
+    # ini['EXPORT']['transform'] = [
+    #     ini['SPATIAL']['cellsize'], 0.0, ini['SPATIAL']['snap_x'],
+    #     0.0, -ini['SPATIAL']['cellsize'], ini['SPATIAL']['snap_y']]
     # Hardcode transform to a standard MODIS image
     # ini['EXPORT']['transform'] = [
     #     231.656358264, 0.0, -20015109.354, 0.0, -231.656358264, 10007554.677]
     # logging.debug('    Output Transform: {}'.format(
     #     ini['EXPORT']['transform']))
 
+    # Since MODIS daily data should generally have global data for each day,
+    # build date list from INI parameters instead of from collection dates
+    # Querying the collection is probably be better for 8 and 16 day products
+    export_dates = [
+        date_dt for date_dt in utils.date_range(
+            '{}-01-01'.format(ini['INPUTS']['start_year']),
+            '{}-12-31'.format(ini['INPUTS']['end_year']))
+        if ((date_dt < datetime.datetime.today()) and
+            (date_dt >= datetime.datetime(2000, 2, 24)))]
+    if ini['INPUTS']['start_month'] and ini['INPUTS']['start_month'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month >= ini['INPUTS']['start_month']]
+    if ini['INPUTS']['end_month'] and ini['INPUTS']['end_month'] < 12:
+        export_dates = [d for d in export_dates
+                        if d.month <= ini['INPUTS']['end_month']]
+    if ini['INPUTS']['start_doy'] and ini['INPUTS']['start_doy'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month >= ini['INPUTS']['start_doy']]
+    if ini['INPUTS']['end_doy'] and ini['INPUTS']['end_doy'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month <= ini['INPUTS']['end_doy']]
+    export_dates = set(d.strftime('%Y-%m-%d') for d in export_dates)
+    # logging.debug('  Export Dates: {}'.format(
+    #     ', '.join(sorted(export_dates))))
+
     # Only keep daily MODIS products
     modis_products = [
-        p for p in ini['ZONAL_STATS']['modis_products']
-        if p.split('_')[-1].upper() in ee_tools.modis.collections_daily]
-    modis_fields = [f.upper() for f in modis_products]
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_DAILY]
 
     # Initialize the MODIS object
     args = {
@@ -242,10 +261,10 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         csv_df = output_df.copy()
 
         # Convert float fields to objects, set NaN to None
-        float_fields = modis_fields[:]
-        # float_fields = modis_fields + ['CLOUD_PCT']
         for field in csv_df.columns.values:
-            if field.upper() not in float_fields:
+            if field.upper() not in modis_products:
+                continue
+            elif field.upper() not in csv_df.columns.values:
                 continue
             csv_df[field] = csv_df[field].astype(object)
             null_mask = csv_df[field].isnull()
@@ -255,6 +274,8 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
 
         # Set field types
         for field in ['YEAR', 'MONTH', 'DAY', 'DOY']:
+            if field.upper() not in csv_df.columns.values:
+                continue
             csv_df[field] = csv_df[field].astype(int)
         # if csv_df['ZONE_NAME'].dtype == np.float64:
         #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
@@ -315,11 +336,11 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         })
 
     # Read in all output CSV files
-    logging.info('\n  Reading CSV files')
-    zone_df_list = []
+    logging.info('\nReading CSV files & ')
+    logging.info('Identifying dates/zones with missing data')
+    zone_dataframes = {}
     for zone in zones:
-        logging.info(
-            '  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
+        logging.debug('  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
 
         # Build output folder if necessary
         if not os.path.isdir(os.path.dirname(zone['csv'])):
@@ -330,230 +351,222 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
         # output_fields = export_fields + modis_fields
 
         # Read existing output table if possible
-        logging.debug('    Reading CSV')
-        logging.debug('    {}'.format(zone['csv']))
+        # logging.debug('    Reading CSV')
+        # logging.debug('    {}'.format(zone['csv']))
         try:
             zone_df = pd.read_csv(zone['csv'], parse_dates=['DATE'])
             zone_df['DATE'] = zone_df['DATE'].dt.strftime('%Y-%m-%d')
-            # zone_df['ZONE_NAME'] = zone_df['ZONE_NAME'].astype(str)
+            zone_df['ZONE_NAME'] = zone_df['ZONE_NAME'].astype(str)
 
             # Move any existing columns not in export_fields to end of CSV
             # output_fields.extend([
             #     f for f in zone_df.columns.values if f not in export_fields])
             # zone_df = zone_df.reindex(columns=output_fields)
             # zone_df.sort_values(by=['DATE', 'ROW'], inplace=True)
-            zone_df_list.append(zone_df)
+            # zone_dataframes[zone['name']] = zone_df
         except IOError:
-            logging.debug('    Output path doesn\'t exist, skipping')
+            logging.debug('    Output CSV doesn\'t exist, building')
+            zone_df = pd.DataFrame(columns=export_fields)
         except AttributeError:
-            logging.debug('    Output CSV appears to be empty')
+            logging.debug('    Output CSV appears to be empty, re-building')
+            zone_df = pd.DataFrame(columns=export_fields)
         except Exception as e:
             logging.exception(
                 '    ERROR: Unhandled Exception\n    {}'.format(e))
             input('ENTER')
 
-    # Combine separate zone dataframes
-    try:
-        output_df = pd.concat(zone_df_list)
-    except ValueError:
-        logging.debug(
-            '    Output path(s) doesn\'t exist, building empty dataframe')
-        output_df = pd.DataFrame(columns=export_fields)
-    except Exception as e:
-        logging.exception(
-            '    ERROR: Unhandled Exception\n    {}'.format(e))
-        input('ENTER')
-    del zone_df_list
-
-    output_df['ZONE_NAME'] = output_df.ZONE_NAME.astype(str)
-    # output_df.set_index(['ZONE_NAME', 'DATE'], inplace=True, drop=True)
-
-    # Since MODIS daily data should generally have global data for each day,
-    # build date list from INI parameters instead of from collection dates
-    # Querying the collection is probably be better for 8 and 16 day products
-    export_dates = [
-        date_dt for date_dt in utils.date_range(
-            '{}-01-01'.format(ini['INPUTS']['start_year']),
-            '{}-12-31'.format(ini['INPUTS']['end_year']))
-        if date_dt < datetime.datetime.today()]
-    if ini['INPUTS']['start_month'] and ini['INPUTS']['start_month'] > 1:
-        export_dates = [d for d in export_dates
-                        if d.month >= ini['INPUTS']['start_month']]
-    if ini['INPUTS']['end_month'] and ini['INPUTS']['end_month'] < 12:
-        export_dates = [d for d in export_dates
-                        if d.month <= ini['INPUTS']['end_month']]
-    if ini['INPUTS']['start_doy'] and ini['INPUTS']['start_doy'] > 1:
-        export_dates = [d for d in export_dates
-                        if d.month >= ini['INPUTS']['start_doy']]
-    if ini['INPUTS']['end_doy'] and ini['INPUTS']['end_doy'] > 1:
-        export_dates = [d for d in export_dates
-                        if d.month <= ini['INPUTS']['end_doy']]
-    export_dates = set(d.strftime('%Y-%m-%d') for d in export_dates)
-    logging.debug('  Export Dates: {}'.format(
-        ', '.join(sorted(export_dates))))
-
-    # For overwrite, drop all expected entries from existing output DF
-    if overwrite_flag:
-        output_df = output_df[~output_df['DATE'].isin(list(export_dates))]
-
-    # zone_df below is intentionally being made as a subset copy of output_df
-    # This raises a warning though
-    # pd.options.mode.chained_assignment = None  # default='warn'
-
-    # Add empty entries separately for each zone
-    logging.info('\n  Identifying dates/zones with missing data')
-    for zone in zones:
-        logging.info('  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
-
-        # Subset the data frame by zone name
-        try:
-            zone_df = output_df[output_df['ZONE_NAME']==zone['name']].copy()
-            # zone_df.reset_index(inplace=True)
-        except Exception as e:
-            # This seems to happen with output_df is empty (overwrite_flag=True)
-            logging.debug('    Exception: {}'.format(e))
-            zone_df = pd.DataFrame()
+        # For overwrite, drop all expected entries from existing output DF
+        if overwrite_flag and not zone_df.empty:
+            zone_df = zone_df[~zone_df['DATE'].isin(list(export_dates))]
+            # zone_df = zone_df[
+            #     ~zone_df.index.get_level_values('DATE').isin(
+            #         list(export_dates))]
 
         # Get list of existing dates in the CSV
         if not zone_df.empty:
             zone_df_dates = set(zone_df['DATE'].values)
         else:
             zone_df_dates = set()
-        logging.debug('    Dates in zone CSV: {}'.format(
-            ', '.join(sorted(zone_df_dates))))
+        # logging.debug('    Dates in zone CSV: {}'.format(
+        #     ', '.join(sorted(zone_df_dates))))
 
         # List of DATES that are entirely missing
         # This may include scenes that don't intersect the zone
         missing_all_dates = export_dates - zone_df_dates
-        logging.debug('    Dates not in CSV (missing all values): {}'.format(
-            ', '.join(sorted(missing_all_dates))))
+        # logging.debug('    Dates not in CSV (missing all values): {}'.format(
+        #     ', '.join(sorted(missing_all_dates))))
         if not missing_all_dates:
+            zone_dataframes[zone['name']] = zone_df
             continue
 
         # Create empty entries for all scenes that are missing
-        logging.debug('    Appending empty DATES')
+        # logging.debug('    Building missing dates dataframe')
         missing_df = pd.DataFrame(index=range(len(missing_all_dates)),
-                                  columns=output_df.columns)
+                                  columns=zone_df.columns)
         missing_df['DATE'] = sorted(missing_all_dates)
         missing_df['ZONE_NAME'] = zone['name']
-        missing_df['DATE'] = pd.to_datetime(missing_df['DATE'], format='%Y-%m-%d')
+        missing_df['ZONE_NAME'] = missing_df['ZONE_NAME'].astype(str)
+        missing_df['DATE'] = pd.to_datetime(missing_df['DATE'],
+                                            format='%Y-%m-%d')
         missing_df['YEAR'] = missing_df['DATE'].dt.year
         missing_df['MONTH'] = missing_df['DATE'].dt.month
         missing_df['DAY'] = missing_df['DATE'].dt.day
         missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
         missing_df['DATE'] = missing_df['DATE'].dt.strftime('%Y-%m-%d')
 
+        missing_df['ZENITH_MOD09GA'] = np.nan
+        missing_df['ZENITH_MYD09GA'] = np.nan
+
         # Remove the overlapping missing entries
         # Then append the new missing entries to the zone CSV
-        logging.debug('    Removing from zone dataframe')
+        # logging.debug('    Removing from zone dataframe')
         try:
             zone_df.drop(zone_df['DATE'].intersection(missing_df['DATE']),
                          inplace=True)
         except:
             pass
 
-        logging.debug('    Appending to zone dataframe')
+        # logging.debug('    Appending to zone dataframe')
         zone_df = zone_df.append(missing_df, sort=False)
+        zone_df.sort_values(by=['DATE'], inplace=True)
 
-        logging.debug('    Writing to CSV')
+        # logging.debug('    Writing to CSV')
         csv_writer(zone_df, zone['csv'], export_fields)
-        del missing_df
 
-        logging.debug('    Removing from master dataframe')
-        try:
-            output_df.drop(output_df['ZONE_NAME']==zone['name'], inplace=True)
-        except Exception as e:
-            # These seem to happen with the zone is not in the output_df
-            # logging.debug('    Exception: {}'.format(e))
-            pass
-        logging.debug('    Appending to master dataframe')
-        output_df = output_df.append(zone_df, sort=False)
-        logging.debug('    Done')
+        # logging.debug('    Saving to dataframes list')
+        zone_dataframes[zone['name']] = zone_df
+        del missing_df, zone_df
 
+    if not zone_dataframes:
+        logging.info('\nNo zone dataframes, exiting')
+        return False
 
-    for product in modis_products:
-        product = product.upper()
-        logging.info('  Product: {}'.format(product))
+    # Combine separate zone dataframes
+    logging.debug('\n  Building master dataframe')
+    output_df = pd.concat(list(zone_dataframes.values()))
+    output_df['ZONE_NAME'] = output_df['ZONE_NAME'].astype(str)
+    output_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
+    # logging.debug(output_df.head())
+    # logging.debug('  Output DF size: {}'.format(len(output_df)))
+    del zone_dataframes
+
+    # Process the products in reverse order so zenith is computed first
+    for product in sorted(modis_products, reverse=True):
+        logging.info('\nProduct: {}'.format(product))
+
+        # Get a list of available dates
+        modis.start_year = ini['INPUTS']['start_year']
+        modis.end_year = ini['INPUTS']['end_year']
+        modis.start_date = None
+        modis.end_date = None
+        product_dates = set(utils.ee_getinfo(
+            modis.get_daily_collection(product).aggregate_histogram('DATE')))
+        logging.debug('  DATES available for product values: {}'.format(
+            ', '.join(sorted(product_dates))))
+
+        # Set transform as a function of the product
+        transform = [
+            ee_tools.modis.CELLSIZE[product], 0.0, ini['SPATIAL']['snap_x'],
+            0.0, -ee_tools.modis.CELLSIZE[product], ini['SPATIAL']['snap_y']]
+        logging.debug('  Output Transform: {}'.format(transform))
+
+        # Set the zenith field based on the product MOD/MYD
+        if 'MOD' in product.upper():
+            zenith_field = 'ZENITH_MOD09GA'
+        else:
+            zenith_field = 'ZENITH_MYD09GA'
 
         # Identify DATES that are missing some data for the product
-        missing_df = output_df.loc[
-            output_df['DATE'].isin(export_dates),
-            ['DATE', 'ZONE_NAME', product]]
-        missing_mask = missing_df[product].isnull()
-        if not any(missing_mask):
+        # Use the zenith field to track dates that can't have data
+        if zenith_field == product:
+            missing_df = output_df.loc[
+                (output_df.index.get_level_values('DATE').isin(export_dates) &
+                 output_df[product].isnull()),
+                [product]]
+        else:
+            missing_df = output_df.loc[
+                (output_df.index.get_level_values('DATE').isin(export_dates) &
+                 output_df[product].isnull() &
+                 ~output_df[zenith_field].isnull()),
+                [product]]
+        if missing_df.empty:
             continue
-        missing_dates = set(missing_df.loc[missing_mask, 'DATE'].values)
-        logging.debug('    DATES missing product values: {}'.format(
-            ', '.join(sorted(missing_dates))))
 
-        # Don't use the date_keep_list if all the values are missing
-        # Build the date list in the MODIS system:index format
-        if not all(missing_mask):
-            modis.date_keep_list = sorted([
-                datetime.datetime.strptime(d, '%Y-%m-%d').strftime('%Y_%m_%d')
-                for d in missing_dates])
+        missing_dates = set(missing_df.index.get_level_values('DATE').values)
+        missing_dates = missing_dates & product_dates
+        # logging.debug('  DATES missing product values: {}'.format(
+        #     ', '.join(sorted(missing_dates))))
+
+        # # Don't use the date_keep_list if all the values are missing
+        # # Build the date list in the MODIS system:index format
+        # if not all(missing_mask):
+        #     modis.date_keep_list = sorted([
+        #         datetime.datetime.strptime(d, '%Y-%m-%d').strftime('%Y_%m_%d')
+        #         for d in missing_dates])
 
         # Write values to file after each year
         # Group export dates by year (and path/row also?)
         export_dates_iter = [
             [year, list(dates)]
             for year, dates in groupby(sorted(missing_dates), lambda x: x[:4])]
-        for export_year, export_dates in export_dates_iter:
+
+        for export_year, export_year_dates in export_dates_iter:
             logging.debug('\n  Iter year: {}'.format(export_year))
 
-            for export_date in sorted(export_dates):
+            for export_date in sorted(export_year_dates):
                 export_dt = datetime.datetime.strptime(export_date, '%Y-%m-%d')
                 next_date = (export_dt + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
                 logging.info('  {}'.format(export_date))
 
-                date_df = output_df[output_df['DATE']==export_date].copy()
-                if date_df.empty:
-                    logging.info('\n  No missing data, skipping')
-                    # This shouldn't happen...
+                export_zones = list(output_df.loc[
+                    (output_df.index.get_level_values('DATE')==export_date) &
+                    (output_df[product].isnull()),
+                    [product]].index.get_level_values('ZONE_NAME').values)
+                if not export_zones:
+                    logging.info('\n  No zones with missing data, skipping')
+                    # This shouldn't happen since the date would be skipped
                     input('ENTER')
                     continue
+                else:
+                    logging.debug('  Zones with missing data: {}'.format(
+                        ', '.join(sorted(export_zones))))
 
-                # Identify zones with any missing data
-                export_zones = set(date_df.loc[date_df.any(axis=1), 'ZONE_NAME'])
-                logging.debug('  Zones with missing data: {}'.format(
-                    ', '.join(sorted(export_zones))))
+                # # Identify zones with any missing data
+                # export_zones = set(date_df[date_df.any(axis=1)]\
+                #     .index.get_level_values('ZONE_NAME').values)
+                # logging.debug('  Zones with missing data: {}'.format(
+                #     ', '.join(sorted(export_zones))))
                 #
                 # Build collection of all features to test for each SCENE_ID
                 zone_coll = ee.FeatureCollection([
                     ee.Feature(zone['ee_geom'], {'ZONE_NAME': zone['name']})
-                    for zone in zones if zone['name'] in export_zones])
+                    for zone in zones
+                    if zone['name'] in export_zones])
 
                 # Collection should only have one image
                 modis.start_date = export_date
                 modis.end_date = next_date
+                modis.start_year = None
+                modis.end_year = None
 
                 # Map over features for one image
                 image = ee.Image(modis.get_daily_collection(product).first())
 
-                def zonal_stats_func(ftr):
-                    """"""
-                    date = ee.Date(image.get('system:time_start'))
-
-                    # Using the feature/geometry should make it unnecessary to clip
-                    input_mean = ee.Image(image) \
-                        .select([product]) \
+                def zonal_mean_func(ftr):
+                    input_mean = ee.Image(image).select([product])\
                         .reduceRegion(
                             reducer=ee.Reducer.mean(),
                             geometry=ftr.geometry(),
                             crs=ini['SPATIAL']['crs'],
-                            crsTransform=ini['EXPORT']['transform'],
-                            bestEffort=False,
-                            tileScale=1)
-
-                    zs_dict = {
+                            crsTransform=transform,
+                            bestEffort=False)
+                    return ee.Feature(None, {
                         'ZONE_NAME': ee.String(ftr.get('ZONE_NAME')),
-                        'DATE': date.format('YYYY-MM-dd'),
-                        product: input_mean.get(product),
-                    }
+                        'DATE': ee.Date(image.get('system:time_start'))\
+                            .format('YYYY-MM-dd'),
+                        product: input_mean.get(product)})
 
-                    return ee.Feature(None, zs_dict)
-
-                stats_coll = zone_coll.map(zonal_stats_func, False)
+                stats_coll = zone_coll.map(zonal_mean_func, False)
 
                 # Add a dummy entry to the stats collection
                 # This is added because the export structure is based on the first
@@ -563,7 +576,7 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                     'DATE': 'DEADBEEF',
                     product: -9999,
                 }
-                stats_coll = ee.FeatureCollection(ee.Feature(None, format_dict)) \
+                stats_coll = ee.FeatureCollection(ee.Feature(None, format_dict))\
                     .merge(stats_coll)
 
                 # # DEBUG - Print the stats info to the screen
@@ -577,32 +590,81 @@ def modis_daily_func(export_fields, ini, zones_geojson, zones_wkt,
                 export_df = pd.DataFrame([f['properties'] for f in export_info])
                 export_df = clean_export_df(export_df)
 
+                # Set NaN zenith values to 90
+                if 'ZENITH' in product:
+                    export_df.fillna(90, inplace=True)
+
                 # Save data to main dataframe
                 if not export_df.empty:
                     logging.debug('    Processing data')
-                    export_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
-                    output_df.set_index(['DATE', 'ZONE_NAME'], inplace=True, drop=True)
+                    export_df.set_index(['DATE', 'ZONE_NAME'], inplace=True,
+                                        drop=True)
                     if overwrite_flag:
                         # Update happens inplace automatically
                         output_df.update(export_df)
                     else:
                         # Combine first doesn't have an inplace parameter
                         output_df = output_df.combine_first(export_df)
-                    output_df.reset_index(inplace=True, drop=False)
 
-        # Save updated CSV
-        # if output_df is not None and not output_df.empty:
-        if not output_df.empty:
-            logging.info('\n  Writing zone CSVs')
-            for zone in zones:
-                logging.debug(
-                    '  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
-                # logging.debug('    {}'.format(zone_output_path))
-                zone_df = output_df['ZONE_NAME'==zone['name']].copy()
-                if not zone_df.empty:
-                    csv_writer(zone_df, zone['csv'], export_fields)
-        else:
-            logging.info('\n  Empty output dataframe')
+            # Save updated CSV
+            # if output_df is not None and not output_df.empty:
+            if not output_df.empty:
+                logging.info('\n  Writing zone CSVs')
+                for zone in zones:
+                    logging.debug(
+                        '  ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
+                    # logging.debug('    {}'.format(zone_output_path))
+                    zone_df = output_df.loc[
+                        output_df.index.get_level_values('ZONE_NAME')==zone['name'], :]
+                    if not zone_df.empty:
+                        zone_df.reset_index(inplace=True, drop=False)
+                        csv_writer(zone_df, zone['csv'], export_fields)
+            else:
+                logging.info('\n  Empty output dataframe')
+
+
+def modis_8day_func(export_fields, ini, zones_geojson, zones_wkt,
+                     overwrite_flag=False):
+    """
+
+    Parameters
+    ----------
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zones_geojson : dict
+        Zones GeoJSON.
+    zones_wkt : str
+        Zones spatial reference Well Known Text.
+    overwrite_flag : bool, optional
+        If True, overwrite existing values (the default is False).
+        Don't remove/replace the CSV file directly.
+
+    """
+
+    logging.info('\nMODIS 8-Day')
+
+
+def modis_16day_func(export_fields, ini, zones_geojson, zones_wkt,
+                     overwrite_flag=False):
+    """
+
+    Parameters
+    ----------
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zones_geojson : dict
+        Zones GeoJSON.
+    zones_wkt : str
+        Zones spatial reference Well Known Text.
+    overwrite_flag : bool, optional
+        If True, overwrite existing values (the default is False).
+        Don't remove/replace the CSV file directly.
+
+    """
+
+    logging.info('\nMODIS 16-Day')
 
 
 def arg_parse():

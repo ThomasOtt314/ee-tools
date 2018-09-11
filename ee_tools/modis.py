@@ -12,11 +12,34 @@ import ee
 
 system_properties = ['system:index', 'system:time_start']
 
-collections_daily = ['MOD09GA', 'MYD09GA', 'MOD09GQ', 'MYD09GQ',
+COLLECTIONS_DAILY = ['MOD09GA', 'MYD09GA', 'MOD09GQ', 'MYD09GQ',
                      'MOD11A1', 'MYD11A1']
-collections_8day = ['MOD11A2', 'MYD11A2']
-collections_16day = ['MOD13Q1', 'MYD13Q1', 'MOD13A1', 'MYD13A1',
-                     'MCD43A4']
+COLLECTIONS_8DAY = ['MOD11A2', 'MYD11A2']
+COLLECTIONS_16DAY = ['MOD13A1', 'MYD13A1', 'MOD13Q1', 'MYD13Q1', 'MCD43A4']
+
+PRODUCTS_DAILY = [
+    'NDVI_MOD09GA', 'NDVI_MYD09GA', 'NDVI_MOD09GQ', 'NDVI_MYD09GQ',
+    'CLOUD_MOD09GA', 'CLOUD_MYD09GA', 'ZENITH_MOD09GA', 'ZENITH_MYD09GA',
+    'LST_MOD11A1', 'LST_MYD11A1',
+]
+PRODUCTS_8DAY = ['LST_MOD11A2', 'LST_MYD11A2']
+PRODUCTS_16DAY = [
+    'NDVI_MOD13A1', 'NDVI_MYD13A1', 'NDVI_MOD13Q1', 'NDVI_MYD13Q1',
+    'EVI_MOD13A1', 'EVI_MYD13A1', 'EVI_MOD13Q1', 'EVI_MYD13Q1',
+    'NDVI_MCD43A4',
+]
+
+CELLSIZE = {}
+for p in PRODUCTS_DAILY:
+    if p in ['CLOUD_MOD09GA', 'CLOUD_MYD09GA',
+             'ZENITH_MOD09GA', 'ZENITH_MYD09GA',
+             'LST_MOD11A1', 'LST_MYD11A1']:
+        CELLSIZE[p.upper()] = 926.625433056
+    elif p in ['NDVI_MOD09GQ', 'NDVI_MYD09GQ']:
+        CELLSIZE[p.upper()] = 231.656358264
+    else:
+        CELLSIZE[p.upper()] = 463.312716528
+
 
 
 class MODIS():
@@ -158,7 +181,8 @@ class MODIS():
         elif 'MYD11A1' in product.upper():
             modis_coll = ee.ImageCollection('MODIS/006/MYD11A1')
         else:
-            raise ValueError('\nUnsupported MODIS collection: {}'.format(product))
+            raise ValueError('unsupported MODIS collection: {}'.format(product))
+
         # Limit the collections to a later starting date
         # if 'mod' in modis.lower():
         #     modis_coll = modis_coll.filter(ee.Filter.gt(
@@ -203,7 +227,10 @@ class MODIS():
             modis_coll = modis_coll.filter(date_keep_filter)
 
         # Compute product images
-        if product.upper() in ['NDVI_MOD09GA', 'NDVI_MYD09GA']:
+        if product.upper() not in PRODUCTS_DAILY:
+            raise ValueError('unsupported MODIS product: {}'.format(product))
+            sys.exit()
+        elif product.upper() in ['NDVI_MOD09GA', 'NDVI_MYD09GA']:
             if self.cloud_flag:
                 modis_coll = modis_coll.map(state_1km_mask_func)
             output_coll = ee.ImageCollection(modis_coll.map(mod09_ndvi_func))\
@@ -214,16 +241,14 @@ class MODIS():
         elif product.upper() in ['LST_MOD11A1', 'LST_MYD11A1']:
             output_coll = ee.ImageCollection(modis_coll.map(mod11_lst_func))\
                 .select(['LST'], [product.upper()])
-        elif product.upper() in ['CLOUD_MOD09GA', 'CLOUD_MYD09GA',
-                                 'CLOUD_MOD09GQ', 'CLOUD_MYD09GQ']:
+        elif product.upper() in ['CLOUD_MOD09GA', 'CLOUD_MYD09GA']:
             output_coll = ee.ImageCollection(modis_coll.map(mod09_cloud_func)) \
                 .select(['CLOUD'], [product])
-        elif product.upper() in ['ZENITH_MOD09GA', 'ZENITH_MYD09GA',
-                                 'ZENITH_MOD09GQ', 'ZENITH_MYD09GQ']:
+        elif product.upper() in ['ZENITH_MOD09GA', 'ZENITH_MYD09GA']:
             output_coll = ee.ImageCollection(modis_coll.map(mod09_zenith_func)) \
                 .select(['ZENITH'], [product])
         else:
-            raise ValueError('\nUnsupported MODIS product: {}'.format(product))
+            raise ValueError('unsupported MODIS product: {}'.format(product))
             sys.exit()
 
         return output_coll
@@ -249,7 +274,7 @@ class MODIS():
         elif 'MYD11A2' in product.upper():
             modis_coll = ee.ImageCollection('MODIS/006/MYD11A2')
         else:
-            raise ValueError('\nUnsupported MODIS collection: {}'.format(product))
+            raise ValueError('unsupported MODIS collection: {}'.format(product))
 
         # Assume iteration will generally be controlled by changing
         #   start_date and end_date
@@ -289,11 +314,14 @@ class MODIS():
         #         modis_coll = modis_coll.map(state_1km_mask_func)
 
         # Compute product images
-        if product.upper() in ['LST_MOD11A2', 'LST_MYD11A2']:
+        if product.upper() not in PRODUCTS_8DAY:
+            raise ValueError('unsupported MODIS product: {}'.format(product))
+            sys.exit()
+        elif product.upper() in ['LST_MOD11A2', 'LST_MYD11A2']:
             output_coll = ee.ImageCollection(modis_coll.map(self.mod11_lst_func))\
                 .select(['LST'], [product.upper()])
         else:
-            raise ValueError('\nUnsupported MODIS product: {}'.format(product))
+            raise ValueError('unsupported MODIS product: {}'.format(product))
             sys.exit()
 
         return output_coll
@@ -325,7 +353,8 @@ class MODIS():
         elif 'MCD43A4' in product.upper():
             modis_coll = ee.ImageCollection('MODIS/006/MCD43A4')
         else:
-            raise ValueError('\nUnsupported MODIS collection: {}'.format(product))
+            raise ValueError('unsupported MODIS collection: {}'.format(product))
+
         # Limit the collections to a later starting date
         # if 'mod' in modis.lower():
         #     modis_coll = modis_coll.filter(ee.Filter.gt(
@@ -375,8 +404,11 @@ class MODIS():
         #         modis_coll = modis_coll.map(state_1km_mask_func)
 
         # Compute product images
-        if product.upper() in ['NDVI_MOD13A1', 'NDVI_MYD13A1',
-                               'NDVI_MOD13Q1', 'NDVI_MYD13Q1']:
+        if product.upper() not in PRODUCTS_16DAY:
+            raise ValueError('unsupported MODIS product: {}'.format(product))
+            sys.exit()
+        elif product.upper() in ['NDVI_MOD13A1', 'NDVI_MYD13A1',
+                                 'NDVI_MOD13Q1', 'NDVI_MYD13Q1']:
             output_coll = ee.ImageCollection(modis_coll.map(mod13_ndvi_func))\
                 .select(['NDVI'], [product.upper()])
         elif product.upper() in ['EVI_MOD13A1', 'EVI_MYD13A1',
@@ -387,7 +419,7 @@ class MODIS():
             output_coll = ee.ImageCollection(modis_coll.map(mcd43_ndvi_func))\
                 .select(['NDVI'], [product.upper()])
         else:
-            raise ValueError('\nUnsupported MODIS product: {}'.format(product))
+            raise ValueError('unsupported MODIS product: {}'.format(product))
             sys.exit()
 
         # # Apply cloud masks
@@ -395,6 +427,7 @@ class MODIS():
         #     output_coll = output_coll.map(modis_state_qa_mask_func)
 
         return output_coll
+
 
 def mod09_ndvi_func(input_img):
     date = ee.Date(input_img.get('system:time_start')).format('yyyy-MM-dd')
@@ -414,8 +447,8 @@ def mod09_cloud_func(input_img):
 
 def mod09_zenith_func(input_img):
     date = ee.Date(input_img.get('system:time_start')).format('yyyy-MM-dd')
-    return input_img.select(['SensorZenith'], ['ZENITH']) \
-        .multiply(0.01) \
+    return input_img.select(['SensorZenith'], ['ZENITH'])\
+        .multiply(0.01)\
         .copyProperties(input_img, system_properties)\
         .set('DATE', date)
 

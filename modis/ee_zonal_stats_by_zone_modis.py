@@ -6,21 +6,17 @@
 
 import argparse
 from builtins import input
-# from collections import defaultdict
 import datetime
-# from io import StringIO
 import json
 import logging
 import math
 import os
 import pprint
-# import re
-# import requests
 from subprocess import check_output
 import sys
 
 import ee
-# import numpy as np
+import numpy as np
 from osgeo import ogr
 import pandas as pd
 
@@ -63,15 +59,25 @@ def main(ini_path=None, overwrite_flag=False):
     inputs.parse_section(ini, section='ZONAL_STATS')
 
     # These may eventually be set in the INI file
-    modis_daily_fields = [
-        'ZONE_NAME', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
-    #     'AREA', 'PIXEL_SIZE', 'PIXEL_COUNT', 'PIXEL_TOTAL',
-    #     'CLOUD_COUNT', 'CLOUD_TOTAL', 'CLOUD_PCT', 'QA']
+    modis_fields = ['ZONE_NAME', 'DATE', 'YEAR', 'MONTH', 'DAY', 'DOY']
 
-    modis_daily_fields.extend(
-        p.upper()
-        for p in ini['ZONAL_STATS']['modis_products']
-        if p.split('_')[-1].upper() in ee_tools.modis.collections_daily)
+    # Add the products to the field lists
+    modis_daily_fields = list(modis_fields) + [
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_DAILY]
+    modis_8day_fields = list(modis_fields) + [
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_8DAY]
+    modis_16day_fields = list(modis_fields) + [
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_16DAY]
+
+    # Need a better way of ensuring zenith is always a product
+    # Maybe in the inputs.py?
+    if 'ZENITH_MOD09GA' not in modis_daily_fields:
+        modis_daily_fields.append('ZENITH_MOD09GA')
+    if 'ZENITH_MYD09GA' not in modis_daily_fields:
+        modis_daily_fields.append('ZENITH_MYD09GA')
 
     # Convert the shapefile to geojson
     # if not os.path.isfile(ini['ZONAL_STATS']['zone_geojson']):
@@ -133,27 +139,9 @@ def main(ini_path=None, overwrite_flag=False):
     #  coordinates system property will be set
     zone_osr = gdc.feature_path_osr(ini['INPUTS']['zone_shp_path'])
     zone_wkt = gdc.osr_wkt(zone_osr)
-
-    # Check that shapefile has matching spatial reference
-    if not gdc.matching_spatref(zone_osr, ini['SPATIAL']['osr']):
-        logging.warning('  Zone OSR:\n{}\n'.format(zone_osr))
-        logging.warning('  Output OSR:\n{}\n'.format(
-            ini['SPATIAL']['osr'].ExportToWkt()))
-        logging.warning('  Zone Proj4:   {}'.format(
-            zone_osr.ExportToProj4()))
-        logging.warning('  Output Proj4: {}'.format(
-            ini['SPATIAL']['osr'].ExportToProj4()))
-        logging.warning(
-            '\nWARNING: \n'
-            'The output and zone spatial references do not appear to match\n'
-            'This will likely cause problems!')
-        input('Press ENTER to continue')
-    else:
-        logging.debug('  Zone Projection:\n{}\n'.format(zone_wkt))
-        logging.debug('  Output Projection:\n{}\n'.format(
-            ini['SPATIAL']['osr'].ExportToWkt()))
-        logging.debug('  Output Cellsize: {}'.format(
-            ini['SPATIAL']['cellsize']))
+    logging.debug('  Zone Projection:\n{}\n'.format(zone_wkt))
+    logging.debug('  Output Projection:\n{}\n'.format(
+        ini['SPATIAL']['osr'].ExportToWkt()))
 
     # Initialize Earth Engine API key
     logging.info('\nInitializing Earth Engine')
@@ -186,13 +174,12 @@ def main(ini_path=None, overwrite_flag=False):
             'properties': {ini['INPUTS']['zone_field']: zones_geojson['name']},
             'geometry': json.loads(merge_geom.ExportToJson())}]
 
-
     # Calculate zonal stats for each feature separately
     logging.info('')
     for zone_ftr in zones_geojson['features']:
         zone = {}
         zone['fid'] = zone_ftr['id']
-        zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']]) \
+        zone['name'] = str(zone_ftr['properties'][ini['INPUTS']['zone_field']])\
             .replace(' ', '_')
         zone['json'] = zone_ftr['geometry']
 
@@ -219,35 +206,7 @@ def main(ini_path=None, overwrite_flag=False):
             #   polygons that were modified to avoid interior holes
             # zone['area'] = ini['SPATIAL']['cellsize'] * math.ceil(
             #     zone_geom.GetArea() / ini['SPATIAL']['cellsize'])
-
         # zone['area'] = zone_geom.GetArea()
-        zone['extent'] = gdc.Extent(zone_geom.GetEnvelope())
-        # zone['extent'] = gdc.Extent(zone['geom'].GetEnvelope())
-        zone['extent'] = zone['extent'].ogrenv_swap()
-        zone['extent'] = zone['extent'].adjust_to_snap(
-            'EXPAND', ini['SPATIAL']['snap_x'], ini['SPATIAL']['snap_y'],
-            ini['SPATIAL']['cellsize'])
-        zone['geo'] = zone['extent'].geo(ini['SPATIAL']['cellsize'])
-        zone['transform'] = gdc.geo_2_ee_transform(zone['geo'])
-        # zone['transform'] = '[' + ','.join(map(str, zone['transform'])) + ']'
-        zone['shape'] = zone['extent'].shape(ini['SPATIAL']['cellsize'])
-        logging.debug('    Zone Shape: {}'.format(zone['shape']))
-        logging.debug('    Zone Transform: {}'.format(zone['transform']))
-        logging.debug('    Zone Extent: {}'.format(zone['extent']))
-        # logging.debug('    Zone Geom: {}'.format(zone['geom'].getInfo()))
-
-        # Assume all pixels in all images could be reduced
-        zone['max_pixels'] = zone['shape'][0] * zone['shape'][1]
-        logging.debug('    Max Pixels: {}'.format(zone['max_pixels']))
-
-        # Set output spatial reference
-        # Eventually allow user to manually set these
-        # output_crs = zone['proj']
-        ini['EXPORT']['transform'] = zone['transform']
-        logging.debug('    Output Projection: {}'.format(
-            ini['SPATIAL']['crs']))
-        logging.debug('    Output Transform: {}'.format(
-            ini['EXPORT']['transform']))
 
         zone['output_ws'] = os.path.join(
             ini['ZONAL_STATS']['output_ws'], zone['name'])
@@ -256,6 +215,10 @@ def main(ini_path=None, overwrite_flag=False):
 
         if ini['ZONAL_STATS']['modis_daily_flag']:
             modis_daily_func(modis_daily_fields, ini, zone, overwrite_flag)
+        if ini['ZONAL_STATS']['modis_8day_flag']:
+            modis_8day_func(modis_8day_fields, ini, zone, overwrite_flag)
+        if ini['ZONAL_STATS']['modis_16day_flag']:
+            modis_16day_func(modis_16day_fields, ini, zone, overwrite_flag)
 
 
 def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
@@ -276,19 +239,46 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
         Don't remove/replace the CSV file directly.
 
     """
-    logging.info('  MODIS')
+    logging.info('  MODIS Daily')
 
-    # DEADBEEF - For now, hardcode transform to a standard MODIS image
+    # # Set the transform inside the product loop
     # ini['EXPORT']['transform'] = [
-    #     231.656358264, 0.0, -20015109.354, 0.0, -231.656358264, 10007554.677]
+    #     ini['SPATIAL']['cellsize'], 0.0, ini['SPATIAL']['snap_x'],
+    #     0.0, -ini['SPATIAL']['cellsize'], ini['SPATIAL']['snap_y']]
+    # ini['EXPORT']['transform'] = [
+    #     463.312716528, 0.0, -20015109.354, 0.0, -463.312716528, 10007554.677]
     # logging.debug('    Output Transform: {}'.format(
     #     ini['EXPORT']['transform']))
 
+    # Since MODIS daily data should generally have global data for each day,
+    # build date list from INI parameters instead of from collection dates
+    # Querying the collection is probably be better for 8 and 16 day products
+    export_dates = [
+        date_dt for date_dt in utils.date_range(
+            '{}-01-01'.format(ini['INPUTS']['start_year']),
+            '{}-12-31'.format(ini['INPUTS']['end_year']))
+        if ((date_dt < datetime.datetime.today()) and
+            (date_dt >= datetime.datetime(2000, 2, 24)))]
+    if ini['INPUTS']['start_month'] and ini['INPUTS']['start_month'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month >= ini['INPUTS']['start_month']]
+    if ini['INPUTS']['end_month'] and ini['INPUTS']['end_month'] < 12:
+        export_dates = [d for d in export_dates
+                        if d.month <= ini['INPUTS']['end_month']]
+    if ini['INPUTS']['start_doy'] and ini['INPUTS']['start_doy'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month >= ini['INPUTS']['start_doy']]
+    if ini['INPUTS']['end_doy'] and ini['INPUTS']['end_doy'] > 1:
+        export_dates = [d for d in export_dates
+                        if d.month <= ini['INPUTS']['end_doy']]
+    export_dates = set(d.strftime('%Y-%m-%d') for d in export_dates)
+    # logging.debug('  Export Dates: {}'.format(
+    #     ', '.join(sorted(export_dates))))
+
     # Only keep daily MODIS products
     modis_products = [
-        p for p in ini['ZONAL_STATS']['modis_products'][:]
-        if p.split('_')[-1].upper() in ee_tools.modis.collections_daily]
-    modis_fields = [p.upper() for p in modis_products]
+        p.upper() for p in ini['ZONAL_STATS']['modis_products']
+        if p.upper() in ee_tools.modis.PRODUCTS_DAILY]
 
     # Initialize the MODIS object
     args = {
@@ -307,9 +297,10 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
         csv_df = output_df.copy()
 
         # Convert float fields to objects, set NaN to None
-        float_fields = modis_fields[:]
         for field in csv_df.columns.values:
-            if field.upper() not in float_fields:
+            if field.upper() not in modis_products:
+                continue
+            elif field.upper() not in csv_df.columns.values:
                 continue
             csv_df[field] = csv_df[field].astype(object)
             null_mask = csv_df[field].isnull()
@@ -321,6 +312,8 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
 
         # Set field types
         for field in ['YEAR', 'MONTH', 'DAY', 'DOY']:
+            if field.upper() not in csv_df.columns.values:
+                continue
             csv_df[field] = csv_df[field].astype(int)
         # if csv_df['ZONE_NAME'].dtype == np.float64:
         #     csv_df['ZONE_NAME'] = csv_df['ZONE_NAME'].astype(int).astype(str)
@@ -391,30 +384,6 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
     # output_df['DOY'] = output_df['DATE'].dt.dayofyear.astype(int)
     # output_df['DATE'] = output_df['DATE'].dt.strftime('%Y-%m-%d')
 
-    # Since MODIS daily data should generally have global data for each day,
-    # build date list from INI parameters instead of from collection dates
-    # Querying the collection is probably be better for 8 and 16 day products
-    export_dates = [
-        date_dt for date_dt in utils.date_range(
-            '{}-01-01'.format(ini['INPUTS']['start_year']),
-            '{}-12-31'.format(ini['INPUTS']['end_year']))
-        if date_dt < datetime.datetime.today()]
-    if ini['INPUTS']['start_month'] and ini['INPUTS']['start_month'] > 1:
-        export_dates = [d for d in export_dates
-                        if d.month >= ini['INPUTS']['start_month']]
-    if ini['INPUTS']['end_month'] and ini['INPUTS']['end_month'] < 12:
-        export_dates = [d for d in export_dates
-                        if d.month <= ini['INPUTS']['end_month']]
-    if ini['INPUTS']['start_doy'] and ini['INPUTS']['start_doy'] > 1:
-        export_dates = [d for d in export_dates
-                        if d.month >= ini['INPUTS']['start_doy']]
-    if ini['INPUTS']['end_doy'] and ini['INPUTS']['end_doy'] > 1:
-        export_dates = [d for d in export_dates
-                        if d.month <= ini['INPUTS']['end_doy']]
-    export_dates = set(d.strftime('%Y-%m-%d') for d in export_dates)
-    logging.debug('  Export Dates: {}'.format(
-        ', '.join(sorted(export_dates))))
-
     # For overwrite, drop all expected entries from existing output DF
     if overwrite_flag:
         output_df = output_df[~output_df['DATE'].isin(list(export_dates))]
@@ -450,16 +419,8 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
         missing_df['DOY'] = missing_df['DATE'].dt.dayofyear.astype(int)
         missing_df['DATE'] = missing_df['DATE'].dt.strftime('%Y-%m-%d')
 
-        # missing_df['AREA'] = zone['area']
-        # missing_df['QA'] = np.nan
-        # missing_df['QA'] = 0
-        # missing_df['PIXEL_SIZE'] = modis.cellsize
-        # missing_df['PIXEL_COUNT'] = 0
-        # missing_df['PIXEL_TOTAL'] = 0
-        # missing_df['CLOUD_COUNT'] = 0
-        # missing_df['CLOUD_TOTAL'] = 0
-        # missing_df['CLOUD_PCT'] = np.nan
-        # missing_df[f] = missing_df[f].astype(int)
+        missing_df['ZENITH_MOD09GA'] = np.nan
+        missing_df['ZENITH_MYD09GA'] = np.nan
 
         # Remove the overlapping missing entries
         # Then append the new missing entries
@@ -477,24 +438,45 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             csv_writer(output_df, output_path, output_fields)
         del missing_df
 
-    for product in modis_products:
-        product = product.upper()
+    # Process the products in reverse order so zenith is computed first
+    # Zenith will then be used to determine when data is available
+    for product in sorted(modis_products, reverse=True):
         logging.info('  Product: {}'.format(product))
+
+        # Set transform as a function of the product
+        transform = [
+            ee_tools.modis.CELLSIZE[product], 0.0, ini['SPATIAL']['snap_x'],
+            0.0, -ee_tools.modis.CELLSIZE[product], ini['SPATIAL']['snap_y']]
+        logging.debug('    Output Transform: {}'.format(transform))
 
         # # The export dates could be computed separately for each product
         # # by getting the DATE list for the product collection.
         # modis_coll = modis.get_daily_collection(product)
         # export_dates = utils.ee_getinfo(modis_coll.aggregate_histogram('DATE'))
 
+        # Set the zenith field based on the product MOD/MYD
+        if 'MOD' in product.upper():
+            zenith_field = 'ZENITH_MOD09GA'
+        else:
+            zenith_field = 'ZENITH_MYD09GA'
+
         # Identify DATES that are missing some data for the product
-        missing_df = output_df.loc[
-            output_df['DATE'].isin(export_dates), ['DATE', product]]
-        missing_mask = missing_df[product].isnull()
+        # Use the zenith field to track dates that can't have data
+        if zenith_field == product:
+            missing_df = output_df.loc[
+                output_df['DATE'].isin(export_dates), ['DATE', product]]
+            missing_mask = missing_df[product].isnull()
+        else:
+            missing_df = output_df.loc[
+                output_df['DATE'].isin(export_dates),
+                ['DATE', product, zenith_field]]
+            missing_mask = (missing_df[product].isnull() &
+                            (~missing_df[zenith_field].isnull()))
         if not any(missing_mask):
             continue
         missing_dates = set(missing_df.loc[missing_mask, 'DATE'].values)
-        logging.debug('    DATES missing product values: {}'.format(
-            ', '.join(sorted(missing_dates))))
+        # logging.debug('    DATES missing product values: {}'.format(
+        #     ', '.join(sorted(missing_dates))))
 
         # Don't use the date_keep_list if all the values are missing
         # Build the date list in the MODIS system:index format
@@ -542,46 +524,35 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
 
             # Calculate values and statistics
             # Build function in loop to set water year ETo/PPT values
-            def zonal_stats_func(image):
+            def zonal_mean_func(image):
                 """"""
-                date = ee.Date(image.get('system:time_start'))
-                bands = 1
-
-                # Using zone['geom'] as the geometry should make it
-                #   unnecessary to clip also
-                input_mean = ee.Image(image) \
-                    .select([product]) \
+                input_mean = ee.Image(image).select([product])\
                     .reduceRegion(
                         reducer=ee.Reducer.mean(),
                         geometry=zone['geom'],
                         crs=ini['SPATIAL']['crs'],
-                        crsTransform=ini['EXPORT']['transform'],
-                        bestEffort=False,
-                        tileScale=1)
-
-                zs_dict = {
+                        crsTransform=transform,
+                        bestEffort=False)
+                return ee.Feature(None, {
                     'ZONE_NAME': str(zone['name']),
-                    'DATE': date.format('YYYY-MM-dd'),
-                    product: input_mean.get(product),
-                }
-
-                return ee.Feature(None, zs_dict)
+                    'DATE': ee.Date(image.get('system:time_start'))\
+                        .format('YYYY-MM-dd'),
+                    product: input_mean.get(product)})
 
             modis_coll = modis.get_daily_collection(product)
-            stats_coll = modis_coll.map(zonal_stats_func, False)
+            stats_coll = modis_coll.map(zonal_mean_func, False)
 
             # # DEBUG - Test the function for a single image
-            # stats_info = zonal_stats_func(
+            # stats_info = zonal_mean_func(
             #     ee.Image(modis_coll.first())).getInfo()
             # pp.pprint(stats_info['properties'])
             # input('ENTER')
-            #
+
             # # DEBUG - Print the stats info to the screen
             # stats_info = stats_coll.getInfo()
             # for ftr in stats_info['features']:
             #     pp.pprint(ftr)
             # input('ENTER')
-            # # return False
 
             # Add a dummy entry to the stats collection
             format_dict = {
@@ -599,9 +570,16 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
             # input('ENTER')
 
             logging.debug('    Requesting data')
-            export_info = utils.ee_getinfo(stats_coll)['features']
+            try:
+                export_info = utils.ee_getinfo(stats_coll)['features']
+            except TypeError:
+                continue
             export_df = pd.DataFrame([f['properties'] for f in export_info])
             export_df = clean_export_df(export_df)
+
+            # Set NaN zenith values to 90
+            if 'ZENITH' in product:
+                export_df.fillna(90, inplace=True)
 
             # Save data to main dataframe
             # Combine first needs DATE as the index to work
@@ -617,7 +595,6 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
                     output_df = output_df.combine_first(export_df)
                 output_df.reset_index(inplace=True, drop=False)
 
-
     # Save updated CSV
     if output_df is not None and not output_df.empty:
         logging.info('  Writing CSV')
@@ -626,6 +603,48 @@ def modis_daily_func(export_fields, ini, zone, overwrite_flag=False):
         logging.info(
             '  Empty output dataframe\n'
             '  The exported CSV files may not be ready')
+
+
+def modis_8day_func(export_fields, ini, zone, overwrite_flag=False):
+    """
+
+    Function will attempt to generate export tasks only for missing DATES
+    Also try to limit the products to only those with missing data
+
+    Parameters
+    ----------
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zone : dict
+        Zone specific parameters.
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
+        Don't remove/replace the CSV file directly.
+
+    """
+    logging.info('  MODIS 8-Day')
+
+
+def modis_16day_func(export_fields, ini, zone, overwrite_flag=False):
+    """
+
+    Function will attempt to generate export tasks only for missing DATES
+    Also try to limit the products to only those with missing data
+
+    Parameters
+    ----------
+    export_fields : list
+    ini : dict
+        Input file parameters.
+    zone : dict
+        Zone specific parameters.
+    overwrite_flag : bool, optional
+        If True, overwrite existing files (the default is False).
+        Don't remove/replace the CSV file directly.
+
+    """
+    logging.info('  MODIS 16-Day')
 
 
 def arg_parse():

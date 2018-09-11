@@ -819,11 +819,11 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
     export_ids_iter = [
         [year, list(dates)]
         for year, dates in groupby(sorted(missing_ids), lambda x: x[12:16])]
-    for export_year, export_ids in export_ids_iter:
+    for export_year, export_year_ids in export_ids_iter:
         logging.debug('\n  Iter year: {}'.format(export_year))
 
         # These can be mosaiced or single scene IDs depending on mosaic method
-        for export_id in sorted(export_ids):
+        for export_id in sorted(export_year_ids):
             logging.info('  {}'.format(export_id))
 
             if ini['INPUTS']['mosaic_method'] in landsat.mosaic_options:
@@ -1277,12 +1277,12 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
     export_dates_iter = [
         [year, list(dates)]
         for year, dates in groupby(sorted(missing_dates), lambda x: x[:4])]
-    for export_year, export_dates in export_dates_iter:
+    for export_year, export_year_dates in export_dates_iter:
         logging.debug('\n  Iter year: {}'.format(export_year))
         # logging.debug('  Iter dates: {}'.format(
         #     ', '.join(sorted(export_dates))))
 
-        for export_date in sorted(export_dates):
+        for export_date in sorted(export_year_dates):
             export_dt = datetime.datetime.strptime(export_date, '%Y-%m-%d')
             logging.info('  {}'.format(export_date))
 

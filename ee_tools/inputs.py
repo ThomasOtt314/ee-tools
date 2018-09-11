@@ -350,11 +350,13 @@ def parse_spatial_reference(ini, section='SPATIAL'):
 
     # Compute OSR from EGSG code
     try:
-        if 'EPSG' in ini[section]['crs'].upper():
+        if ini[section]['crs'].upper().strip().startswith('EPSG'):
             ini[section]['osr'] = gdc.epsg_osr(
                 int(ini[section]['crs'].split(':')[1]))
-        elif '+proj' in ini[section]['crs'].lower():
+        elif ini[section]['crs'].lower().strip().startswith('+proj'):
             ini[section]['osr'] = gdc.proj4_osr(ini[section]['crs'])
+        elif ini[section]['crs'].upper().strip().startswith('PROJCS'):
+            ini[section]['osr'] = gdc.wkt_osr(ini[section]['crs'])
     except Exception as e:
         logging.error(
             '\nERROR: The output projection could not be converted to a '
