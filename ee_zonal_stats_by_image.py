@@ -477,7 +477,7 @@ def landsat_func(export_fields, ini, zones_geojson, zones_wkt,
 
     # Combine separate zone dataframes
     try:
-        output_df = pd.concat(zone_df_list)
+        output_df = pd.concat(zone_df_list, sort=False)
     except ValueError:
         logging.debug(
             '    Output path(s) doesn\'t exist, building empty dataframe')
@@ -1123,7 +1123,7 @@ def gridmet_daily_func(export_fields, ini, zones_geojson, zones_wkt,
 
     # Combine separate zone dataframes
     try:
-        output_df = pd.concat(zone_df_list)
+        output_df = pd.concat(zone_df_list, sort=False)
     except ValueError:
         logging.debug(
             '    Output path(s) doesn\'t exist, building empty dataframe')
@@ -1460,7 +1460,7 @@ def gridmet_monthly_func(export_fields, ini, zones_geojson, zones_wkt,
 
     # Combine separate zone dataframes
     try:
-        output_df = pd.concat(zone_df_list)
+        output_df = pd.concat(zone_df_list, sort=False)
     except ValueError:
         logging.debug(
             '    Output path(s) doesn\'t exist, building empty dataframe')
