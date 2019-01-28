@@ -1,0 +1,18 @@
+name: ee_tools
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - earthengine-api>=0.1.141
+  - gdal>=2.2.3
+  - numpy>=1.15.0
+  - pandas>=0.23.0
+  - pytest
+  - python>3.6
+  - requests
+
+  - bokeh=0.12.10
+  - matplotlib>=2.1.0
+  - openpyxl
+  - scikit-learn
+  - scipy
