@@ -5,12 +5,16 @@
 ## Beamer v0
 
 Old style Beamer zonal stats with all output values stored in a single/common CSV file.
+EDITS***:
+New coefficients for the ET*-EVI relationship have been derived using the Landsat Collection 1 Surface Reflectance products and new ET* values for all Eddy Covariance/Bowen Ratio flux tower measurements (40 original site-years and more recent 16 site-years).
 
 ## ETg Zonal Stats
 
 #### ee_beamer_zonal_stats.py
 
-This script will compute Beamer ET*/ETg specific zonal statistics.
+This script will compute Beamer ET*/ETg specific zonal statistics. 
+EDITS***:
+lines 722 through 772 contain new coefficients of the MinorBeamer ET*-VI predictive equation, as well as the uci, lci, lpi, and upi coeffs.
 
 ## ETg Images
 
