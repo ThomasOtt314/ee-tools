@@ -580,7 +580,7 @@ class TestGeoJson:
     @pytest.fixture(scope='class')
     def points(self, grid):
         """Convert grid corner points to GeoJson coordinates"""
-        return map(list, gdc.Extent(grid.extent).corner_points())
+        return list(map(list, gdc.Extent(grid.extent).corner_points()))
 
     def test_json_reverse_polygon(self, points):
         """Reverse the point order from counter-clockwise to clockwise"""

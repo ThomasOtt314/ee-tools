@@ -323,10 +323,10 @@ def image_value(image, band_name):
         [[1.0] * 6, 'LC08', sum([0.254, 0.149, 0.147, 0.311, 0.103, 0.036])]
     ]
 )
-def test_albedo_func(refl_sur, landsat, expected, tol=0.0001):
+def test_landsat_albedo_func(refl_sur, landsat, expected, tol=0.0001):
     """At-surface albedo"""
     refl_sur_image = ee.Image.constant(refl_sur).rename(refl_sur_bands)
-    albedo_image = ee_common.albedo_sur_func(refl_sur_image).rename(['albedo'])
+    albedo_image = ee_common.landsat_albedo_func(refl_sur_image).rename(['albedo'])
     output = image_value(albedo_image, 'albedo')
     logging.debug('  Target values: {}'.format(expected))
     logging.debug('  Output values: {}'.format(output))

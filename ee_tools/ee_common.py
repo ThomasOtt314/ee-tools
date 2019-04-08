@@ -1167,7 +1167,7 @@ def tc_bright_func(refl_toa):
     LT04/LT05 - http://www.gis.usu.edu/~doug/RS5750/assign/OLD/RSE(17)-301.pdf
     LE07 - http://landcover.usgs.gov/pdf/tasseled.pdf
     LC08 - http://www.tandfonline.com/doi/abs/10.1080/2150704X.2014.915434
-    https://www.researchgate.net/publication/262005316_Derivation_of_a_tasselled_cap_transformation_based_on_Landsat_8_at-_satellite_reflectance
+    https://www.researchgate.net/publication/262005316_Derivation_of_a_tasselled_cap_transformation_based_on_Landsat_8_at_satellite_reflectance
     """
     landsat = ee.String(refl_toa.get('system:index')).slice(0, 2)
     bright_coef = ee.Dictionary({

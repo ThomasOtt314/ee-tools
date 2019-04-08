@@ -15,10 +15,11 @@ def main(input_path, output_path, output_epsg=None,
     Args:
         input_path (str):
         output_path (str):
-        epsg (int): EPSG code
+        output_epsg (int): EPSG code
         cellsize (float): cellsize
         snap (list/tuple):
         overwrite_flag (bool): if True, overwrite existing files
+
     """
     logging.info('Rasterizing Polygon Geometry')
     logging.debug('  Input:  {}'.format(input_path))

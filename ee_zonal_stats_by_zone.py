@@ -225,8 +225,10 @@ def main(ini_path=None, overwrite_flag=False):
 
             # Extract tile values from joined collection
             def ftr_property(ftr):
-                scenes = ee.FeatureCollection(ee.List(ee.Feature(ftr).get('scenes'))) \
-                    .toList(100).map(lambda tile: ee.Feature(tile).get(tile_field))
+                scenes = ee.FeatureCollection(
+                        ee.List(ee.Feature(ftr).get('scenes'))) \
+                    .toList(100) \
+                    .map(lambda tile: ee.Feature(tile).get(tile_field))
                 return ee.Feature(None, {
                     zone_field: ee.String(ftr.get(zone_field)),
                     tile_field: scenes})

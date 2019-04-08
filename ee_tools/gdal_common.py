@@ -1140,7 +1140,7 @@ def json_reverse_func(json_geom):
     json_geom is modified in place
 
     Args:
-        json_geom (dict): The geometry sub dictionar of a geojson.
+        json_geom (dict): The geometry sub dictionary of a geojson.
 
     Returns:
         dict
@@ -1163,7 +1163,7 @@ def json_strip_z_func(json_geom):
     json_geom is modified in place
 
     Args:
-        json_geom (dict): The geometry sub dictionar of a geojson.
+        json_geom (dict): The geometry sub dictionary of a geojson.
 
     Returns:
         dict
