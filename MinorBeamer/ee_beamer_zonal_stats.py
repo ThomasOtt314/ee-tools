@@ -707,8 +707,8 @@ def landsat_etg_func(img):
         .copyProperties(img, ['SCENE_ID', 'system:time_start'])
 
 
-# the new evi_min (or x-intercept of the regression) is 0.057 and 0.0464 for the
-# 40 and 56 site-year update regression, respectively. Not 0.075 from the
+# the new evi_min (slightly above the x-intercept) is 0.065 and 0.055 for the
+# 40 and 56 site-year regressions, respectively. Not 0.075 from the
 # original Beamer regression.
 
 def etstar_func(evi, etstar_type='mean'):
