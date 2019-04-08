@@ -707,7 +707,10 @@ def landsat_etg_func(img):
         .copyProperties(img, ['SCENE_ID', 'system:time_start'])
 
 
-# the new evi_min (or x-intercept of the regression) is 0.0464, not 0.075 
+# the new evi_min (or x-intercept of the regression) is 0.057 and 0.0464 for the
+# 40 and 56 site-year update regression, respectively. Not 0.075 from the
+# original Beamer regression.
+
 def etstar_func(evi, etstar_type='mean'):
     """Compute Beamer ET* from EVI (assuming at-surface reflectance)"""
     def etstar(img, c0, c1, c2, evi_min=0.0464):
@@ -719,7 +722,7 @@ def etstar_func(evi, etstar_type='mean'):
                 {'c0': c0, 'c1': c1, 'c2': c2}) \
             .max(0)
     
-# adding new coefficients beneath original beamer numbers for both
+# Adding new coefficients beneath original beamer numbers for both
 # the 40 site-year updates and 56 site-year updates.
 # 40 site-year update coeffs are being used to validate predictive equation
 # at the 16 site-years from more recent studies.
