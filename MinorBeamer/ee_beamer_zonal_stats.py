@@ -179,28 +179,62 @@ def main(ini_path, overwrite_flag=True):
     utils.ee_request(ee.Number(1).getInfo())
 
     # Read in ETo and PPT data from file
+#    if (ini['BEAMER']['eto_source'] == 'file' or
+#            ini['BEAMER']['ppt_source'] == 'file'):
+#        data_array = np.genfromtxt(
+#            ini['BEAMER']['data_path'], delimiter=',', names=True, dtype=None)
+#        print(data_array)
+#        data_fields = data_array.dtype.names
+#        logging.debug('  CSV fields: {}'.format(', '.join(data_fields)))
+        # DEADBEEF - Compare fields names assuming all upper case
+#        data_fields = [f.upper() for f in data_fields]
+#        eto_dict = defaultdict(dict)
+#        ppt_dict = defaultdict(dict)
+#        for row in data_array:
+#            z = str(row[data_fields.index(ini['BEAMER']['data_zone_field'])])
+#            y = row[data_fields.index(ini['BEAMER']['data_year_field'])]
+#            if ini['BEAMER']['eto_source'] == 'file':
+                # DEADBEEF - Compare fields names assuming all upper case
+#                eto_dict[z][y] = row[data_fields.index(
+#                    ini['BEAMER']['data_eto_field'].upper())]
+#            if ini['BEAMER']['ppt_source'] == 'file':
+                # DEADBEEF - Compare fields names assuming all upper case
+#                ppt_dict[z][y] = row[data_fields.index(
+#                    ini['BEAMER']['data_ppt_field'].upper())]
+#    print(ppt_dict)
+    
+    
+    
+    # Read in ETo and PPT data from file using Pandas (bminor edits)
+    
     if (ini['BEAMER']['eto_source'] == 'file' or
             ini['BEAMER']['ppt_source'] == 'file'):
-        data_array = np.genfromtxt(
-            ini['BEAMER']['data_path'], delimiter=',', names=True, dtype=None)
-        data_fields = data_array.dtype.names
+        data_df = pd.read_csv(
+            ini['BEAMER']['data_path'], header=0, delimiter=',')
+        data_fields = data_df.columns
         logging.debug('  CSV fields: {}'.format(', '.join(data_fields)))
-        # DEADBEEF - Compare fields names assuming all upper case
-        data_fields = [f.upper() for f in data_fields]
+        # DEADBEEF - Compare fields names
+        data_fields = [f for f in data_fields]
         eto_dict = defaultdict(dict)
         ppt_dict = defaultdict(dict)
-        for row in data_array:
+        for row in data_df:
             z = str(row[data_fields.index(ini['BEAMER']['data_zone_field'])])
             y = row[data_fields.index(ini['BEAMER']['data_year_field'])]
             if ini['BEAMER']['eto_source'] == 'file':
-                # DEADBEEF - Compare fields names assuming all upper case
+                # DEADBEEF - Compare fields names 
                 eto_dict[z][y] = row[data_fields.index(
-                    ini['BEAMER']['data_eto_field'].upper())]
+                    ini['BEAMER']['data_eto_field'])]
             if ini['BEAMER']['ppt_source'] == 'file':
-                # DEADBEEF - Compare fields names assuming all upper case
+                # DEADBEEF - Compare fields names 
                 ppt_dict[z][y] = row[data_fields.index(
-                    ini['BEAMER']['data_ppt_field'].upper())]
-
+                    ini['BEAMER']['data_ppt_field'])]
+    print(ppt_dict)
+    
+    
+    
+    
+    
+    
     # Get filtered/merged/prepped Landsat collection
     landsat_args = {
         k: v for section in ['INPUTS']

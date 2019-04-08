@@ -1,0 +1,5 @@
+{
+  "tests/test_ee_common.py::test_albedo_func[refl_sur0-LT05-1.0]": true,
+  "tests/test_ee_common.py::test_albedo_func[refl_sur1-LE07-2.0]": true,
+  "tests/test_ee_common.py::test_albedo_func[refl_sur2-LC08-1.0]": true
+}
