@@ -181,9 +181,9 @@ def main(ini_path, overwrite_flag=True):
     # Read in ETo and PPT data from file
     if (ini['BEAMER']['eto_source'] == 'file' or
             ini['BEAMER']['ppt_source'] == 'file'):
-        data_array = np.genfromtxt(
+        data_array = np.atleast_1d(np.genfromtxt(
             ini['BEAMER']['data_path'], delimiter=',', names=True,
-            encoding=None, dtype=None)
+            encoding=None, dtype=None))
         data_fields = data_array.dtype.names
         logging.debug('  CSV fields: {}'.format(', '.join(data_fields)))
         # DEADBEEF - Compare fields names assuming all upper case
