@@ -226,6 +226,14 @@ def main(ini_path, overwrite_flag=True):
         zone['json'] = zone_json
         logging.info('ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
 
+        # zone_key used for wy_ppt and wy_eto inputs from csv file
+        if ini['INPUTS']['zone_field'] == 'FID':
+            zone_key = str(zone['fid'])
+            print('Using FID as zone_field')
+        else:
+            zone_key = zone['name']
+            print('Using Name as zone_field')
+            
         # Build EE geometry object for zonal stats
         zone['geom'] = ee.Geometry(
             geo_json=zone['json'], opt_proj=zone['proj'], opt_geodesic=False)
@@ -322,7 +330,7 @@ def main(ini_path, overwrite_flag=True):
             # Get water year PPT for centroid of zone or read from file
             # Convert all input data to mm to match GRIDMET data
             if ini['BEAMER']['ppt_source'] == 'file':
-                wy_ppt_input = ppt_dict[zone][year]
+                wy_ppt_input = ppt_dict[zone_key][year]
                 if ini['BEAMER']['data_ppt_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_ppt_units'] == 'in':
@@ -356,7 +364,7 @@ def main(ini_path, overwrite_flag=True):
             # Get water year ETo for centroid of zone or read from file
             # Convert all input data to mm for Beamer Method
             if ini['BEAMER']['eto_source'] == 'FILE':
-                wy_eto_input = eto_dict[zone][year]
+                wy_eto_input = eto_dict[zone_key][year]
                 if ini['BEAMER']['data_eto_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_eto_units'] == 'in':
