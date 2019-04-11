@@ -656,7 +656,8 @@ def main(ini_path, overwrite_flag=True):
                     # data_df.loc[~null_mask, [field]] = data_df.loc[~null_mask, [field]].apply(
                     #     lambda x: '{0:10.6f}'.format(x[0]).strip(), axis=1)
 
-                data_df = data_df.reindex_axis(header_list, axis=1)
+                # data_df = data_df.reindex_axis(header_list, axis=1)
+                data_df = data_df.reindex(header_list,axis=1)
                 # data_df.reset_index(drop=False, inplace=True)
                 data_df.sort_values(
                     ['ZONE_FID', 'DATE', 'ROW'], ascending=True, inplace=True)
