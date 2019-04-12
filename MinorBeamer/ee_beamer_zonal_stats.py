@@ -179,61 +179,28 @@ def main(ini_path, overwrite_flag=True):
     utils.ee_request(ee.Number(1).getInfo())
 
     # Read in ETo and PPT data from file
-#    if (ini['BEAMER']['eto_source'] == 'file' or
-#            ini['BEAMER']['ppt_source'] == 'file'):
-#        data_array = np.genfromtxt(
-#            ini['BEAMER']['data_path'], delimiter=',', names=True, dtype=None)
-#        print(data_array)
-#        data_fields = data_array.dtype.names
-#        logging.debug('  CSV fields: {}'.format(', '.join(data_fields)))
-        # DEADBEEF - Compare fields names assuming all upper case
-#        data_fields = [f.upper() for f in data_fields]
-#        eto_dict = defaultdict(dict)
-#        ppt_dict = defaultdict(dict)
-#        for row in data_array:
-#            z = str(row[data_fields.index(ini['BEAMER']['data_zone_field'])])
-#            y = row[data_fields.index(ini['BEAMER']['data_year_field'])]
-#            if ini['BEAMER']['eto_source'] == 'file':
-                # DEADBEEF - Compare fields names assuming all upper case
-#                eto_dict[z][y] = row[data_fields.index(
-#                    ini['BEAMER']['data_eto_field'].upper())]
-#            if ini['BEAMER']['ppt_source'] == 'file':
-                # DEADBEEF - Compare fields names assuming all upper case
-#                ppt_dict[z][y] = row[data_fields.index(
-#                    ini['BEAMER']['data_ppt_field'].upper())]
-#    print(ppt_dict)
-    
-    
-    
-    # Read in ETo and PPT data from file using Pandas (bminor edits)
-    
     if (ini['BEAMER']['eto_source'] == 'file' or
             ini['BEAMER']['ppt_source'] == 'file'):
-        data_df = pd.read_csv(
-            ini['BEAMER']['data_path'], header=0, delimiter=',')
-        data_fields = data_df.columns
+        # read csv file (if only one row of data in input file, np.atleast_1d will force 0-d array to 1-d)
+        data_array = np.atleast_1d(np.genfromtxt(
+            ini['BEAMER']['data_path'], delimiter=',', names=True, encoding=None, dtype=None))
+        data_fields = data_array.dtype.names
         logging.debug('  CSV fields: {}'.format(', '.join(data_fields)))
-        # DEADBEEF - Compare fields names
-        data_fields = [f for f in data_fields]
+        # DEADBEEF - Compare fields names assuming all upper case
+        data_fields = [f.upper() for f in data_fields]
         eto_dict = defaultdict(dict)
         ppt_dict = defaultdict(dict)
-        for row in data_df:
+        for row in data_array:
             z = str(row[data_fields.index(ini['BEAMER']['data_zone_field'])])
             y = row[data_fields.index(ini['BEAMER']['data_year_field'])]
             if ini['BEAMER']['eto_source'] == 'file':
-                # DEADBEEF - Compare fields names 
+                # DEADBEEF - Compare fields names assuming all upper case
                 eto_dict[z][y] = row[data_fields.index(
-                    ini['BEAMER']['data_eto_field'])]
+                    ini['BEAMER']['data_eto_field'].upper())]
             if ini['BEAMER']['ppt_source'] == 'file':
-                # DEADBEEF - Compare fields names 
+                # DEADBEEF - Compare fields names assuming all upper case
                 ppt_dict[z][y] = row[data_fields.index(
-                    ini['BEAMER']['data_ppt_field'])]
-    print(ppt_dict)
-    
-    
-    
-    
-    
+                    ini['BEAMER']['data_ppt_field'].upper())]
     
     # Get filtered/merged/prepped Landsat collection
     landsat_args = {
@@ -258,6 +225,13 @@ def main(ini_path, overwrite_flag=True):
         zone['name'] = zone_name.replace(' ', '_')
         zone['json'] = zone_json
         logging.info('ZONE: {} (FID: {})'.format(zone['name'], zone['fid']))
+
+        if ini['INPUTS']['zone_field'] == 'FID':
+            zone_key = str(zone['fid'])
+            print('Using FID as zone_field')
+        else:
+            zone_key = zone['name']
+            print('Using Name as zone_field')
 
         # Build EE geometry object for zonal stats
         zone['geom'] = ee.Geometry(
@@ -355,7 +329,7 @@ def main(ini_path, overwrite_flag=True):
             # Get water year PPT for centroid of zone or read from file
             # Convert all input data to mm to match GRIDMET data
             if ini['BEAMER']['ppt_source'] == 'file':
-                wy_ppt_input = ppt_dict[zone][year]
+                wy_ppt_input = ppt_dict[zone_key][year]
                 if ini['BEAMER']['data_ppt_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_ppt_units'] == 'in':
@@ -366,6 +340,8 @@ def main(ini_path, overwrite_flag=True):
                 wy_ppt_input = float(utils.ee_getinfo(ee.ImageCollection(
                     gridmet_coll.select(['pr'], ['ppt']).sum()).getRegion(
                         zone['geom'].centroid(1), 500))[1][4])
+            else:
+                raise Exception('PPT source not accepted')
                 # Calculate GRIDMET zonal mean of geometry
                 # wy_ppt_input = float(ee.ImageCollection(
                 #     gridmet_coll.select(['pr'], ['ppt'])).reduceRegion(
@@ -388,8 +364,8 @@ def main(ini_path, overwrite_flag=True):
 
             # Get water year ETo for centroid of zone or read from file
             # Convert all input data to mm for Beamer Method
-            if ini['BEAMER']['eto_source'] == 'FILE':
-                wy_eto_input = eto_dict[zone][year]
+            if ini['BEAMER']['eto_source'] == 'file':
+                wy_eto_input = eto_dict[zone_key][year]
                 if ini['BEAMER']['data_eto_units'] == 'mm':
                     pass
                 elif ini['BEAMER']['data_eto_units'] == 'in':
@@ -409,6 +385,8 @@ def main(ini_path, overwrite_flag=True):
                 #         crsTransform=zone['transform'],
                 #         bestEffort=False,
                 #         tileScale=1).getInfo()
+            else:
+                raise Exception('ETO source not accepted')
             logging.debug('  Input  ETO: {} mm  PPT: {} mm'.format(
                 wy_eto_input, wy_ppt_input))
 
@@ -646,8 +624,8 @@ def main(ini_path, overwrite_flag=True):
             # Save all values to the dataframe (and export)
             if row_list:
                 logging.debug('  Appending')
+                # FutureWarning: passing list-likes to .loc or [] with any missing label will raise KeyError
                 data_df = data_df.append(row_list, ignore_index=True)
-
                 # DEADBEEF
                 if data_df['QA'].isnull().any():
                     data_df.loc[data_df['QA'].isnull(), 'QA'] = 0
@@ -656,6 +634,7 @@ def main(ini_path, overwrite_flag=True):
                     data_df.loc[fmask_mask, 'FMASK_PCT'] = 100.0 * (
                         data_df.loc[fmask_mask, 'FMASK_COUNT'] /
                         data_df.loc[fmask_mask, 'FMASK_TOTAL'])
+
 
                 logging.debug('  Saving')
                 data_df[int_fields] = data_df[int_fields].astype(np.int64)
@@ -681,7 +660,8 @@ def main(ini_path, overwrite_flag=True):
                     # data_df.loc[~null_mask, [field]] = data_df.loc[~null_mask, [field]].apply(
                     #     lambda x: '{0:10.6f}'.format(x[0]).strip(), axis=1)
 
-                data_df = data_df.reindex_axis(header_list, axis=1)
+                #data_df = data_df.reindex_axis(header_list, axis=1)
+                data_df = data_df.reindex(header_list,axis=1)
                 # data_df.reset_index(drop=False, inplace=True)
                 data_df.sort_values(
                     ['ZONE_FID', 'DATE', 'ROW'], ascending=True, inplace=True)
