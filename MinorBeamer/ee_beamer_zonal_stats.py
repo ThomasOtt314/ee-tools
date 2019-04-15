@@ -746,47 +746,47 @@ def etstar_func(evi, etstar_type='mean'):
         #return etstar(evi, -0.1955, 2.9042, -1.5916)
 
         # 40 site-year updated coeffs
-        return etstar(evi, -0.1862, 3.4056, -2.2349)
+        #return etstar(evi, -0.1862, 3.4056, -2.2349)
         
         # 56 site-year updated coeffs
-        #return etstar(evi, -0.1359, 3.0441, -1.8524)
+        return etstar(evi, -0.1359, 3.0441, -1.8524)
     
     elif etstar_type == 'lpi':
         #return etstar(evi, -0.2871, 2.9192, -1.6263)
 
         # 40 site-year updated lpi coeffs
-        return etstar(evi, -0.3262, 3.4257, -2.2817)
+        #return etstar(evi, -0.3262, 3.4257, -2.2817)
 
         # 56 site-year updated lpi coeffs
-        #return etstar(evi, -0.2698, 3.0579, -1.8898)
+        return etstar(evi, -0.2698, 3.0579, -1.8898)
     
     elif etstar_type == 'upi':
         #return etstar(evi, -0.1039, 2.8893, -1.5569)
 
         # 40 site-year updated upi coeffs
-        return etstar(evi, -0.0461, 3.3856, -2.1881)
+        #return etstar(evi, -0.0461, 3.3856, -2.1881)
 
         # 56 site-year updated upi coeffs
-        #return etstar(evi, -0.002, 3.0302, -1.815)
+        return etstar(evi, -0.002, 3.0302, -1.815)
         
     elif etstar_type == 'lci':
         #return etstar(evi, -0.2142, 2.9175, -1.6554)
 
         # 40 site-year updated lci coeffs
-        return etstar(evi, -0.215, 3.454, -2.3663)
+        #return etstar(evi, -0.215, 3.454, -2.3663)
 
         # 56 site-year updated lci coeffs
-        #return etstar(evi, -0.1573, 3.06996, -1.9567)
+        return etstar(evi, -0.1573, 3.06996, -1.9567)
 
     
     elif etstar_type == 'uci':
         #return etstar(evi, -0.1768, 2.8910, -1.5278)
 
         # 40 site-year updated uci coeffs
-        return etstar(evi, -0.1573, 3.3573, -2.1036)
+        #return etstar(evi, -0.1573, 3.3573, -2.1036)
 
         # 56 site-year updated uci coeffs
-        #return etstar(evi, -0.1144, 3.0302, -1.815)
+        return etstar(evi, -0.1144, 3.0302, -1.815)
         
 
 def etg_func(etstar, eto, ppt):
