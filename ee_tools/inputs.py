@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         inputs.py
 # Purpose:      Common INI reading/parsing functions
-# Modified:     2017-11-07
 # Python:       3.6
 #--------------------------------
 
@@ -272,13 +271,19 @@ def parse_inputs(ini, section='INPUTS'):
             with open(ini[section]['scene_id_keep_path']) as input_f:
                 scene_id_keep_list = input_f.readlines()
             ini[section]['scene_id_keep_list'] = [
-                x.strip()[:20] for x in scene_id_keep_list]
+                x.strip() for x in scene_id_keep_list]
         except IOError:
             logging.error('\nFileIO Error: {}'.format(
                 ini[section]['scene_id_keep_path']))
             sys.exit()
         except Exception as e:
             logging.error('\nUnhanded Exception: {}'.format(e))
+
+        # Parse full product ID down to GEE scene ID if necessary
+        # LE07_L1TP_041035_20180127_20180222_01_T1
+        ini[section]['scene_id_keep_list'] = [
+            x[:5] + x[10:25] if len(x) == 40 else x
+            for x in ini[section]['scene_id_keep_list']]
 
     # Skip specific landsat scenes
     ini[section]['scene_id_skip_list'] = []
@@ -287,13 +292,19 @@ def parse_inputs(ini, section='INPUTS'):
             with open(ini[section]['scene_id_skip_path']) as input_f:
                 scene_id_skip_list = input_f.readlines()
             ini[section]['scene_id_skip_list'] = [
-                x.strip()[:20] for x in scene_id_skip_list]
+                x.strip() for x in scene_id_skip_list]
         except IOError:
             logging.error('\nFileIO Error: {}'.format(
                 ini[section]['scene_id_skip_path']))
             sys.exit()
         except Exception as e:
             logging.error('\nUnhanded Exception: {}'.format(e))
+
+        # Parse full product ID down to GEE scene ID if necessary
+        # LE07_L1TP_041035_20180127_20180222_01_T1
+        ini[section]['scene_id_skip_list'] = [
+            x[:5] + x[10:25] if len(x) == 40 else x
+            for x in ini[section]['scene_id_skip_list']]
 
     # At-surface reflectance source type
     if ini[section]['refl_sur_method']:
