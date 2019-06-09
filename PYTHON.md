@@ -1,67 +1,121 @@
 # Python
 
-The cloud free scene count Python scripts have been tested using both Python 3.6 and Python 2.7.
+The ee-tools Python scripts have been developed primarily for Python 3.6+ but should work with older versions of Python 3 or Python 2.7 with minimal changes (see the [Python 2.7](Python 2.7) section below).
 
-## Anaconda
+## Conda
 
-The easiest way of obtaining Python and all of the necessary external modules, is to install [Anaconda](https://www.continuum.io/downloads). Another (more prefereable) option is to download miniconda.
+The easiest way of managing Python and all of the necessary external modules is to use conda environments and the conda package manager.  
 
-It is important to double check that you are calling the Anaconda version, especially if you have two or more version of Python installed (e.g. Anaconda and ArcGIS).
+### Miniconda / Anaconda
 
+The easiest way of obtaining conda is to install [Python 3.7 Miniconda](https://docs.conda.io/en/latest/miniconda.html), which is a minimal version of the full [Anaconda Distribution](https://www.anaconda.com/distribution/) that includes only conda and its dependencies. 
+
+After installing Miniconda or if you already have Python installed, it is important to double check that you are calling the expected version of Python.  This is especially important if you have two or more version of Python installed (e.g. Anaconda and ArcGIS).  To check the default Python location on your computer, type the appropriate commands in a command prompt or terminal:
 + Windows: "where python"
 + Linux/Mac: "which python"
 
- After installing Anaconda or miniconda, add the conda-forge channel by entering the following in the command prompt or terminal:
+### Updating Conda
+
+If you previously installed conda/Miniconda/Anaconda and haven't updated in awhile, it would be good to update to the latest version: 
+```
+> conda update -n base -c conda conda
+```
+
+### conda-forge
+
+*Note, this step may not be needed anymore*
+
+After installing Anaconda or miniconda, add the conda-forge channel by entering the following in the command prompt or terminal:
 ```
 > conda config --add channels conda-forge
 ```
 
-#### Installing/Updating Python Modules
+## Environment
 
-Most of the modules needed for these scripts are installed by default with Anaconda but additional modules will need to be installed (and/or updated) using "conda".  For example to install the pandas module, enter the following in a command prompt or terminal window:
+A Conda environment is a separate instance of Python (stored in a sub-directory in the Python "envs" folder) that has a specific set of python modules and packages installed.  The environment can also be an entirely different version of Python (i.e. the environment could be Python 2.7 even though you have Python 3.7 Miniconda).  It can be helpful to build a separate conda environment for each project to ensure that updating a python module for one project doesn't break anything else.
 
+After installing conda, the "ee-tools" environment can be built directly from the provided [environment.yml](environment.yml) file using the following command:
+```
+conda env create -f environment.yml
+```
+
+### Activate
+
+After building the "ee-tools" conda environment, it must be activated in order to use this version of Python and modules/packages.  The following command will need to be run everytime you open a new command prompt or terminal.
+```
+> conda activate ee-tools
+```
+
+After activating, the environment name should show up before the path in the command prompt or terminal:
+```
+(ee-tools) C:/
+```
+
+### Installing/Updating Python Modules
+
+All of the modules needed for these scripts were installed when the environment was built above, but additional modules can be installed (and/or updated) using the "conda" CLI.  For example to install the pandas module, enter the following in a command prompt or terminal window:
 ```
 conda install pandas
 ```
 
 To update the pandas module to the latest version, enter the following in a command prompt or terminal window:
-
 ```
 conda update pandas
 ```
 
-The external modules can also be installed all together with the following command:
+The external modules can also be updated all together with the following command:
 ```
-> conda install configparser gdal numpy pandas
-```
-
-## Command Prompt / Terminal
-
-The python scripts can be run from the terminal (mac/linux) or command prompt (windows).
-
-In some cases the scripts can also be run by double clicking directly on the script.  The script will open a GUI asking you select an INI file.  Be advised, if you have multiple versions of Python installed (for example if you have ArcGIS and you install Anaconda), this may try to use a different different version of Python.
-
-#### Help
-To see what arguments are available for a script, and their default values, pass the "-h" argument to the script.
-```
-> python ee_shapefile_zonal_stats_export.py -h
-usage: ee_shapefile_zonal_stats_export.py [-h] [-i PATH] [-d] [-o]
-
-Earth Engine Zonal Statistics
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -i FILE, --ini FILE   Input file (default: None)
-  -d, --debug           Debug level logging (default: 20)
-  -o, --overwrite       Force overwrite of existing files (default: False)
+> conda update configparser gdal numpy pandas
 ```
 
-#### Input file
-To set the input file, use the "-i" or "--ini" argument.  The INI file path can be absolute or relative to the current working directory.
+### Python 2.7
+
+The scripts should work with Python 2.7, but it will be necessary to install the backport of the "configparser" module and the "future" module.
 ```
-> python ee_shapefile_zonal_stats_export.py -i example\example_ee_zs.ini
+> conda install configparser future
 ```
 
-#### Overwrite
+#### Earth Engine-API
 
-#### Debug
+After installing the EarthEngine API module, you will need to authenticate the Earth Engine API (see [setting-up-authentication-credentials](https://developers.google.com/earth-engine/python_install_manual#setting-up-authentication-credentials)):
+```
+> python -c "import ee; ee.Initialize()"
+```
+
+#### GDAL
+
+After installing GDAL, you may need to manually set the GDAL_DATA user environmental variable.
+
+###### Windows
+
+You can check the current value of the variable at the command prompt:
+```
+echo %GDAL_DATA%
+```
+
+If GDAL_DATA is set, this will return a folder path (something similar to C:\Miniconda3\envs\ee-tools\Library\share\gdal)
+
+If GDAL_DATA is not set, it can be set from the command prompt (note, your path may vary):
+```
+> setx GDAL_DATA "C:\Miniconda3\envs\ee-tools\Library\share\gdal"
+```
+
+The GDAL_DATA environment variable can also be set through the Windows Control Panel (System -> Advanced system settings -> Environment Variables).
+
+###### Linux / Mac
+
+You can check the current value of the variable at the terminal:
+
+```
+echo $GDAL_DATA
+```
+
+If GDAL_DATA is set, this will return a folder path (something similar to /Users/<USER>/miniconda3/envs/ee-tools/share/gdal)
+
+If GDAL_DATA is not set, it can be set from the terminal or added to your .bashrc (note, your path may vary):
+
+```
+export GDAL_DATA=/Users/<USER>/miniconda3/envs/ee-tools/share/gdal
+```
+
+
