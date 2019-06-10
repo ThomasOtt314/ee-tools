@@ -3,13 +3,13 @@ channels:
   - defaults
   - conda-forge
 dependencies:
-  - bokeh
-  - earthengine-api
+  - bokeh>=0.12.10
+  - earthengine-api>=0.1.141
   - gdal
-  - matplotlib
-  - numpy
+  - matplotlib>=2.1.0
+  - numpy>=1.15.0
   - openpyxl
-  - pandas
+  - pandas>=0.23.0
   - pytest
   - python=3.7
   - requests

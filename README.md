@@ -16,7 +16,7 @@ For information on installing Python and Pandas or details on how to run the Pyt
 
 #### Earth Engine
 
-To run the ee-tools you must have an Earth Engine account.  If you do not have an Earth Engine account, please go the signup page https://signup.earthengine.google.com.  
+To run the ee-tools you must have an Earth Engine account.  If you do not have an  account, please go the Earth Engine signup page: https://signup.earthengine.google.com.  
 
 #### Google Drive
 

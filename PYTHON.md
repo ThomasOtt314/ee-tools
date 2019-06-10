@@ -21,16 +21,7 @@ If you previously installed conda/Miniconda/Anaconda and haven't updated in awhi
 > conda update -n base -c conda conda
 ```
 
-### conda-forge
-
-*Note, this step may not be needed anymore*
-
-After installing Anaconda or miniconda, add the conda-forge channel by entering the following in the command prompt or terminal:
-```
-> conda config --add channels conda-forge
-```
-
-## Environment
+## Creating the Environment
 
 A Conda environment is a separate instance of Python (stored in a sub-directory in the Python "envs" folder) that has a specific set of python modules and packages installed.  The environment can also be an entirely different version of Python (i.e. the environment could be Python 2.7 even though you have Python 3.7 Miniconda).  It can be helpful to build a separate conda environment for each project to ensure that updating a python module for one project doesn't break anything else.
 
@@ -39,7 +30,7 @@ After installing conda, the "ee-tools" environment can be built directly from th
 conda env create -f environment.yml
 ```
 
-### Activate
+### Activating the Environment
 
 After building the "ee-tools" conda environment, it must be activated in order to use this version of Python and modules/packages.  The following command will need to be run everytime you open a new command prompt or terminal.
 ```
@@ -75,11 +66,16 @@ The scripts should work with Python 2.7, but it will be necessary to install the
 > conda install configparser future
 ```
 
-#### Earth Engine-API
+#### Earth Engine API
 
-After installing the EarthEngine API module, you will need to authenticate the Earth Engine API (see [setting-up-authentication-credentials](https://developers.google.com/earth-engine/python_install_manual#setting-up-authentication-credentials)):
+After installing the Python Earth Engine API module, you will need to authorize access to Earth Engine by running the following command in the command prompt or terminal.
 ```
-> python -c "import ee; ee.Initialize()"
+> earthengine authenticate
+```
+
+To test if the authentication was successful, you can run the following command which will build a simple Earth Engine object and test check it can be retrieved.
+```
+> python -c "import ee; ee.Initialize(); print(ee.Number(1).getInfo())"
 ```
 
 #### GDAL
