@@ -1,7 +1,6 @@
 #--------------------------------
 # Name:         gdal_common.py
 # Purpose:      Common GDAL support functions
-# Updated:      2017-07-27
 # Python:       3.6
 #--------------------------------
 
